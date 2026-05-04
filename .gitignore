@@ -1,0 +1,25 @@
+# Global/Temp.gitignore
+*~
+*.swp
+
+# Global/OSX.gitignore
+.DS_Store
+.AppleDouble
+
+# Thumbnails
+._*
+
+# Files that might appear on external disk
+.Spotlight-V100
+.Trashes
+
+# Global/Windows.gitignore
+Thumbs.db
+Desktop.ini
+
+# VS Code files
+/.vscode
+
+# AI
+.claude/settings.local.json
+.mcp.json
