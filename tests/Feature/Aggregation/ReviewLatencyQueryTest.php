@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Aggregation;
 
-use App\Aggregation\ReviewLatencyAggregator;
+use App\Aggregation\ReviewLatencyQuery;
 use App\Domain\Shared\MonthRange;
 use App\Domain\Vcs\PullRequestStatus;
 use App\Models\Group;
@@ -14,7 +14,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-class ReviewLatencyAggregatorTest extends TestCase
+class ReviewLatencyQueryTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -36,7 +36,7 @@ class ReviewLatencyAggregatorTest extends TestCase
 
         $this->insertPr(number: 1, readyAt: $readyAt, firstReviewAt: $firstReviewAt, sizeBucket: 'S');
 
-        $results = (new ReviewLatencyAggregator())->aggregate($this->group, MonthRange::fromString('2026-04'));
+        $results = (new ReviewLatencyQuery())->run($this->group, MonthRange::fromString('2026-04'));
 
         $this->assertCount(1, $results);
         $pr = $results->first();
@@ -51,7 +51,7 @@ class ReviewLatencyAggregatorTest extends TestCase
         $this->insertPr(number: 2, readyAt: $readyAt, firstReviewAt: null, sizeBucket: 'XS');
 
         $clock = CarbonImmutable::parse('2026-05-05T00:00:00Z');
-        $results = (new ReviewLatencyAggregator($clock))->aggregate($this->group, MonthRange::fromString('2026-04'));
+        $results = (new ReviewLatencyQuery($clock))->run($this->group, MonthRange::fromString('2026-04'));
 
         $this->assertCount(1, $results);
         $pr = $results->first();
@@ -63,7 +63,7 @@ class ReviewLatencyAggregatorTest extends TestCase
     {
         $this->insertPr(number: 3, readyAt: null, firstReviewAt: null, sizeBucket: null);
 
-        $results = (new ReviewLatencyAggregator())->aggregate($this->group, MonthRange::fromString('2026-04'));
+        $results = (new ReviewLatencyQuery())->run($this->group, MonthRange::fromString('2026-04'));
 
         $this->assertCount(0, $results);
     }
@@ -82,7 +82,7 @@ class ReviewLatencyAggregatorTest extends TestCase
             sizeBucket: 'S',
         );
 
-        $results = (new ReviewLatencyAggregator())->aggregate($this->group, MonthRange::fromString('2026-04'));
+        $results = (new ReviewLatencyQuery())->run($this->group, MonthRange::fromString('2026-04'));
         $this->assertCount(0, $results);
     }
 

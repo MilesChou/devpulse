@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Aggregation;
 
-use App\Aggregation\BuildFailureRateAggregator;
+use App\Aggregation\BuildFailureRateQuery;
 use App\Aggregation\Filter\BuildEventFilter;
 use App\Domain\Ci\BuildStatus;
 use App\Domain\Ci\BuildTrigger;
@@ -16,16 +16,16 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-class BuildFailureRateAggregatorTest extends TestCase
+class BuildFailureRateQueryTest extends TestCase
 {
     use RefreshDatabase;
 
-    private BuildFailureRateAggregator $aggregator;
+    private BuildFailureRateQuery $query;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->aggregator = new BuildFailureRateAggregator(new BuildEventFilter());
+        $this->query = new BuildFailureRateQuery(new BuildEventFilter());
     }
 
     public function testAggregatesFailureRateByAuthorAndRepo(): void
@@ -38,7 +38,7 @@ class BuildFailureRateAggregatorTest extends TestCase
         $this->insertBuild($repoA->id, 'bob', '2026-04-10', BuildStatus::FAILED);
         $this->insertBuild($repoA->id, 'bob', '2026-04-11', BuildStatus::FAILED);
 
-        $results = $this->aggregator->aggregate($groupA, MonthRange::fromString('2026-04'));
+        $results = $this->query->run($groupA, MonthRange::fromString('2026-04'));
 
         $alice = $results->firstWhere('authorAccount', 'alice');
         $bob = $results->firstWhere('authorAccount', 'bob');
@@ -62,7 +62,7 @@ class BuildFailureRateAggregatorTest extends TestCase
         $this->insertBuild($repoA->id, 'alice', '2026-04-10', BuildStatus::FAILED);
         $this->insertBuild($repoB->id, 'alice', '2026-04-10', BuildStatus::FAILED);
 
-        $results = $this->aggregator->aggregate($groupA, MonthRange::fromString('2026-04'));
+        $results = $this->query->run($groupA, MonthRange::fromString('2026-04'));
 
         // group-a 只能看到 repo-a 的資料
         $this->assertSame(1, $results->count());
@@ -78,7 +78,7 @@ class BuildFailureRateAggregatorTest extends TestCase
         $this->insertBuild($repoA->id, 'alice', '2026-04-30', BuildStatus::PASSED);
         $this->insertBuild($repoA->id, 'alice', '2026-05-01', BuildStatus::FAILED);
 
-        $results = $this->aggregator->aggregate($groupA, MonthRange::fromString('2026-04'));
+        $results = $this->query->run($groupA, MonthRange::fromString('2026-04'));
 
         $alice = $results->firstWhere('authorAccount', 'alice');
         $this->assertNotNull($alice);
@@ -94,7 +94,7 @@ class BuildFailureRateAggregatorTest extends TestCase
         $this->insertBuild($repoA->id, 'alice', '2026-04-10', BuildStatus::FAILED, isPostMerge: true);
         $this->insertBuild($repoA->id, 'alice', '2026-04-11', BuildStatus::PASSED, isPostMerge: false);
 
-        $results = $this->aggregator->aggregate($groupA, MonthRange::fromString('2026-04'));
+        $results = $this->query->run($groupA, MonthRange::fromString('2026-04'));
 
         $alice = $results->firstWhere('authorAccount', 'alice');
         $this->assertNotNull($alice);
@@ -109,8 +109,8 @@ class BuildFailureRateAggregatorTest extends TestCase
         $this->insertBuild($repoA->id, 'alice', '2026-04-10', BuildStatus::FAILED, isPostMerge: true);
         $this->insertBuild($repoA->id, 'alice', '2026-04-11', BuildStatus::PASSED, isPostMerge: false);
 
-        $aggregator = new BuildFailureRateAggregator(new BuildEventFilter(includePostMerge: true));
-        $results = $aggregator->aggregate($groupA, MonthRange::fromString('2026-04'));
+        $query = new BuildFailureRateQuery(new BuildEventFilter(includePostMerge: true));
+        $results = $query->run($groupA, MonthRange::fromString('2026-04'));
 
         $alice = $results->firstWhere('authorAccount', 'alice');
         $this->assertNotNull($alice);

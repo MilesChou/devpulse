@@ -6,14 +6,14 @@ namespace App\Aggregation;
 
 use App\Aggregation\Dto\FailureRateResult;
 use App\Aggregation\Filter\BuildEventFilter;
-use App\Models\Build;
-use App\Models\Group;
 use App\Domain\Shared\MonthRange;
 use App\Domain\Shared\RepoFullName;
+use App\Models\Build;
+use App\Models\Group;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
-final class BuildFailureRateAggregator
+final class BuildFailureRateQuery
 {
     public function __construct(private readonly BuildEventFilter $filter)
     {
@@ -24,17 +24,15 @@ final class BuildFailureRateAggregator
      * @param string[]|null $authorAccounts 限縮成員（null = group 所有成員）
      * @return Collection<int, FailureRateResult>
      */
-    public function aggregate(
+    public function run(
         Group $group,
         MonthRange $month,
         ?array $repoFullNames = null,
         ?array $authorAccounts = null,
     ): Collection {
-        $groupRepoIds = $group->repos()->pluck('repos.id');
-
         $query = Build::query()
             ->join('repos', 'repos.id', '=', 'builds.repo_id')
-            ->whereIn('builds.repo_id', $groupRepoIds)
+            ->whereIn('builds.repo_id', $group->repoIds())
             ->where('builds.started_at', '>=', $month->start)
             ->where('builds.started_at', '<', $month->end)
             ->whereNotNull('builds.author_account');

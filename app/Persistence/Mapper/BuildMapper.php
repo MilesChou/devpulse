@@ -4,12 +4,7 @@ declare(strict_types=1);
 
 namespace App\Persistence\Mapper;
 
-use App\Domain\Ci\BuildStatus;
 use App\Domain\Ci\BuildSummary;
-use App\Domain\Ci\BuildTrigger;
-use App\Domain\Shared\CommitSha;
-use App\Domain\Shared\RepoFullName;
-use App\Models\Build;
 
 final class BuildMapper
 {
@@ -38,47 +33,5 @@ final class BuildMapper
             'duration_seconds' => $vo->durationSeconds,
             'raw_payload' => $rawPayload,
         ];
-    }
-
-    /**
-     * 從 Eloquent Build model 還原為 BuildSummary VO。
-     *
-     * repo_full_name 由 caller 提供（避免 N+1 lazy load relation）。
-     */
-    public function toVo(Build $model, RepoFullName $repoFullName): BuildSummary
-    {
-        return new BuildSummary(
-            externalId: $model->external_id,
-            repoFullName: $repoFullName,
-            commitSha: new CommitSha($model->commit_sha),
-            authorAccount: $model->author_account,
-            prNumber: $model->pr_number,
-            status: $this->resolveStatus($model->status),
-            trigger: $this->resolveTrigger($model->trigger),
-            branch: $model->branch,
-            startedAt: $model->started_at,
-            durationSeconds: $model->duration_seconds,
-        );
-    }
-
-    private function resolveTrigger(string $value): BuildTrigger
-    {
-        return match ($value) {
-            BuildTrigger::PULL_REQUEST->name => BuildTrigger::PULL_REQUEST,
-            BuildTrigger::POST_MERGE->name => BuildTrigger::POST_MERGE,
-            BuildTrigger::SCHEDULED->name => BuildTrigger::SCHEDULED,
-            BuildTrigger::MANUAL->name => BuildTrigger::MANUAL,
-            default => BuildTrigger::PULL_REQUEST,
-        };
-    }
-
-    private function resolveStatus(string $value): BuildStatus
-    {
-        return match ($value) {
-            BuildStatus::PASSED->name => BuildStatus::PASSED,
-            BuildStatus::FAILED->name, 'errored' => BuildStatus::FAILED,
-            BuildStatus::CANCELED->name => BuildStatus::CANCELED,
-            default => BuildStatus::IN_PROGRESS,
-        };
     }
 }

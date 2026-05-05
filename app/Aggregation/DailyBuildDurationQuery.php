@@ -5,26 +5,24 @@ declare(strict_types=1);
 namespace App\Aggregation;
 
 use App\Aggregation\Dto\DailyBuildDuration;
-use App\Models\Build;
-use App\Models\Group;
 use App\Domain\Shared\MonthRange;
 use App\Domain\Shared\RepoFullName;
+use App\Models\Build;
+use App\Models\Group;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
-final class DailyBuildDurationAggregator
+final class DailyBuildDurationQuery
 {
     /**
      * 計算指定月份、指定 group 內每個 repo 每日「通過 build」的時間統計。
      *
      * @return Collection<int, DailyBuildDuration>
      */
-    public function aggregate(Group $group, MonthRange $month): Collection
+    public function run(Group $group, MonthRange $month): Collection
     {
-        $groupRepoIds = $group->repos()->pluck('repos.id');
-
         $builds = Build::query()
-            ->whereIn('repo_id', $groupRepoIds)
+            ->whereIn('repo_id', $group->repoIds())
             ->where('started_at', '>=', $month->start)
             ->where('started_at', '<', $month->end)
             ->where('status', 'passed')

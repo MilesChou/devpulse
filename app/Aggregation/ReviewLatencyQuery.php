@@ -5,14 +5,14 @@ declare(strict_types=1);
 namespace App\Aggregation;
 
 use App\Aggregation\Dto\ReviewLatencyResult;
-use App\Models\Group;
-use App\Models\PullRequest;
 use App\Domain\Shared\MonthRange;
 use App\Domain\Shared\RepoFullName;
+use App\Models\Group;
+use App\Models\PullRequest;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
-final class ReviewLatencyAggregator
+final class ReviewLatencyQuery
 {
     public function __construct(private readonly ?CarbonImmutable $clock = null)
     {
@@ -26,15 +26,13 @@ final class ReviewLatencyAggregator
      *
      * @return Collection<int, ReviewLatencyResult>
      */
-    public function aggregate(Group $group, MonthRange $month): Collection
+    public function run(Group $group, MonthRange $month): Collection
     {
-        $groupRepoIds = $group->repos()->pluck('repos.id');
-
         $now = $this->clock ?? CarbonImmutable::now('UTC');
         $cutoff = $month->end->isBefore($now) ? $month->end : $now;
 
         $prs = PullRequest::query()
-            ->whereIn('repo_id', $groupRepoIds)
+            ->whereIn('repo_id', $group->repoIds())
             ->where('pr_created_at', '>=', $month->start)
             ->where('pr_created_at', '<', $month->end)
             ->whereNotNull('ready_at')
