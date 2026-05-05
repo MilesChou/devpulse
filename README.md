@@ -78,16 +78,22 @@ php artisan devpulse:member:add my-team alice "Alice Chen"
 
 ## Quick Start：跑第一份月報
 
-> ⚠️ **目前實作進度**：fetch 與 report command 尚未實作（spec 第 7、8 章），下面流程是目標形態。已可用的 command 為 `devpulse:group:create`、`devpulse:repo:add`、`devpulse:member:add`。完整進度請見 [`openspec/changes/propose-devpulse/tasks.md`](openspec/changes/propose-devpulse/tasks.md)。
-
-完整實作後的流程：
-
 ```bash
-# 撈資料（透過 GitHub / Travis API 寫入 DB）
+# 撈資料（透過 GitHub / Travis API 寫入 DB；已過月份會走 cache，--force 可繞過）
 php artisan devpulse:fetch my-team 2026-04
 
-# 產出 markdown 報告
+# 產出 markdown 報告（不指定 --output 則印到 stdout）
 php artisan devpulse:report 2026-04 --group=my-team --output=report.md
+```
+
+支援的 command：
+
+```bash
+php artisan devpulse:group:create <slug> [--description=...]
+php artisan devpulse:repo:add <group-slug> <owner/name>
+php artisan devpulse:member:add <group-slug> <github-account> <display-name>
+php artisan devpulse:fetch <group-slug> <Y-m> [--force]
+php artisan devpulse:report <Y-m> --group=<slug> [--output=<path>]
 ```
 
 ## 開發

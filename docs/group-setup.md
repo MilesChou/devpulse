@@ -85,11 +85,35 @@ devpulse 設計支援多 group 並存。實際使用情境：
 切換只是換 `--group` 參數：
 
 ```bash
+php artisan devpulse:fetch team-platform 2026-04
 php artisan devpulse:report 2026-04 --group=team-platform
+
+php artisan devpulse:fetch team-mobile 2026-04
 php artisan devpulse:report 2026-04 --group=team-mobile
 ```
 
-> ⚠️ `devpulse:report` 尚未實作（spec 第 8 章），上面是目標形態。
+## Fetch / Report 流程
+
+### 撈資料
+
+```bash
+php artisan devpulse:fetch <group-slug> <Y-m> [--force]
+```
+
+- 對 group 中**每個 repo** 撈該月的 builds（Travis）+ pull requests（GitHub）
+- 寫入 DB（採 upsert，重跑同月安全、不會重複）
+- **已過月份**自動走 `month_fetches` cache：之前撈完整的月份預設跳過，避免浪費 API quota
+- `--force` 繞過 cache 強制重撈
+- **當月**永遠允許重撈（資料還在累積）
+
+### 產報告
+
+```bash
+php artisan devpulse:report <Y-m> --group=<slug> [--output=<path>]
+```
+
+- 產出 markdown 月報，含失敗率、PR review latency、daily build duration、失敗 build 清單
+- 不指定 `--output` 則印到 stdout
 
 ## Bot 過濾
 

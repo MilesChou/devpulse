@@ -32,5 +32,7 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="TRAVIS_TOKEN" value="test-travis-token"/>
+        <env name="GITHUB_TOKEN" value="test-github-token"/>
     </php>
 </phpunit>
