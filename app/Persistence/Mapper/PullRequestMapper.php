@@ -6,7 +6,6 @@ namespace App\Persistence\Mapper;
 
 use App\Domain\Vcs\PullRequestSummary;
 use App\Models\PullRequest;
-use Carbon\CarbonImmutable;
 
 final class PullRequestMapper
 {
@@ -42,10 +41,10 @@ final class PullRequestMapper
             status: $model->status,
             additions: $model->additions,
             deletions: $model->deletions,
-            createdAt: CarbonImmutable::parse($model->pr_created_at)->utc(),
-            readyAt: $model->ready_at !== null ? CarbonImmutable::parse($model->ready_at)->utc() : null,
-            mergedAt: $model->merged_at !== null ? CarbonImmutable::parse($model->merged_at)->utc() : null,
-            closedAt: $model->closed_at !== null ? CarbonImmutable::parse($model->closed_at)->utc() : null,
+            createdAt: $model->pr_created_at,
+            readyAt: $model->ready_at,
+            mergedAt: $model->merged_at,
+            closedAt: $model->closed_at,
         );
     }
 }

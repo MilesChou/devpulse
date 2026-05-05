@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Persistence;
 
 use App\Models\MonthFetch;
+use App\Persistence\Enum\Dataset;
+use App\Persistence\Enum\MonthFetchStatus;
 use App\Support\Time\MonthRange;
 use Carbon\CarbonImmutable;
 
@@ -22,7 +24,7 @@ final class MonthFetchCache
     {
     }
 
-    public function shouldFetch(int $repoId, string $dataset, string $month): bool
+    public function shouldFetch(int $repoId, Dataset $dataset, string $month): bool
     {
         if ($this->isCurrentMonth($month)) {
             return true;
@@ -30,7 +32,7 @@ final class MonthFetchCache
 
         $record = MonthFetch::query()
             ->where('repo_id', $repoId)
-            ->where('dataset', $dataset)
+            ->where('dataset', $dataset->value)
             ->where('month', $month)
             ->first();
 
@@ -38,22 +40,24 @@ final class MonthFetchCache
             return true;
         }
 
-        return $record->status !== MonthFetch::STATUS_COMPLETE;
+        return $record->status !== MonthFetchStatus::Complete;
     }
 
-    public function markComplete(int $repoId, string $dataset, string $month): void
+    public function markComplete(int $repoId, Dataset $dataset, string $month): void
     {
-        MonthFetch::query()->updateOrCreate(
-            ['repo_id' => $repoId, 'dataset' => $dataset, 'month' => $month],
-            ['status' => MonthFetch::STATUS_COMPLETE, 'fetched_at' => $this->now()],
-        );
+        $this->markStatus($repoId, $dataset, $month, MonthFetchStatus::Complete);
     }
 
-    public function markPartial(int $repoId, string $dataset, string $month): void
+    public function markPartial(int $repoId, Dataset $dataset, string $month): void
+    {
+        $this->markStatus($repoId, $dataset, $month, MonthFetchStatus::Partial);
+    }
+
+    private function markStatus(int $repoId, Dataset $dataset, string $month, MonthFetchStatus $status): void
     {
         MonthFetch::query()->updateOrCreate(
-            ['repo_id' => $repoId, 'dataset' => $dataset, 'month' => $month],
-            ['status' => MonthFetch::STATUS_PARTIAL, 'fetched_at' => $this->now()],
+            ['repo_id' => $repoId, 'dataset' => $dataset->value, 'month' => $month],
+            ['status' => $status->value, 'fetched_at' => $this->now()],
         );
     }
 

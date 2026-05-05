@@ -6,7 +6,6 @@ namespace App\Persistence\Mapper;
 
 use App\Domain\Ci\BuildSummary;
 use App\Models\Build;
-use Carbon\CarbonImmutable;
 
 final class BuildMapper
 {
@@ -51,7 +50,7 @@ final class BuildMapper
             status: $model->status,
             eventType: $model->event_type,
             branch: $model->branch,
-            startedAt: CarbonImmutable::parse($model->started_at)->utc(),
+            startedAt: $model->started_at,
             durationSeconds: $model->duration_seconds,
         );
     }

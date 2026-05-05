@@ -17,9 +17,10 @@ final class BuildRepository
     /**
      * 把 VO 流寫入 DB，依 (provider, external_id) 去重（同一 build 不重複插入）。
      *
-     * 用 firstOrCreate 而非 batch upsert，因為 raw_payload 是 JSON 欄位，
-     * batch upsert 在 SQLite/PostgreSQL 對 JSON 行為有差異。Stage 1 量小，
-     * 一筆一筆寫可接受。
+     * 用 updateOrCreate（每筆 SELECT + INSERT/UPDATE 兩 query）而非 batch upsert：
+     * Stage 1 量小（單月單 repo 約 100~1000 筆）可接受，且 updateOrCreate 自動
+     * 套用 cast（JSON、enum、datetime），如果改用 Query Builder upsert 要 caller
+     * 自己 json_encode raw_payload，trade-off 不划算。後續量大時再切 batch upsert。
      *
      * @param iterable<BuildSummary> $builds
      * @param array<string, array<string, mixed>> $rawPayloads externalId => raw payload
