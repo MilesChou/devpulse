@@ -64,12 +64,12 @@
 
 ## 8. 報告產出
 
-- [ ] 8.1 實作 markdown renderer：失敗率月報表格
-- [ ] 8.2 實作 markdown renderer：PR review latency 表格
-- [ ] 8.3 實作 markdown renderer：daily build duration 趨勢
-- [ ] 8.4 實作 markdown renderer：失敗 build 清單
-- [ ] 8.5 實作 Artisan command `devpulse:report <month> [--group=] [--output=]`
-- [ ] 8.6 撰寫端到端測試：跑指令能產生預期 markdown
+- [x] 8.1 實作 markdown renderer：失敗率月報表格
+- [x] 8.2 實作 markdown renderer：PR review latency 表格
+- [x] 8.3 實作 markdown renderer：daily build duration 趨勢
+- [x] 8.4 實作 markdown renderer：失敗 build 清單
+- [x] 8.5 實作 Artisan command `devpulse:report <month> [--group=] [--output=]`
+- [x] 8.6 撰寫端到端測試：跑指令能產生預期 markdown
 
 ## 9. Golden output 對照
 
