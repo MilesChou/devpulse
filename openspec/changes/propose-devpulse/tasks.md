@@ -58,9 +58,9 @@
 
 ## 7. 失敗 build 分類
 
-- [ ] 7.1 在 `repos` table 加上 `human_signals`（JSON 欄位）
-- [ ] 7.2 實作 classifier：依 signal 規則對失敗 build 的 log 做字串比對
-- [ ] 7.3 撰寫測試：lint signal 命中時應分類為 human/lint
+- [x] 7.1 在 `repos` table 加上 `human_signals`（JSON 欄位）
+- [x] 7.2 實作 classifier：依 signal 規則對失敗 build 的 log 做字串比對
+- [x] 7.3 撰寫測試：lint signal 命中時應分類為 human/lint
 
 ## 8. 報告產出
 

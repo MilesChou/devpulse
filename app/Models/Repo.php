@@ -11,8 +11,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 /**
  * @property int $id
  * @property string $full_name
+ * @property array<int, array{category: string, pattern: string}> $human_signals
  */
-#[Fillable(['full_name'])]
+#[Fillable(['full_name', 'human_signals'])]
 class Repo extends Model
 {
     /**
@@ -21,5 +22,15 @@ class Repo extends Model
     public function groups(): BelongsToMany
     {
         return $this->belongsToMany(Group::class, 'group_repos');
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'human_signals' => 'array',
+        ];
     }
 }
