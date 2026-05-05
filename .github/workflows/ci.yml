@@ -27,6 +27,7 @@ jobs:
           php-version: ${{ matrix.php }}
           coverage: none
           tools: composer:v2
+          ini-values: memory_limit=-1
 
       - name: Validate composer.json
         run: composer validate --strict
@@ -52,11 +53,26 @@ jobs:
       - name: Generate application key
         run: php artisan key:generate
 
-      - name: Run PHPCS
-        run: vendor/bin/phpcs
+      - name: Cache PHPCS / PHPStan results
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/phpcs
+            .phpstan.result.cache
+          key: ${{ runner.os }}-lint-${{ matrix.php }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-lint-${{ matrix.php }}-
+
+      - name: Run parallel-lint
+        run: vendor/bin/parallel-lint -j $(nproc) app database tests
+
+      - name: Run PHPCS (parallel + cache)
+        run: |
+          mkdir -p .cache/phpcs
+          vendor/bin/phpcs --parallel=$(nproc) --cache=.cache/phpcs/.phpcs.cache
 
       - name: Run PHPStan
         run: vendor/bin/phpstan analyse --memory-limit=1G --no-progress
 
-      - name: Run PHPUnit
-        run: php artisan test
+      - name: Run PHPUnit (parallel)
+        run: php artisan test --parallel --without-databases --processes=$(nproc) --no-coverage

@@ -22,6 +22,7 @@ Desktop.ini
 .env
 .env.backup
 .env.production
+.cache
 .phpactor.json
 .phpstan.result.cache
 .phpunit.result.cache
