@@ -80,9 +80,9 @@
 
 ## 10. 文件與收尾
 
-- [ ] 10.1 撰寫 README：定位、安裝、初次設定、跑第一份月報的 quick start
-- [ ] 10.2 撰寫 `docs/group-setup.md`：如何設定 group / members / repos / human_signals
-- [ ] 10.3 撰寫 `docs/migration-from-prototype.md`：給未來的自己看，什麼時候 retire Python prototype
-- [ ] 10.4 加 LICENSE（建議 MIT）
-- [ ] 10.5 確認 `.gitignore` 排除 `.env`、本機 cache 目錄
+- [x] 10.1 撰寫 README：定位、安裝、初次設定、跑第一份月報的 quick start
+- [x] 10.2 撰寫 `docs/group-setup.md`：如何設定 group / members / repos / human_signals
+- [x] 10.3 撰寫 `docs/migration-from-prototype.md`：給未來的自己看，什麼時候 retire Python prototype
+- [x] 10.4 加 LICENSE（建議 MIT）
+- [x] 10.5 確認 `.gitignore` 排除 `.env`、本機 cache 目錄
 
