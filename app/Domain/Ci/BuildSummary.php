@@ -23,6 +23,8 @@ final readonly class BuildSummary
         public string $externalId,
         public string $repoFullName,
         public string $commitSha,
+        public ?string $authorAccount,
+        public ?int $prNumber,
         public BuildStatus $status,
         public string $eventType,
         public ?string $branch,
@@ -110,11 +112,29 @@ final readonly class BuildSummary
             default => throw new InvalidArgumentException('Travis payload 缺少 id'),
         };
 
+        $authorLogin = is_array($commit) && is_string($commit['author_name'] ?? null)
+            ? ($commit['author_name'])
+            : null;
+
+        // Travis commit.author_name 是顯示名稱，author_email / committer_* 也可能有
+        // 但統計用的 account 需要 GitHub login；此處先存 committer_email 作為 fallback，
+        // 真實 GitHub login 應由呼叫端在抓完 PR 資料後透過 GitHubProvider 補齊。
+        $authorEmail = is_array($commit) && is_string($commit['committer_email'] ?? null)
+            ? $commit['committer_email']
+            : null;
+
+        $authorAccount = $authorEmail ?? $authorLogin;
+
+        $prNum = $raw['pull_request_number'] ?? null;
+        $prNumber = is_int($prNum) ? $prNum : null;
+
         return new self(
             provider: CiProviderType::Travis,
             externalId: $externalId,
             repoFullName: $repository['slug'],
             commitSha: $commit['sha'],
+            authorAccount: $authorAccount,
+            prNumber: $prNumber,
             status: $status,
             eventType: $raw['event_type'],
             branch: $branchName,

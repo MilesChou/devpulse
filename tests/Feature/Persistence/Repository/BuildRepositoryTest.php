@@ -79,6 +79,8 @@ class BuildRepositoryTest extends TestCase
             externalId: $externalId,
             repoFullName: 'your-org/your-repo',
             commitSha: 'abcdef0',
+            authorAccount: 'alice',
+            prNumber: null,
             status: $status,
             eventType: 'pull_request',
             branch: 'feature/foo',

@@ -6,6 +6,7 @@ namespace App\Persistence\Mapper;
 
 use App\Domain\Vcs\PullRequestSummary;
 use App\Models\PullRequest;
+use Carbon\CarbonImmutable;
 
 final class PullRequestMapper
 {
@@ -13,8 +14,13 @@ final class PullRequestMapper
      * @param array<string, mixed> $rawPayload
      * @return array<string, mixed>
      */
-    public function toAttributes(PullRequestSummary $vo, int $repoId, array $rawPayload): array
-    {
+    public function toAttributes(
+        PullRequestSummary $vo,
+        int $repoId,
+        array $rawPayload,
+        ?CarbonImmutable $firstReviewAt = null,
+        ?string $sizeBucket = null,
+    ): array {
         return [
             'repo_id' => $repoId,
             'number' => $vo->number,
@@ -23,9 +29,11 @@ final class PullRequestMapper
             'additions' => $vo->additions,
             'deletions' => $vo->deletions,
             'total_changed_lines' => $vo->totalChangedLines(),
+            'size_bucket' => $sizeBucket,
             'is_draft' => $vo->isDraft(),
             'pr_created_at' => $vo->createdAt,
             'ready_at' => $vo->readyAt,
+            'first_review_at' => $firstReviewAt,
             'merged_at' => $vo->mergedAt,
             'closed_at' => $vo->closedAt,
             'raw_payload' => $rawPayload,

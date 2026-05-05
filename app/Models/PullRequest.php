@@ -19,9 +19,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $additions
  * @property int $deletions
  * @property int $total_changed_lines
+ * @property string|null $size_bucket
  * @property bool $is_draft
  * @property CarbonImmutable $pr_created_at
  * @property CarbonImmutable|null $ready_at
+ * @property CarbonImmutable|null $first_review_at
  * @property CarbonImmutable|null $merged_at
  * @property CarbonImmutable|null $closed_at
  * @property array<string, mixed> $raw_payload
@@ -34,9 +36,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'additions',
     'deletions',
     'total_changed_lines',
+    'size_bucket',
     'is_draft',
     'pr_created_at',
     'ready_at',
+    'first_review_at',
     'merged_at',
     'closed_at',
     'raw_payload',
@@ -61,6 +65,7 @@ class PullRequest extends Model
             'is_draft' => 'boolean',
             'pr_created_at' => 'immutable_datetime',
             'ready_at' => 'immutable_datetime',
+            'first_review_at' => 'immutable_datetime',
             'merged_at' => 'immutable_datetime',
             'closed_at' => 'immutable_datetime',
             'raw_payload' => 'array',

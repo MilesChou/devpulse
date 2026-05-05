@@ -17,6 +17,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property CiProviderType $provider
  * @property string $external_id
  * @property string $commit_sha
+ * @property string|null $author_account
+ * @property int|null $pr_number
  * @property BuildStatus $status
  * @property string $event_type
  * @property string|null $branch
@@ -33,6 +35,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'provider',
     'external_id',
     'commit_sha',
+    'author_account',
+    'pr_number',
     'status',
     'event_type',
     'branch',

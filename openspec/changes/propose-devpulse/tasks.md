@@ -46,15 +46,15 @@
 
 ## 6. 聚合層
 
-- [ ] 6.1 實作「單月成員 × repo 失敗率」聚合
-- [ ] 6.2 實作預設排除 post-merge / deploy event 的 filter
-- [ ] 6.3 實作 PR review latency 計算（含 month_cutoff lower bound）
-- [ ] 6.4 實作 PR size 分桶（依 config 設定）
-- [ ] 6.5 實作月對月對比（含 ↑↓→ 方向計算）
-- [ ] 6.6 實作 daily passed duration 聚合
-- [ ] 6.7 實作 PR 重跑次數聚合
-- [ ] 6.8 撰寫單元測試：每個 aggregator 都有對應測試 fixture
-- [ ] 6.9 撰寫整合測試：指定不同 group 跑 aggregator，能取得對應的 repos 與 members 切片（對應 tool-configuration spec「切換 group 看不同團隊」場景）
+- [x] 6.1 實作「單月成員 × repo 失敗率」聚合
+- [x] 6.2 實作預設排除 post-merge / deploy event 的 filter
+- [x] 6.3 實作 PR review latency 計算（含 month_cutoff lower bound）
+- [x] 6.4 實作 PR size 分桶（依 config 設定）
+- [x] 6.5 實作月對月對比（含 ↑↓→ 方向計算）
+- [x] 6.6 實作 daily passed duration 聚合
+- [x] 6.7 實作 PR 重跑次數聚合
+- [x] 6.8 撰寫單元測試：每個 aggregator 都有對應測試 fixture
+- [x] 6.9 撰寫整合測試：指定不同 group 跑 aggregator，能取得對應的 repos 與 members 切片（對應 tool-configuration spec「切換 group 看不同團隊」場景）
 
 ## 7. 失敗 build 分類
 

@@ -20,6 +20,8 @@ class BuildMapperTest extends TestCase
             externalId: '12345',
             repoFullName: 'your-org/your-repo',
             commitSha: 'abcdef0123',
+            authorAccount: 'alice',
+            prNumber: null,
             status: BuildStatus::Failed,
             eventType: 'push',
             branch: 'master',
