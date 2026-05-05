@@ -91,7 +91,7 @@ final readonly class PullRequestSummary
             additions: is_int($additions) ? $additions : 0,
             deletions: is_int($deletions) ? $deletions : 0,
             createdAt: self::parseTimeRequired($raw, 'created_at'),
-            readyAt: self::resolveReadyAt($raw),
+            readyAt: self::inferReadyAtFromDraft($raw),
             mergedAt: self::parseTimeOptional($raw, 'merged_at'),
             closedAt: self::parseTimeOptional($raw, 'closed_at'),
         );
@@ -106,8 +106,7 @@ final readonly class PullRequestSummary
             return PullRequestStatus::Merged;
         }
 
-        $state = $raw['state'] ?? null;
-        if ($state === 'closed') {
+        if (($raw['state'] ?? null) === PullRequestStatus::Closed->value) {
             return PullRequestStatus::Closed;
         }
 
@@ -117,7 +116,7 @@ final readonly class PullRequestSummary
     /**
      * @param array<string, mixed> $raw
      */
-    private static function resolveReadyAt(array $raw): ?CarbonImmutable
+    private static function inferReadyAtFromDraft(array $raw): ?CarbonImmutable
     {
         $isDraft = $raw['draft'] ?? false;
         if ($isDraft === true) {

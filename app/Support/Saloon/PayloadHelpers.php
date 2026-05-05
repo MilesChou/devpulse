@@ -11,10 +11,9 @@ namespace App\Support\Saloon;
 final class PayloadHelpers
 {
     /**
-     * @param mixed $value
      * @return array<string, mixed>
      */
-    public static function stringKeyedArray($value): array
+    public static function stringKeyedArray(mixed $value): array
     {
         if (! is_array($value)) {
             return [];
@@ -31,10 +30,9 @@ final class PayloadHelpers
     }
 
     /**
-     * @param mixed $value
      * @return list<array<string, mixed>>
      */
-    public static function listOfArrays($value): array
+    public static function listOfArrays(mixed $value): array
     {
         if (! is_array($value)) {
             return [];

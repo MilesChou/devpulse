@@ -7,9 +7,8 @@ namespace App\Domain\Ci\Travis;
 use App\Domain\Ci\BuildSummary;
 use App\Domain\Ci\CiProvider;
 use App\Support\Saloon\PayloadHelpers;
-use Carbon\CarbonImmutable;
+use App\Support\Time\MonthRange;
 use Generator;
-use InvalidArgumentException;
 
 class TravisProvider implements CiProvider
 {
@@ -22,7 +21,7 @@ class TravisProvider implements CiProvider
      */
     public function listBuildsInMonth(string $repoFullName, string $month): Generator
     {
-        [$start, $end] = $this->monthRange($month);
+        [$start, $end] = MonthRange::parse($month);
         $offset = 0;
         $limit = 25;
 
@@ -86,20 +85,5 @@ class TravisProvider implements CiProvider
         }
 
         return implode("\n", $logs);
-    }
-
-    /**
-     * @return array{0: CarbonImmutable, 1: CarbonImmutable}
-     */
-    private function monthRange(string $month): array
-    {
-        $parsed = CarbonImmutable::createFromFormat('Y-m', $month, 'UTC');
-        if (! $parsed instanceof CarbonImmutable) {
-            throw new InvalidArgumentException("month 格式錯誤：必須是 YYYY-MM（收到 `{$month}`）");
-        }
-        $start = $parsed->startOfMonth();
-        $end = $start->addMonth();
-
-        return [$start, $end];
     }
 }

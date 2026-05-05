@@ -9,9 +9,14 @@ use InvalidArgumentException;
 
 final readonly class BuildSummary
 {
+    public const EVENT_PUSH = 'push';
+    public const EVENT_PULL_REQUEST = 'pull_request';
+    public const EVENT_CRON = 'cron';
+    public const EVENT_API = 'api';
+
     private const TRUNK_BRANCHES = ['master', 'main'];
 
-    private const DEPLOY_EVENT_TYPES = ['cron', 'api'];
+    private const DEPLOY_EVENT_TYPES = [self::EVENT_CRON, self::EVENT_API];
 
     public function __construct(
         public CiProviderType $provider,
@@ -43,14 +48,14 @@ final readonly class BuildSummary
 
     public function isPostMerge(): bool
     {
-        return $this->eventType === 'push'
+        return $this->eventType === self::EVENT_PUSH
             && $this->branch !== null
             && in_array($this->branch, self::TRUNK_BRANCHES, true);
     }
 
     public function isPullRequest(): bool
     {
-        return $this->eventType === 'pull_request';
+        return $this->eventType === self::EVENT_PULL_REQUEST;
     }
 
     public function isDeployEvent(): bool

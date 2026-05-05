@@ -6,9 +6,8 @@ namespace App\Domain\Vcs\GitHub;
 
 use App\Domain\Vcs\PullRequestSummary;
 use App\Support\Saloon\PayloadHelpers;
-use Carbon\CarbonImmutable;
+use App\Support\Time\MonthRange;
 use Generator;
-use InvalidArgumentException;
 
 class GitHubProvider
 {
@@ -25,7 +24,7 @@ class GitHubProvider
      */
     public function listPullRequestsInMonth(string $repoFullName, string $month): Generator
     {
-        [$start, $end] = $this->monthRange($month);
+        [$start, $end] = MonthRange::parse($month);
         $page = 1;
         $perPage = 100;
 
@@ -104,20 +103,5 @@ class GitHubProvider
         }
 
         return $result;
-    }
-
-    /**
-     * @return array{0: CarbonImmutable, 1: CarbonImmutable}
-     */
-    private function monthRange(string $month): array
-    {
-        $parsed = CarbonImmutable::createFromFormat('Y-m', $month, 'UTC');
-        if (! $parsed instanceof CarbonImmutable) {
-            throw new InvalidArgumentException("month 格式錯誤：必須是 YYYY-MM（收到 `{$month}`）");
-        }
-        $start = $parsed->startOfMonth();
-        $end = $start->addMonth();
-
-        return [$start, $end];
     }
 }
