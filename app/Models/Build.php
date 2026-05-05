@@ -1,0 +1,74 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use App\Domain\Ci\BuildStatus;
+use App\Domain\Ci\CiProviderType;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+/**
+ * @property int $id
+ * @property int $repo_id
+ * @property CiProviderType $provider
+ * @property string $external_id
+ * @property string $commit_sha
+ * @property BuildStatus $status
+ * @property string $event_type
+ * @property string|null $branch
+ * @property bool $is_post_merge
+ * @property bool $is_pull_request
+ * @property bool $is_deploy_event
+ * @property bool $is_failure
+ * @property CarbonImmutable $started_at
+ * @property int|null $duration_seconds
+ * @property array<string, mixed> $raw_payload
+ */
+#[Fillable([
+    'repo_id',
+    'provider',
+    'external_id',
+    'commit_sha',
+    'status',
+    'event_type',
+    'branch',
+    'is_post_merge',
+    'is_pull_request',
+    'is_deploy_event',
+    'is_failure',
+    'started_at',
+    'duration_seconds',
+    'raw_payload',
+])]
+class Build extends Model
+{
+    /**
+     * @return BelongsTo<Repo, $this>
+     */
+    public function repo(): BelongsTo
+    {
+        return $this->belongsTo(Repo::class);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'provider' => CiProviderType::class,
+            'status' => BuildStatus::class,
+            'is_post_merge' => 'boolean',
+            'is_pull_request' => 'boolean',
+            'is_deploy_event' => 'boolean',
+            'is_failure' => 'boolean',
+            'started_at' => 'immutable_datetime',
+            'duration_seconds' => 'integer',
+            'raw_payload' => 'array',
+        ];
+    }
+}

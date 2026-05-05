@@ -36,13 +36,13 @@
 
 ## 5. 持久化資料層
 
-- [ ] 5.1 建立 `builds` table migration（含 raw_payload JSON 欄位）
-- [ ] 5.2 建立 `pull_requests` table migration（含 raw_payload）
-- [ ] 5.3 建立 `month_fetches` table 記錄每個 (repo, month) 的撈取狀態（complete / partial）
-- [ ] 5.4 實作 VO ↔ Eloquent Model 的 hydrator / mapper（VO 不繼承 Model，兩者用 mapper 轉換）
-- [ ] 5.5 實作 fetcher 寫入時的 upsert 邏輯（同 build_id 不重複）
-- [ ] 5.6 實作「已過月份不重撈」的 cache decision 邏輯
-- [ ] 5.7 撰寫測試：第二次跑同月份不打外部 API
+- [x] 5.1 建立 `builds` table migration（含 raw_payload JSON 欄位）
+- [x] 5.2 建立 `pull_requests` table migration（含 raw_payload）
+- [x] 5.3 建立 `month_fetches` table 記錄每個 (repo, month) 的撈取狀態（complete / partial）
+- [x] 5.4 實作 VO ↔ Eloquent Model 的 hydrator / mapper（VO 不繼承 Model，兩者用 mapper 轉換）
+- [x] 5.5 實作 fetcher 寫入時的 upsert 邏輯（同 build_id 不重複）
+- [x] 5.6 實作「已過月份不重撈」的 cache decision 邏輯
+- [x] 5.7 撰寫測試：第二次跑同月份不打外部 API（MonthFetchCache 單元測試完成；orchestrator e2e 測試在第 6 章 aggregator 階段補）
 
 ## 6. 聚合層
 
