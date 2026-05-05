@@ -146,6 +146,35 @@ devpulse 是繼承自 Python prototype（`ci_analysis`）的「正規版本」�
 
 **範圍邊界：** Stage 1 不寫任何 Grafana dashboard，僅在 PostgreSQL schema 上預留方便 query 的 view 層思維（避免 schema 設計成只方便 Laravel ORM 用）。Grafana dashboard 設計與部署留待 Stage 2，新增獨立 capability `dashboard-rendering`
 
+### Decision 8：Domain 物件採 ValueObject 而非貧血 DTO
+
+**選擇：** 跨層流動的 domain 物件（如 build summary、PR summary、review summary 等），用 PHP 8.4 `final readonly class` 寫成 ValueObject：constructor 收 raw 值並驗證不變式（invariants）、封裝業務判斷行為（如 `isPostMerge()`、`isPullRequest()`、`isDeployEvent()`），不只是 getter
+
+**理由：**
+- 多入口場景：CI provider 抽象（Decision 4）讓未來會有 Travis、GitHub Actions 等多個 provider 都會建出 build summary VO，在 VO 層統一驗證比每個 provider 各驗一次更可靠
+- 不變式違反代表上游 bug：例如 `commitSha` 為空、`durationSeconds` 為負，這些是 fetcher / provider translation 的錯，VO constructor throw 能在最早的時間點爆炸而非在 aggregator 算出怪結果
+- 業務判斷規則集中：`isPostMerge()` 的定義（event_type=push + branch=master）只在一個地方，aggregator 不會散落多份規則
+- 與 Risks 段「PHP/Carbon ISO 8601 解析行為跟 Python 不同」的緩解一致 —— VO 接受 `CarbonImmutable` 而非 raw string，型別系統強制呼叫者在邊界完成解析
+- side project 沒上線壓力，多寫幾行 invariant validation 不會拖慢進度，但能在重寫過程中快速發現「Python 跟 PHP 看到的資料不一樣」
+
+**設計原則：**
+- VO 為 `final readonly class`，所有 property `public readonly`，無 setter
+- constructor 拋 `InvalidArgumentException`（或 domain-specific exception）擋住不可能存在的狀態
+- 建構工廠用 named constructor：例如 `BuildSummary::fromTravisRaw($payload)`，把 provider 的格式轉換責任放在 provider 而非 VO
+- 業務判斷用 method（`isFailure()`），不外露 raw enum 比較
+- 時間欄位用 `CarbonImmutable`、不用 string；錢 / 數量等用 typed value（Stage 1 暫不需要，但保留設計空間）
+
+**替代方案：**
+- 貧血 DTO（只有 `public readonly` 屬性、沒有行為）：節省幾行，但業務規則散落 aggregator、多入口時驗證重複；對 side project 維護不利
+- 直接用 Eloquent Model 當 domain 物件：Eloquent 是 persistence 工具不是 domain 工具，attribute 預設 mutable、跟 DB schema 強耦合；持久化層（Decision 3）與 domain 層應分開
+- 不寫 invariant validation、純靠 type system + 邊界驗證：選項可行但 multi-provider 場景下，邊界驗證重複；VO 自我保護更穩
+
+**Trade-offs：**
+- VO 與 Eloquent Model 並存：需要 hydrator / mapper 在兩者之間轉換（Stage 1 寫一次，後續 reuse）
+- 多寫一層類別：對「只 Stage 1 跑跑看就停」的開發者顯得繁瑣；但本工具明確是「長期維護」目標（Decision 1 理由），值得這成本
+
+**範圍邊界：** Stage 1 至少建立 `BuildSummary`、`PullRequestSummary`、`ReviewSummary` 三個 VO；其他物件視需要新增。VO 放於 `app/Domain/` 命名空間，與 Eloquent Model（`app/Models/`）分開
+
 ## Risks / Trade-offs
 
 - **Risk: Travis API 撈大量歷史資料慢、容易 rate limit** → Mitigation: 用 Laravel Queue + 重試、cache HTTP response（檔案層級，跟 Python prototype 同樣策略）、撈過的月份標記為 immutable 不重撈

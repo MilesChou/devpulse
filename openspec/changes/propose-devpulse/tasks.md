@@ -18,29 +18,34 @@
 ## 3. CI 資料抓取
 
 - [ ] 3.1 定義 CI provider 抽象介面（含 `listBuildsInMonth`、`getBuildLog` 等核心操作）
-- [ ] 3.2 定義 `BuildSummary` DTO，含 `is_post_merge`、`is_pull_request`、`is_deploy_event` 等通用欄位
+- [ ] 3.2 定義 `BuildSummary` value object（`final readonly class`，constructor 驗證不變式，封裝 `isPostMerge()`、`isPullRequest()`、`isDeployEvent()`、`isFailure()` 等業務判斷；放於 `app/Domain/Ci/`）
 - [ ] 3.3 在 `AppServiceProvider` 把 CI provider 抽象介面預設綁定到 Travis 實作
 - [ ] 3.4 實作 Travis provider，包含 API client（Saloon 或 Guzzle）、token 注入
-- [ ] 3.5 實作 Travis 原生欄位翻譯（event_type=push+master → is_post_merge）
+- [ ] 3.5 在 Travis provider 實作 `BuildSummary::fromTravisRaw()` named constructor，把原生欄位翻譯成 VO（如 event_type=push + branch=master → `isPostMerge()` 為真）
 - [ ] 3.6 加上 retry middleware 處理 rate limit / 5xx
-- [ ] 3.7 撰寫整合測試：用 cassette 或 mock server 模擬 Travis 回應
+- [ ] 3.7 撰寫單元測試：VO 不變式違反時 throw、`isPostMerge()` 等規則正確
+- [ ] 3.8 撰寫整合測試：用 cassette 或 mock server 模擬 Travis 回應
 
 ## 4. GitHub 資料抓取
 
-- [ ] 4.1 實作 GitHub client（PR 查詢、PR 詳細、commit author bulk、PR head ref bulk）
-- [ ] 4.2 實作 PR review 資料抓取（含 ready_at、first_review_at），需用 GraphQL
-- [ ] 4.3 加上 retry / rate limit 處理
-- [ ] 4.4 加上 bot author / reviewer 過濾（依 `excluded_bots` 設定）
-- [ ] 4.5 撰寫整合測試：mock GitHub 回應驗證解析正確
+- [ ] 4.1 定義 `PullRequestSummary`、`ReviewSummary` value object（`final readonly class`，含 ready_at、first_review_at、author、status、行數等欄位；放於 `app/Domain/Vcs/`）
+- [ ] 4.2 實作 GitHub client（PR 查詢、PR 詳細、commit author bulk、PR head ref bulk）
+- [ ] 4.3 實作 PR review 資料抓取（含 ready_at、first_review_at），需用 GraphQL
+- [ ] 4.4 在 GitHub client 實作 `PullRequestSummary::fromGitHubRaw()` 等 named constructor，把原生欄位翻譯成 VO
+- [ ] 4.5 加上 retry / rate limit 處理
+- [ ] 4.6 加上 bot author / reviewer 過濾（依 `excluded_bots` 設定）
+- [ ] 4.7 撰寫單元測試：VO 不變式違反時 throw、bot 過濾邏輯正確
+- [ ] 4.8 撰寫整合測試：mock GitHub 回應驗證解析正確
 
 ## 5. 持久化資料層
 
 - [ ] 5.1 建立 `builds` table migration（含 raw_payload JSON 欄位）
 - [ ] 5.2 建立 `pull_requests` table migration（含 raw_payload）
 - [ ] 5.3 建立 `month_fetches` table 記錄每個 (repo, month) 的撈取狀態（complete / partial）
-- [ ] 5.4 實作 fetcher 寫入時的 upsert 邏輯（同 build_id 不重複）
-- [ ] 5.5 實作「已過月份不重撈」的 cache decision 邏輯
-- [ ] 5.6 撰寫測試：第二次跑同月份不打外部 API
+- [ ] 5.4 實作 VO ↔ Eloquent Model 的 hydrator / mapper（VO 不繼承 Model，兩者用 mapper 轉換）
+- [ ] 5.5 實作 fetcher 寫入時的 upsert 邏輯（同 build_id 不重複）
+- [ ] 5.6 實作「已過月份不重撈」的 cache decision 邏輯
+- [ ] 5.7 撰寫測試：第二次跑同月份不打外部 API
 
 ## 6. 聚合層
 
