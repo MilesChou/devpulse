@@ -22,7 +22,7 @@
 - `ci-data-fetching`: 從 CI 服務撈 build 歷史資料，內部以 provider 抽象介面隔離具體 CI 服務（第一版實作 Travis），含 build 屬性翻譯（is_post_merge / is_pull_request / is_deploy_event）
 - `metrics-aggregation`: 把 raw build / PR / review 資料聚合成研發效能指標（CI 失敗率、PR review latency、PR size 分桶、月對月對比）
 - `metrics-persistence`: 把抓回的 raw data 與聚合結果持久化到 PostgreSQL，支援後續查詢與長期累積
-- `report-rendering`: 將聚合結果以 markdown 形式輸出（為將來 Web UI 預留聚合層 / view layer 分離）
+- `report-rendering`: 將聚合結果以 markdown 形式輸出（為 Stage 2 的 Grafana dashboard 預留共用聚合層 / view layer 分離，詳見 design.md Decision 7）
 - `tool-configuration`: 提供 `.profile.yaml` 等價的設定機制，定義成員清單、repo 清單、bot 排除名單、PR size 分桶、human signal 規則
 
 ### Modified Capabilities

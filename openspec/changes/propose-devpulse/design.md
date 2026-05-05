@@ -22,7 +22,7 @@ devpulse 是繼承自 Python prototype（`ci_analysis`）的「正規版本」�
 - 設定機制與特定組織脫鉤（範例設定僅含中性 placeholder）
 
 **Non-Goals：**
-- Web Dashboard（Stage 2 才考慮）
+- 自寫 Web Dashboard（Stage 2 改採 Grafana 直連 PostgreSQL，詳見 Decision 7）
 - CLI binary 跨平台分發（Stage 3 才考慮，且可能改用 Go）
 - 認證 / 權限模型（單機自用階段不需要）
 - 即時 webhook 接收（純歷史資料分析，不做即時）

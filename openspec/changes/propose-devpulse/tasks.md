@@ -5,7 +5,7 @@
 - [ ] 1.3 建立 `.env.example` 包含 `GITHUB_TOKEN`、`TRAVIS_TOKEN` placeholder 與註解說明取得方式
 - [ ] 1.4 建立 `config/devpulse.php` 包含 `excluded_bots`、`pr_size_buckets` 預設值
 - [ ] 1.5 建立 `.profile.yaml.example`（org-agnostic，placeholder 為主）
-- [ ] 1.6 設定 PHPUnit、PHPCS（與既有 PHP 專案一致）
+- [x] 1.6 設定 PHPUnit、PHPCS、PHPStan、GitHub Actions CI
 
 ## 2. 設定機制
 
