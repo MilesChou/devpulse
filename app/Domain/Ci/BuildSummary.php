@@ -62,4 +62,59 @@ final readonly class BuildSummary
     {
         return $this->status->isFailure();
     }
+
+    /**
+     * 從 Travis API 的 build payload 建立 BuildSummary。
+     *
+     * @param array<string, mixed> $raw
+     */
+    public static function fromTravisRaw(array $raw): self
+    {
+        $repository = $raw['repository'] ?? null;
+        $commit = $raw['commit'] ?? null;
+        $branch = $raw['branch'] ?? null;
+
+        if (! is_array($repository) || ! is_string($repository['slug'] ?? null)) {
+            throw new InvalidArgumentException('Travis payload 缺少 repository.slug');
+        }
+        if (! is_array($commit) || ! is_string($commit['sha'] ?? null)) {
+            throw new InvalidArgumentException('Travis payload 缺少 commit.sha');
+        }
+        if (! is_string($raw['event_type'] ?? null)) {
+            throw new InvalidArgumentException('Travis payload 缺少 event_type');
+        }
+        if (! is_string($raw['started_at'] ?? null)) {
+            throw new InvalidArgumentException('Travis payload 缺少 started_at');
+        }
+
+        $branchName = is_array($branch) && is_string($branch['name'] ?? null)
+            ? $branch['name']
+            : null;
+
+        $duration = $raw['duration'] ?? null;
+        $durationSeconds = is_int($duration) ? $duration : null;
+
+        $status = is_string($raw['state'] ?? null)
+            ? BuildStatus::from($raw['state'])
+            : throw new InvalidArgumentException('Travis payload 缺少 state');
+
+        $id = $raw['id'] ?? null;
+        $externalId = match (true) {
+            is_int($id) => (string)$id,
+            is_string($id) && $id !== '' => $id,
+            default => throw new InvalidArgumentException('Travis payload 缺少 id'),
+        };
+
+        return new self(
+            provider: CiProviderType::Travis,
+            externalId: $externalId,
+            repoFullName: $repository['slug'],
+            commitSha: $commit['sha'],
+            status: $status,
+            eventType: $raw['event_type'],
+            branch: $branchName,
+            startedAt: CarbonImmutable::parse($raw['started_at'])->utc(),
+            durationSeconds: $durationSeconds,
+        );
+    }
 }
