@@ -27,12 +27,12 @@
 
 - [x] 4.1 定義 `PullRequestSummary`、`ReviewSummary` value object（`final readonly class`，含 ready_at、first_review_at、author、status、行數等欄位；放於 `app/Domain/Vcs/`）
 - [x] 4.2 實作 GitHub client（PR 查詢、PR 詳細、commit author bulk、PR head ref bulk）
-- [ ] 4.3 實作 PR review 資料抓取（含 ready_at、first_review_at），需用 GraphQL
+- [x] 4.3 實作 PR review 資料抓取（含 ready_at、first_review_at），需用 GraphQL
 - [x] 4.4 在 GitHub client 實作 `PullRequestSummary::fromGitHubRaw()` 等 named constructor，把原生欄位翻譯成 VO
-- [ ] 4.5 加上 retry / rate limit 處理
-- [ ] 4.6 加上 bot author / reviewer 過濾（依 `excluded_bots` 設定）
+- [x] 4.5 加上 retry / rate limit 處理
+- [x] 4.6 加上 bot author / reviewer 過濾（依 `excluded_bots` 設定）
 - [x] 4.7 撰寫單元測試：VO 不變式違反時 throw、bot 過濾邏輯正確
-- [ ] 4.8 撰寫整合測試：mock GitHub 回應驗證解析正確
+- [x] 4.8 撰寫整合測試：mock GitHub 回應驗證解析正確
 
 ## 5. 持久化資料層
 

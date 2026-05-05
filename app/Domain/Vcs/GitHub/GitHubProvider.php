@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Vcs\GitHub;
 
 use App\Domain\Vcs\PullRequestSummary;
+use App\Domain\Vcs\ReviewSummary;
 use App\Support\Saloon\PayloadHelpers;
 use App\Support\Time\MonthRange;
 use Generator;
@@ -100,6 +101,30 @@ class GitHubProvider
         $result = [];
         foreach ($shas as $sha) {
             $result[$sha] = $this->getCommitAuthorAccount($repoFullName, $sha);
+        }
+
+        return $result;
+    }
+
+    /**
+     * 取得指定 PR 的所有 review（含 ready_at 用的精確時間戳，需要 GraphQL）。
+     *
+     * @return list<ReviewSummary>
+     */
+    public function listReviews(string $repoFullName, int $pullNumber): array
+    {
+        $response = $this->connector->send(new GetPullRequestReviewsQuery($repoFullName, $pullNumber));
+        $payload = PayloadHelpers::stringKeyedArray($response->json());
+
+        $data = PayloadHelpers::stringKeyedArray($payload['data'] ?? null);
+        $repository = PayloadHelpers::stringKeyedArray($data['repository'] ?? null);
+        $pullRequest = PayloadHelpers::stringKeyedArray($repository['pullRequest'] ?? null);
+        $reviews = PayloadHelpers::stringKeyedArray($pullRequest['reviews'] ?? null);
+        $nodes = PayloadHelpers::listOfArrays($reviews['nodes'] ?? null);
+
+        $result = [];
+        foreach ($nodes as $node) {
+            $result[] = ReviewSummary::fromGitHubGraphQL($node, $repoFullName, $pullNumber);
         }
 
         return $result;
