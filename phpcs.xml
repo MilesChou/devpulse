@@ -37,10 +37,6 @@
             <property name="linesCountAfterDeclare" value="1"/>
             <property name="spacesCountAroundEqualsSign" value="0"/>
         </properties>
-        <exclude-pattern>app</exclude-pattern>
-        <exclude-pattern>database/factories</exclude-pattern>
-        <exclude-pattern>database/seeders</exclude-pattern>
-        <exclude-pattern>tests</exclude-pattern>
     </rule>
     <rule ref="SlevomatCodingStandard.TypeHints.LongTypeHints"/>
     <rule ref="SlevomatCodingStandard.TypeHints.NullTypeHintOnLastPosition"/>
