@@ -10,7 +10,7 @@
 ## 2. 設定機制
 
 - [x] 2.1 建立 `members`、`groups`、`repos`、`group_repos`、`group_members` 等 migration
-- [ ] 2.2 建立對應 Eloquent Model
+- [x] 2.2 建立對應 Eloquent Model
 - [ ] 2.3 建立 Artisan command `devpulse:group:create`、`devpulse:member:add`、`devpulse:repo:add`
 - [ ] 2.4 建立 seeder，能從 `.group.yaml.example` 載入範例設定
 - [ ] 2.5 撰寫測試：group 切換能取得不同 repos 與 members
