@@ -43,9 +43,19 @@ class FetchCommandTest extends TestCase
             MockResponse::make([
                 'builds' => [$this->travisBuild(id: 1, startedAt: '2026-04-15T10:00:00Z')],
             ]),
+            // GitHub commit author bulk（build enrichment）
+            MockResponse::make([
+                'data' => ['repository' => ['c0' => ['author' => ['user' => ['login' => 'alice']]]]],
+            ]),
             // GitHub: list PRs
             MockResponse::make([
                 $this->githubPr(number: 42, createdAt: '2026-04-10T10:00:00Z'),
+            ]),
+            // GitHub PR detail（PR enrichment for #42 - additions / deletions）
+            MockResponse::make($this->githubPr(number: 42, createdAt: '2026-04-10T10:00:00Z')),
+            // GitHub PR reviews（PR enrichment for #42）
+            MockResponse::make([
+                'data' => ['repository' => ['pullRequest' => ['reviews' => ['nodes' => []]]]],
             ]),
         ]);
 
@@ -58,6 +68,9 @@ class FetchCommandTest extends TestCase
 
         $this->assertSame(1, Build::query()->count());
         $this->assertSame(1, PullRequest::query()->count());
+        $this->assertSame('alice', Build::query()->first()->author_account);
+        // size_bucket 應由 enrichment 寫入（30 + 10 = 40 → XS）
+        $this->assertSame('XS', PullRequest::query()->first()->size_bucket);
     }
 
     public function testSkipsRepoWhenAlreadyComplete(): void
@@ -89,7 +102,14 @@ class FetchCommandTest extends TestCase
 
         MockClient::global([
             MockResponse::make(['builds' => [$this->travisBuild(id: 1, startedAt: '2026-04-15T10:00:00Z')]]),
+            MockResponse::make([
+                'data' => ['repository' => ['c0' => ['author' => ['user' => ['login' => 'alice']]]]],
+            ]),
             MockResponse::make([$this->githubPr(number: 99, createdAt: '2026-04-10T10:00:00Z')]),
+            MockResponse::make($this->githubPr(number: 99, createdAt: '2026-04-10T10:00:00Z')),
+            MockResponse::make([
+                'data' => ['repository' => ['pullRequest' => ['reviews' => ['nodes' => []]]]],
+            ]),
         ]);
 
         $this->artisan('devpulse:fetch', [

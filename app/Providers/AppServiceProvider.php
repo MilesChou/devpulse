@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Aggregation\PrSizeBucket;
 use App\Domain\Ci\CiProvider;
 use App\Domain\Vcs\Filter\BotFilter;
 use App\Infrastructure\Ci\Travis\TravisConnector;
@@ -41,6 +42,8 @@ class AppServiceProvider extends ServiceProvider
 
             return new BotFilter(is_array($excluded) ? array_values(array_filter($excluded, 'is_string')) : []);
         });
+
+        $this->app->singleton(PrSizeBucket::class, fn (): PrSizeBucket => PrSizeBucket::fromConfig());
     }
 
     public function boot(): void

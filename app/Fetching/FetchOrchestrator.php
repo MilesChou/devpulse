@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace App\Fetching;
 
+use App\Aggregation\PrSizeBucket;
 use App\Domain\Ci\CiProvider;
 use App\Domain\Shared\MonthRange;
 use App\Domain\Shared\RepoFullName;
 use App\Infrastructure\Vcs\GitHub\GitHubProvider;
+use App\Domain\Vcs\Filter\BotFilter;
+use App\Models\Build;
 use App\Models\Group;
+use App\Models\PullRequest;
 use App\Models\Repo;
 use App\Persistence\Enum\Dataset;
 use App\Persistence\MonthFetchCache;
@@ -24,6 +28,8 @@ final class FetchOrchestrator
         private readonly BuildRepository $buildRepository,
         private readonly PullRequestRepository $pullRequestRepository,
         private readonly MonthFetchCache $cache,
+        private readonly BotFilter $botFilter,
+        private readonly PrSizeBucket $sizeBucket,
     ) {
     }
 
@@ -86,9 +92,44 @@ final class FetchOrchestrator
     {
         $builds = $this->ciProvider->listBuildsInMonth($repoFullName, $month);
         $written = $this->buildRepository->upsertMany($repo->id, $builds);
+        $this->enrichBuildAuthors($repo, $repoFullName, $month);
         $this->cache->markComplete($repo->id, Dataset::Builds, $monthLabel);
 
         return $written;
+    }
+
+    /**
+     * 把該月剛寫進 DB 的 builds 的 author_account 用 GitHub commit author bulk query 補齊。
+     *
+     * Travis payload 不含 GitHub login，必須二次撈才能對應到 member。
+     */
+    private function enrichBuildAuthors(Repo $repo, RepoFullName $repoFullName, MonthRange $month): void
+    {
+        $shas = Build::query()
+            ->where('repo_id', $repo->id)
+            ->where('started_at', '>=', $month->start)
+            ->where('started_at', '<', $month->end)
+            ->whereNull('author_account')
+            ->pluck('commit_sha')
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($shas === []) {
+            return;
+        }
+
+        $sha2login = $this->vcsProvider->getCommitAuthorAccountsBulk($repoFullName, $shas);
+
+        foreach ($sha2login as $sha => $login) {
+            if ($login === null) {
+                continue;
+            }
+            Build::query()
+                ->where('repo_id', $repo->id)
+                ->where('commit_sha', $sha)
+                ->update(['author_account' => $login]);
+        }
     }
 
     private function fetchPullRequests(
@@ -98,9 +139,58 @@ final class FetchOrchestrator
         string $monthLabel,
     ): int {
         $pulls = $this->vcsProvider->listPullRequestsInMonth($repoFullName, $month);
-        $written = $this->pullRequestRepository->upsertMany($repo->id, $pulls);
+        // 過濾 bot 開的 PR（spec 4.6）；list endpoint 撈下來、寫入前先濾掉
+        $filtered = (function () use ($pulls): \Generator {
+            foreach ($pulls as $pr) {
+                if ($this->botFilter->isBotPullRequest($pr)) {
+                    continue;
+                }
+                yield $pr;
+            }
+        })();
+        $written = $this->pullRequestRepository->upsertMany($repo->id, $filtered);
+        $this->enrichPullRequestReviews($repo, $repoFullName, $month);
         $this->cache->markComplete($repo->id, Dataset::PullRequests, $monthLabel);
 
         return $written;
+    }
+
+    /**
+     * 對該月 PR 補 detail（拿到 additions/deletions 算 size bucket）+ first_review_at。
+     *
+     * GitHub list endpoint 不回 additions/deletions，必須對每個 PR 打 detail；
+     * reviews 也要另外撈 GraphQL。每筆 PR 兩次 API 請求，量大時可考慮 GraphQL 一次抓。
+     */
+    private function enrichPullRequestReviews(Repo $repo, RepoFullName $repoFullName, MonthRange $month): void
+    {
+        $prs = PullRequest::query()
+            ->where('repo_id', $repo->id)
+            ->where('pr_created_at', '>=', $month->start)
+            ->where('pr_created_at', '<', $month->end)
+            ->get(['id', 'number']);
+
+        foreach ($prs as $pr) {
+            $detail = $this->vcsProvider->getPullRequest($repoFullName, $pr->number);
+
+            $reviews = $this->vcsProvider->listReviews($repoFullName, $pr->number);
+            $firstReviewAt = null;
+            foreach ($reviews as $review) {
+                if ($this->botFilter->isBotReview($review)) {
+                    continue;
+                }
+                if ($firstReviewAt === null || $review->submittedAt->isBefore($firstReviewAt)) {
+                    $firstReviewAt = $review->submittedAt;
+                }
+            }
+
+            $totalLines = $detail->totalChangedLines();
+            $pr->update([
+                'additions' => $detail->additions,
+                'deletions' => $detail->deletions,
+                'total_changed_lines' => $totalLines,
+                'size_bucket' => $this->sizeBucket->classify($totalLines),
+                'first_review_at' => $firstReviewAt,
+            ]);
+        }
     }
 }

@@ -91,6 +91,8 @@ class GitHubProvider
     /**
      * 一次處理一批 commit、回傳 [sha => author_login | null] 的對照表。
      *
+     * 用 REST 一筆一打，量大時應改用 getCommitAuthorAccountsBulk。
+     *
      * @param list<string> $shas
      * @return array<string, string|null>
      */
@@ -99,6 +101,38 @@ class GitHubProvider
         $result = [];
         foreach ($shas as $sha) {
             $result[$sha] = $this->getCommitAuthorAccount($repoFullName, $sha);
+        }
+
+        return $result;
+    }
+
+    /**
+     * 用 GraphQL alias 一次撈最多 80 筆 commit author（仿 Python prototype）。
+     *
+     * 自動分批：sha 數量超過 80 時切成多次 GraphQL request。
+     * 比 REST 一筆一打快約 80 倍。找不到對應 user.login 的 sha 對應 null。
+     *
+     * @param list<string> $shas
+     * @return array<string, string|null>
+     */
+    public function getCommitAuthorAccountsBulk(RepoFullName $repoFullName, array $shas): array
+    {
+        $result = [];
+        $batches = array_chunk($shas, GetCommitAuthorsBulkQuery::MAX_BATCH);
+
+        foreach ($batches as $batch) {
+            $response = $this->connector->send(new GetCommitAuthorsBulkQuery($repoFullName, $batch));
+            $payload = PayloadHelpers::stringKeyedArray($response->json());
+            $data = PayloadHelpers::stringKeyedArray($payload['data'] ?? null);
+            $repository = PayloadHelpers::stringKeyedArray($data['repository'] ?? null);
+
+            foreach ($batch as $i => $sha) {
+                $node = PayloadHelpers::stringKeyedArray($repository["c{$i}"] ?? null);
+                $author = PayloadHelpers::stringKeyedArray($node['author'] ?? null);
+                $user = PayloadHelpers::stringKeyedArray($author['user'] ?? null);
+                $login = $user['login'] ?? null;
+                $result[$sha] = (is_string($login) && $login !== '') ? $login : null;
+            }
         }
 
         return $result;
