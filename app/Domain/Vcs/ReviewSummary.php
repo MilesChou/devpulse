@@ -4,26 +4,24 @@ declare(strict_types=1);
 
 namespace App\Domain\Vcs;
 
+use App\Domain\Shared\RepoFullName;
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
 final readonly class ReviewSummary
 {
     public function __construct(
-        public string $repoFullName,
+        public RepoFullName $repoFullName,
         public int $pullRequestNumber,
         public string $reviewerAccount,
         public ReviewState $state,
         public CarbonImmutable $submittedAt,
     ) {
-        if (! str_contains($repoFullName, '/')) {
-            throw new InvalidArgumentException('repoFullName 必須是 owner/name 格式');
-        }
         if ($pullRequestNumber < 1) {
-            throw new InvalidArgumentException('pullRequestNumber 必須 >= 1');
+            throw new InvalidArgumentException('pullRequestNumber must be >= 1');
         }
         if ($reviewerAccount === '') {
-            throw new InvalidArgumentException('reviewerAccount 不能是空字串');
+            throw new InvalidArgumentException('reviewerAccount must not be empty');
         }
     }
 
@@ -32,21 +30,21 @@ final readonly class ReviewSummary
      *
      * @param array<string, mixed> $node
      */
-    public static function fromGitHubGraphQL(array $node, string $repoFullName, int $pullRequestNumber): self
+    public static function fromGitHubGraphQL(array $node, RepoFullName $repoFullName, int $pullRequestNumber): self
     {
         $state = $node['state'] ?? null;
         if (! is_string($state)) {
-            throw new InvalidArgumentException('GitHub review node 缺少 state');
+            throw new InvalidArgumentException('GitHub review node missing state');
         }
 
         $submittedAt = $node['submittedAt'] ?? null;
         if (! is_string($submittedAt) || $submittedAt === '') {
-            throw new InvalidArgumentException('GitHub review node 缺少 submittedAt');
+            throw new InvalidArgumentException('GitHub review node missing submittedAt');
         }
 
         $author = $node['author'] ?? null;
         if (! is_array($author) || ! is_string($author['login'] ?? null)) {
-            throw new InvalidArgumentException('GitHub review node 缺少 author.login');
+            throw new InvalidArgumentException('GitHub review node missing author.login');
         }
 
         return new self(

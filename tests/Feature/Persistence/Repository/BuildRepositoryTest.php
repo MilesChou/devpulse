@@ -6,7 +6,9 @@ namespace Tests\Feature\Persistence\Repository;
 
 use App\Domain\Ci\BuildStatus;
 use App\Domain\Ci\BuildSummary;
-use App\Domain\Ci\CiProviderType;
+use App\Domain\Ci\BuildTrigger;
+use App\Domain\Shared\CommitSha;
+use App\Domain\Shared\RepoFullName;
 use App\Models\Build;
 use App\Models\Repo;
 use App\Persistence\Mapper\BuildMapper;
@@ -49,12 +51,12 @@ class BuildRepositoryTest extends TestCase
         $repo = Repo::create(['full_name' => 'your-org/your-repo']);
         $repository = new BuildRepository(new BuildMapper());
 
-        $repository->upsertMany($repo->id, [$this->build('1', '2026-04-15T10:00:00Z', BuildStatus::Started)]);
-        $repository->upsertMany($repo->id, [$this->build('1', '2026-04-15T10:00:00Z', BuildStatus::Passed)]);
+        $repository->upsertMany($repo->id, [$this->build('1', '2026-04-15T10:00:00Z', BuildStatus::IN_PROGRESS)]);
+        $repository->upsertMany($repo->id, [$this->build('1', '2026-04-15T10:00:00Z', BuildStatus::PASSED)]);
 
         $build = Build::query()->where('external_id', '1')->first();
         $this->assertNotNull($build);
-        $this->assertSame(BuildStatus::Passed, $build->status);
+        $this->assertSame(BuildStatus::PASSED->name, $build->status);
     }
 
     public function testStoresRawPayload(): void
@@ -72,17 +74,16 @@ class BuildRepositoryTest extends TestCase
         $this->assertSame(['some' => 'payload'], $build->raw_payload);
     }
 
-    private function build(string $externalId, string $startedAt, BuildStatus $status = BuildStatus::Passed): BuildSummary
+    private function build(string $externalId, string $startedAt, BuildStatus $status = BuildStatus::PASSED): BuildSummary
     {
         return new BuildSummary(
-            provider: CiProviderType::Travis,
             externalId: $externalId,
-            repoFullName: 'your-org/your-repo',
-            commitSha: 'abcdef0',
+            repoFullName: new RepoFullName('your-org/your-repo'),
+            commitSha: new CommitSha('abcdef0'),
             authorAccount: 'alice',
             prNumber: null,
             status: $status,
-            eventType: 'pull_request',
+            trigger: BuildTrigger::PULL_REQUEST,
             branch: 'feature/foo',
             startedAt: CarbonImmutable::parse($startedAt)->utc(),
             durationSeconds: 120,

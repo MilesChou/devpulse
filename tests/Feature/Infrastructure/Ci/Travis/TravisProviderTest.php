@@ -2,11 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Tests\Feature\Domain\Ci\Travis;
+namespace Tests\Feature\Infrastructure\Ci\Travis;
 
 use App\Domain\Ci\BuildSummary;
-use App\Domain\Ci\Travis\TravisConnector;
-use App\Domain\Ci\Travis\TravisProvider;
+use App\Domain\Shared\MonthRange;
+use App\Domain\Shared\RepoFullName;
+use App\Infrastructure\Ci\Travis\TravisConnector;
+use App\Infrastructure\Ci\Travis\TravisProvider;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
 use Tests\TestCase;
@@ -29,7 +31,7 @@ class TravisProviderTest extends TestCase
         ]);
 
         $provider = new TravisProvider($this->connector($mock));
-        $builds = iterator_to_array($provider->listBuildsInMonth('your-org/your-repo', '2026-04'), false);
+        $builds = iterator_to_array($provider->listBuildsInMonth(new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
 
         $this->assertCount(3, $builds);
         $this->assertSame(['1', '2', '3'], array_map(static fn (BuildSummary $b): string => $b->externalId, $builds));
@@ -54,7 +56,7 @@ class TravisProviderTest extends TestCase
         ]);
 
         $provider = new TravisProvider($this->connector($mock));
-        $builds = iterator_to_array($provider->listBuildsInMonth('your-org/your-repo', '2026-04'), false);
+        $builds = iterator_to_array($provider->listBuildsInMonth(new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
 
         $this->assertCount(30, $builds);
     }
@@ -71,7 +73,7 @@ class TravisProviderTest extends TestCase
         ]);
 
         $provider = new TravisProvider($this->connector($mock));
-        $builds = iterator_to_array($provider->listBuildsInMonth('your-org/your-repo', '2026-04'), false);
+        $builds = iterator_to_array($provider->listBuildsInMonth(new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
 
         $this->assertCount(1, $builds);
         $this->assertSame('100', $builds[0]->externalId);
@@ -86,7 +88,7 @@ class TravisProviderTest extends TestCase
         ]);
 
         $provider = new TravisProvider($this->connector($mock));
-        $log = $provider->getBuildLog('your-org/your-repo', '12345');
+        $log = $provider->getBuildLog(new RepoFullName('your-org/your-repo'), '12345');
 
         $this->assertSame("job 11 log\njob 12 log", $log);
     }
@@ -98,7 +100,7 @@ class TravisProviderTest extends TestCase
         ]);
 
         $provider = new TravisProvider($this->connector($mock));
-        $this->assertSame('', $provider->getBuildLog('your-org/your-repo', '12345'));
+        $this->assertSame('', $provider->getBuildLog(new RepoFullName('your-org/your-repo'), '12345'));
     }
 
     public function testRetriesOn5xxThenSucceeds(): void
@@ -110,7 +112,7 @@ class TravisProviderTest extends TestCase
         ]);
 
         $provider = new TravisProvider($this->connector($mock));
-        $builds = iterator_to_array($provider->listBuildsInMonth('your-org/your-repo', '2026-04'), false);
+        $builds = iterator_to_array($provider->listBuildsInMonth(new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
 
         $this->assertCount(1, $builds);
         $this->assertSame('1', $builds[0]->externalId);
@@ -124,7 +126,7 @@ class TravisProviderTest extends TestCase
         ]);
 
         $provider = new TravisProvider($this->connector($mock));
-        $builds = iterator_to_array($provider->listBuildsInMonth('your-org/your-repo', '2026-04'), false);
+        $builds = iterator_to_array($provider->listBuildsInMonth(new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
 
         $this->assertCount(1, $builds);
     }
@@ -138,7 +140,7 @@ class TravisProviderTest extends TestCase
         $provider = new TravisProvider($this->connector($mock));
 
         $this->expectException(\Saloon\Exceptions\Request\RequestException::class);
-        iterator_to_array($provider->listBuildsInMonth('your-org/your-repo', '2026-04'), false);
+        iterator_to_array($provider->listBuildsInMonth(new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
     }
 
     private function connector(MockClient $mock): TravisConnector

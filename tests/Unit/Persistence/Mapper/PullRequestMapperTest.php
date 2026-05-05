@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Persistence\Mapper;
 
+use App\Domain\Shared\RepoFullName;
 use App\Domain\Vcs\PullRequestStatus;
 use App\Domain\Vcs\PullRequestSummary;
 use App\Persistence\Mapper\PullRequestMapper;
@@ -16,7 +17,7 @@ class PullRequestMapperTest extends TestCase
     {
         $createdAt = CarbonImmutable::create(2026, 4, 15, 10, 0, 0, 'UTC');
         $vo = new PullRequestSummary(
-            repoFullName: 'your-org/your-repo',
+            repoFullName: new RepoFullName('your-org/your-repo'),
             number: 42,
             authorAccount: 'alice',
             status: PullRequestStatus::Open,
@@ -40,7 +41,7 @@ class PullRequestMapperTest extends TestCase
     public function testToAttributesMarksDraftWhenReadyAtNull(): void
     {
         $vo = new PullRequestSummary(
-            repoFullName: 'your-org/your-repo',
+            repoFullName: new RepoFullName('your-org/your-repo'),
             number: 42,
             authorAccount: 'alice',
             status: PullRequestStatus::Open,

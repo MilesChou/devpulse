@@ -5,52 +5,63 @@ declare(strict_types=1);
 namespace Tests\Unit\Domain\Ci;
 
 use App\Domain\Ci\BuildStatus;
-use App\Domain\Ci\BuildSummary;
-use App\Domain\Ci\CiProviderType;
+use App\Domain\Ci\BuildTrigger;
+use App\Domain\Shared\RepoFullName;
+use App\Infrastructure\Ci\Travis\TravisConnector;
+use App\Infrastructure\Ci\Travis\TravisProvider;
 use InvalidArgumentException;
-use PHPUnit\Framework\TestCase;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Tests\TestCase;
 
 class BuildSummaryFromTravisRawTest extends TestCase
 {
     public function testTranslatesPushToMasterAsPostMerge(): void
     {
-        $build = BuildSummary::fromTravisRaw($this->payload([
+        $build = $this->parse([
             'event_type' => 'push',
             'branch' => ['name' => 'master'],
-        ]));
+        ]);
 
-        $this->assertSame(CiProviderType::Travis, $build->provider);
+        $this->assertSame(BuildTrigger::POST_MERGE, $build->trigger);
         $this->assertTrue($build->isPostMerge());
         $this->assertFalse($build->isPullRequest());
     }
 
     public function testTranslatesPullRequestEvent(): void
     {
-        $build = BuildSummary::fromTravisRaw($this->payload([
+        $build = $this->parse([
             'event_type' => 'pull_request',
             'branch' => ['name' => 'feature/foo'],
-        ]));
+        ]);
 
+        $this->assertSame(BuildTrigger::PULL_REQUEST, $build->trigger);
         $this->assertTrue($build->isPullRequest());
     }
 
-    public function testTranslatesCronAsDeployEvent(): void
+    public function testTranslatesCronAsScheduled(): void
     {
-        $build = BuildSummary::fromTravisRaw($this->payload(['event_type' => 'cron']));
+        $build = $this->parse(['event_type' => 'cron']);
+        $this->assertSame(BuildTrigger::SCHEDULED, $build->trigger);
+        $this->assertTrue($build->isDeployEvent());
+    }
+
+    public function testTranslatesApiAsManual(): void
+    {
+        $build = $this->parse(['event_type' => 'api']);
+        $this->assertSame(BuildTrigger::MANUAL, $build->trigger);
         $this->assertTrue($build->isDeployEvent());
     }
 
     public function testParsesIntegerIdAsString(): void
     {
-        $build = BuildSummary::fromTravisRaw($this->payload(['id' => 123456]));
+        $build = $this->parse(['id' => 123456]);
         $this->assertSame('123456', $build->externalId);
     }
 
     public function testParsesStartedAtToUtcCarbon(): void
     {
-        $build = BuildSummary::fromTravisRaw($this->payload([
-            'started_at' => '2026-04-15T10:00:00Z',
-        ]));
+        $build = $this->parse(['started_at' => '2026-04-15T10:00:00Z']);
 
         $this->assertSame('UTC', $build->startedAt->getTimezone()->getName());
         $this->assertSame('2026-04-15 10:00:00', $build->startedAt->format('Y-m-d H:i:s'));
@@ -58,14 +69,14 @@ class BuildSummaryFromTravisRawTest extends TestCase
 
     public function testParsesPassedState(): void
     {
-        $build = BuildSummary::fromTravisRaw($this->payload(['state' => 'passed']));
-        $this->assertSame(BuildStatus::Passed, $build->status);
+        $build = $this->parse(['state' => 'passed']);
+        $this->assertSame(BuildStatus::PASSED, $build->status);
         $this->assertFalse($build->isFailure());
     }
 
     public function testParsesFailedState(): void
     {
-        $build = BuildSummary::fromTravisRaw($this->payload(['state' => 'failed']));
+        $build = $this->parse(['state' => 'failed']);
         $this->assertTrue($build->isFailure());
     }
 
@@ -74,7 +85,7 @@ class BuildSummaryFromTravisRawTest extends TestCase
         $payload = $this->payload();
         unset($payload['duration']);
 
-        $build = BuildSummary::fromTravisRaw($payload);
+        $build = $this->parse($payload, raw: true);
         $this->assertNull($build->durationSeconds);
     }
 
@@ -85,7 +96,7 @@ class BuildSummaryFromTravisRawTest extends TestCase
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('repository.slug');
-        BuildSummary::fromTravisRaw($payload);
+        $this->parse($payload, raw: true);
     }
 
     public function testThrowsWhenCommitShaMissing(): void
@@ -95,7 +106,7 @@ class BuildSummaryFromTravisRawTest extends TestCase
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('commit.sha');
-        BuildSummary::fromTravisRaw($payload);
+        $this->parse($payload, raw: true);
     }
 
     public function testThrowsWhenStateMissing(): void
@@ -105,7 +116,7 @@ class BuildSummaryFromTravisRawTest extends TestCase
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('state');
-        BuildSummary::fromTravisRaw($payload);
+        $this->parse($payload, raw: true);
     }
 
     public function testThrowsWhenStartedAtMissing(): void
@@ -115,16 +126,40 @@ class BuildSummaryFromTravisRawTest extends TestCase
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('started_at');
-        BuildSummary::fromTravisRaw($payload);
+        $this->parse($payload, raw: true);
     }
 
     /**
      * @param array<string, mixed> $overrides
+     */
+    private function parse(array $overrides, bool $raw = false): \App\Domain\Ci\BuildSummary
+    {
+        $payload = $raw ? $overrides : array_replace($this->payload(), $overrides);
+
+        $mock = new MockClient([
+            MockResponse::make(['builds' => [$payload]]),
+        ]);
+        $connector = new TravisConnector('test-token');
+        $connector->withMockClient($mock);
+
+        $provider = new TravisProvider($connector);
+        $builds = iterator_to_array(
+            $provider->listBuildsInMonth(
+                new RepoFullName('your-org/your-repo'),
+                \App\Domain\Shared\MonthRange::fromString('2026-04'),
+            ),
+            false,
+        );
+
+        return $builds[0];
+    }
+
+    /**
      * @return array<string, mixed>
      */
-    private function payload(array $overrides = []): array
+    private function payload(): array
     {
-        return array_replace([
+        return [
             'id' => 123456,
             'state' => 'passed',
             'event_type' => 'pull_request',
@@ -133,6 +168,6 @@ class BuildSummaryFromTravisRawTest extends TestCase
             'branch' => ['name' => 'feature/foo'],
             'commit' => ['sha' => 'abcdef0123456789'],
             'repository' => ['slug' => 'your-org/your-repo'],
-        ], $overrides);
+        ];
     }
 }

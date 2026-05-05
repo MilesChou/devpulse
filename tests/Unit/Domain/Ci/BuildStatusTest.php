@@ -9,23 +9,19 @@ use PHPUnit\Framework\TestCase;
 
 class BuildStatusTest extends TestCase
 {
-    public function testIsFailureOnlyForFailedAndErrored(): void
+    public function testIsFailureOnlyForFailed(): void
     {
-        $this->assertTrue(BuildStatus::Failed->isFailure());
-        $this->assertTrue(BuildStatus::Errored->isFailure());
-        $this->assertFalse(BuildStatus::Passed->isFailure());
-        $this->assertFalse(BuildStatus::Canceled->isFailure());
-        $this->assertFalse(BuildStatus::Created->isFailure());
-        $this->assertFalse(BuildStatus::Started->isFailure());
+        $this->assertTrue(BuildStatus::FAILED->isFailure());
+        $this->assertFalse(BuildStatus::PASSED->isFailure());
+        $this->assertFalse(BuildStatus::CANCELED->isFailure());
+        $this->assertFalse(BuildStatus::IN_PROGRESS->isFailure());
     }
 
-    public function testIsCompleteFalseForCreatedAndStarted(): void
+    public function testIsCompleteFalseForInProgress(): void
     {
-        $this->assertFalse(BuildStatus::Created->isComplete());
-        $this->assertFalse(BuildStatus::Started->isComplete());
-        $this->assertTrue(BuildStatus::Passed->isComplete());
-        $this->assertTrue(BuildStatus::Failed->isComplete());
-        $this->assertTrue(BuildStatus::Errored->isComplete());
-        $this->assertTrue(BuildStatus::Canceled->isComplete());
+        $this->assertFalse(BuildStatus::IN_PROGRESS->isComplete());
+        $this->assertTrue(BuildStatus::PASSED->isComplete());
+        $this->assertTrue(BuildStatus::FAILED->isComplete());
+        $this->assertTrue(BuildStatus::CANCELED->isComplete());
     }
 }

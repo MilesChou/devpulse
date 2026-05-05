@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Domain\Ci\CiProvider;
-use App\Domain\Ci\Travis\TravisConnector;
-use App\Domain\Ci\Travis\TravisProvider;
 use App\Domain\Vcs\Filter\BotFilter;
-use App\Domain\Vcs\GitHub\GitHubConnector;
+use App\Infrastructure\Ci\Travis\TravisConnector;
+use App\Infrastructure\Ci\Travis\TravisProvider;
+use App\Infrastructure\Vcs\GitHub\GitHubConnector;
 use Illuminate\Support\ServiceProvider;
 use RuntimeException;
 
@@ -19,7 +19,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(TravisConnector::class, function (): TravisConnector {
             $token = config('devpulse.travis_token');
             if (! is_string($token) || $token === '') {
-                throw new RuntimeException('TRAVIS_TOKEN 未設定，請在 .env 中設定');
+                throw new RuntimeException('TRAVIS_TOKEN is not set, please configure it in .env');
             }
 
             return new TravisConnector($token);
@@ -30,7 +30,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(GitHubConnector::class, function (): GitHubConnector {
             $token = config('devpulse.github_token');
             if (! is_string($token) || $token === '') {
-                throw new RuntimeException('GITHUB_TOKEN 未設定，請在 .env 中設定');
+                throw new RuntimeException('GITHUB_TOKEN is not set, please configure it in .env');
             }
 
             return new GitHubConnector($token);

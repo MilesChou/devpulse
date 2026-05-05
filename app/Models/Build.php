@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-use App\Domain\Ci\BuildStatus;
-use App\Domain\Ci\CiProviderType;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -14,13 +12,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * @property int $id
  * @property int $repo_id
- * @property CiProviderType $provider
  * @property string $external_id
  * @property string $commit_sha
  * @property string|null $author_account
  * @property int|null $pr_number
- * @property BuildStatus $status
- * @property string $event_type
+ * @property string $status
+ * @property string $trigger
  * @property string|null $branch
  * @property bool $is_post_merge
  * @property bool $is_pull_request
@@ -32,13 +29,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 #[Fillable([
     'repo_id',
-    'provider',
     'external_id',
     'commit_sha',
     'author_account',
     'pr_number',
     'status',
-    'event_type',
+    'trigger',
     'branch',
     'is_post_merge',
     'is_pull_request',
@@ -64,8 +60,7 @@ class Build extends Model
     protected function casts(): array
     {
         return [
-            'provider' => CiProviderType::class,
-            'status' => BuildStatus::class,
+            'status' => 'string',
             'is_post_merge' => 'boolean',
             'is_pull_request' => 'boolean',
             'is_deploy_event' => 'boolean',

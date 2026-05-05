@@ -7,7 +7,8 @@ namespace Tests\Feature\Aggregation;
 use App\Aggregation\BuildFailureRateAggregator;
 use App\Aggregation\Filter\BuildEventFilter;
 use App\Domain\Ci\BuildStatus;
-use App\Domain\Ci\CiProviderType;
+use App\Domain\Ci\BuildTrigger;
+use App\Domain\Shared\MonthRange;
 use App\Models\Build;
 use App\Models\Group;
 use App\Models\Repo;
@@ -31,13 +32,13 @@ class BuildFailureRateAggregatorTest extends TestCase
     {
         [$groupA, $repoA] = $this->setupGroupWithRepo('team-a', 'org/repo-a');
 
-        $this->insertBuild($repoA->id, 'alice', '2026-04-10', BuildStatus::Passed);
-        $this->insertBuild($repoA->id, 'alice', '2026-04-11', BuildStatus::Failed);
-        $this->insertBuild($repoA->id, 'alice', '2026-04-12', BuildStatus::Passed);
-        $this->insertBuild($repoA->id, 'bob', '2026-04-10', BuildStatus::Failed);
-        $this->insertBuild($repoA->id, 'bob', '2026-04-11', BuildStatus::Failed);
+        $this->insertBuild($repoA->id, 'alice', '2026-04-10', BuildStatus::PASSED);
+        $this->insertBuild($repoA->id, 'alice', '2026-04-11', BuildStatus::FAILED);
+        $this->insertBuild($repoA->id, 'alice', '2026-04-12', BuildStatus::PASSED);
+        $this->insertBuild($repoA->id, 'bob', '2026-04-10', BuildStatus::FAILED);
+        $this->insertBuild($repoA->id, 'bob', '2026-04-11', BuildStatus::FAILED);
 
-        $results = $this->aggregator->aggregate($groupA, '2026-04');
+        $results = $this->aggregator->aggregate($groupA, MonthRange::fromString('2026-04'));
 
         $alice = $results->firstWhere('authorAccount', 'alice');
         $bob = $results->firstWhere('authorAccount', 'bob');
@@ -58,26 +59,26 @@ class BuildFailureRateAggregatorTest extends TestCase
         [$groupA, $repoA] = $this->setupGroupWithRepo('team-a', 'org/repo-a');
         [, $repoB] = $this->setupGroupWithRepo('team-b', 'org/repo-b');
 
-        $this->insertBuild($repoA->id, 'alice', '2026-04-10', BuildStatus::Failed);
-        $this->insertBuild($repoB->id, 'alice', '2026-04-10', BuildStatus::Failed);
+        $this->insertBuild($repoA->id, 'alice', '2026-04-10', BuildStatus::FAILED);
+        $this->insertBuild($repoB->id, 'alice', '2026-04-10', BuildStatus::FAILED);
 
-        $results = $this->aggregator->aggregate($groupA, '2026-04');
+        $results = $this->aggregator->aggregate($groupA, MonthRange::fromString('2026-04'));
 
         // group-a 只能看到 repo-a 的資料
         $this->assertSame(1, $results->count());
-        $this->assertSame('org/repo-a', $results->first()->repoFullName);
+        $this->assertSame('org/repo-a', (string)$results->first()->repoFullName);
     }
 
     public function testExcludesBuildsOutsideMonth(): void
     {
         [$groupA, $repoA] = $this->setupGroupWithRepo('team-a', 'org/repo-a');
 
-        $this->insertBuild($repoA->id, 'alice', '2026-03-31', BuildStatus::Failed);
-        $this->insertBuild($repoA->id, 'alice', '2026-04-01', BuildStatus::Passed);
-        $this->insertBuild($repoA->id, 'alice', '2026-04-30', BuildStatus::Passed);
-        $this->insertBuild($repoA->id, 'alice', '2026-05-01', BuildStatus::Failed);
+        $this->insertBuild($repoA->id, 'alice', '2026-03-31', BuildStatus::FAILED);
+        $this->insertBuild($repoA->id, 'alice', '2026-04-01', BuildStatus::PASSED);
+        $this->insertBuild($repoA->id, 'alice', '2026-04-30', BuildStatus::PASSED);
+        $this->insertBuild($repoA->id, 'alice', '2026-05-01', BuildStatus::FAILED);
 
-        $results = $this->aggregator->aggregate($groupA, '2026-04');
+        $results = $this->aggregator->aggregate($groupA, MonthRange::fromString('2026-04'));
 
         $alice = $results->firstWhere('authorAccount', 'alice');
         $this->assertNotNull($alice);
@@ -90,10 +91,10 @@ class BuildFailureRateAggregatorTest extends TestCase
         [$groupA, $repoA] = $this->setupGroupWithRepo('team-a', 'org/repo-a');
 
         // is_post_merge = true 的 build 應被排除
-        $this->insertBuild($repoA->id, 'alice', '2026-04-10', BuildStatus::Failed, isPostMerge: true);
-        $this->insertBuild($repoA->id, 'alice', '2026-04-11', BuildStatus::Passed, isPostMerge: false);
+        $this->insertBuild($repoA->id, 'alice', '2026-04-10', BuildStatus::FAILED, isPostMerge: true);
+        $this->insertBuild($repoA->id, 'alice', '2026-04-11', BuildStatus::PASSED, isPostMerge: false);
 
-        $results = $this->aggregator->aggregate($groupA, '2026-04');
+        $results = $this->aggregator->aggregate($groupA, MonthRange::fromString('2026-04'));
 
         $alice = $results->firstWhere('authorAccount', 'alice');
         $this->assertNotNull($alice);
@@ -105,11 +106,11 @@ class BuildFailureRateAggregatorTest extends TestCase
     {
         [$groupA, $repoA] = $this->setupGroupWithRepo('team-a', 'org/repo-a');
 
-        $this->insertBuild($repoA->id, 'alice', '2026-04-10', BuildStatus::Failed, isPostMerge: true);
-        $this->insertBuild($repoA->id, 'alice', '2026-04-11', BuildStatus::Passed, isPostMerge: false);
+        $this->insertBuild($repoA->id, 'alice', '2026-04-10', BuildStatus::FAILED, isPostMerge: true);
+        $this->insertBuild($repoA->id, 'alice', '2026-04-11', BuildStatus::PASSED, isPostMerge: false);
 
         $aggregator = new BuildFailureRateAggregator(new BuildEventFilter(includePostMerge: true));
-        $results = $aggregator->aggregate($groupA, '2026-04');
+        $results = $aggregator->aggregate($groupA, MonthRange::fromString('2026-04'));
 
         $alice = $results->firstWhere('authorAccount', 'alice');
         $this->assertNotNull($alice);
@@ -123,7 +124,7 @@ class BuildFailureRateAggregatorTest extends TestCase
     private function setupGroupWithRepo(string $groupSlug, string $repoFullName): array
     {
         $group = Group::create(['slug' => $groupSlug, 'description' => '']);
-        $repo = Repo::create(['full_name' => $repoFullName, 'ci_provider' => CiProviderType::Travis->value]);
+        $repo = Repo::create(['full_name' => $repoFullName]);
         $group->repos()->attach($repo->id);
 
         return [$group, $repo];
@@ -139,13 +140,12 @@ class BuildFailureRateAggregatorTest extends TestCase
     ): void {
         Build::create([
             'repo_id' => $repoId,
-            'provider' => CiProviderType::Travis->value,
             'external_id' => uniqid(),
             'commit_sha' => str_repeat('a', 40),
             'author_account' => $authorAccount,
             'pr_number' => null,
-            'status' => $status->value,
-            'event_type' => $isPostMerge ? 'push' : 'pull_request',
+            'status' => $status->name,
+            'trigger' => $isPostMerge ? BuildTrigger::POST_MERGE->name : BuildTrigger::PULL_REQUEST->name,
             'branch' => $isPostMerge ? 'master' : 'feature/test',
             'is_post_merge' => $isPostMerge,
             'is_pull_request' => ! $isPostMerge && ! $isDeployEvent,

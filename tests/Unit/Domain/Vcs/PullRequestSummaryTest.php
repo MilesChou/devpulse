@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Domain\Vcs;
 
+use App\Domain\Shared\RepoFullName;
 use App\Domain\Vcs\PullRequestStatus;
 use App\Domain\Vcs\PullRequestSummary;
 use Carbon\CarbonImmutable;
@@ -15,16 +16,9 @@ class PullRequestSummaryTest extends TestCase
     public function testBuildsValidInstance(): void
     {
         $pr = $this->build();
-        $this->assertSame('your-org/your-repo', $pr->repoFullName);
+        $this->assertSame('your-org/your-repo', (string)$pr->repoFullName);
         $this->assertSame(42, $pr->number);
         $this->assertSame(PullRequestStatus::Open, $pr->status);
-    }
-
-    public function testThrowsWhenRepoFullNameMissingSlash(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('repoFullName');
-        $this->build(repoFullName: 'invalid');
     }
 
     public function testThrowsWhenNumberZero(): void
@@ -73,7 +67,7 @@ class PullRequestSummaryTest extends TestCase
         $createdAt = CarbonImmutable::create(2026, 4, 15, 10, 0, 0, 'UTC');
 
         return new PullRequestSummary(
-            repoFullName: 'your-org/your-repo',
+            repoFullName: new RepoFullName('your-org/your-repo'),
             number: 42,
             authorAccount: 'alice',
             status: PullRequestStatus::Open,
@@ -148,7 +142,6 @@ class PullRequestSummaryTest extends TestCase
     }
 
     private function build(
-        string $repoFullName = 'your-org/your-repo',
         int $number = 42,
         string $authorAccount = 'alice',
         PullRequestStatus $status = PullRequestStatus::Open,
@@ -162,7 +155,7 @@ class PullRequestSummaryTest extends TestCase
         $createdAt ??= CarbonImmutable::create(2026, 4, 15, 10, 0, 0, 'UTC');
 
         return new PullRequestSummary(
-            repoFullName: $repoFullName,
+            repoFullName: new RepoFullName('your-org/your-repo'),
             number: $number,
             authorAccount: $authorAccount,
             status: $status,

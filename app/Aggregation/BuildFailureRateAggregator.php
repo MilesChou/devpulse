@@ -8,7 +8,8 @@ use App\Aggregation\Dto\FailureRateResult;
 use App\Aggregation\Filter\BuildEventFilter;
 use App\Models\Build;
 use App\Models\Group;
-use App\Support\Time\MonthRange;
+use App\Domain\Shared\MonthRange;
+use App\Domain\Shared\RepoFullName;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -25,19 +26,17 @@ final class BuildFailureRateAggregator
      */
     public function aggregate(
         Group $group,
-        string $month,
+        MonthRange $month,
         ?array $repoFullNames = null,
         ?array $authorAccounts = null,
     ): Collection {
-        [$start, $end] = MonthRange::parse($month);
-
         $groupRepoIds = $group->repos()->pluck('repos.id');
 
         $query = Build::query()
             ->join('repos', 'repos.id', '=', 'builds.repo_id')
             ->whereIn('builds.repo_id', $groupRepoIds)
-            ->where('builds.started_at', '>=', $start)
-            ->where('builds.started_at', '<', $end)
+            ->where('builds.started_at', '>=', $month->start)
+            ->where('builds.started_at', '<', $month->end)
             ->whereNotNull('builds.author_account');
 
         $this->filter->apply($query);
@@ -61,10 +60,10 @@ final class BuildFailureRateAggregator
             ->get();
 
         return $rows->map(fn ($row) => FailureRateResult::from(
-            repoFullName: $row->repo_full_name,
+            repoFullName: new RepoFullName($row->repo_full_name),
             authorAccount: $row->author_account,
-            total: (int) $row->total,
-            failures: (int) $row->failures,
+            total: (int)$row->total,
+            failures: (int)$row->failures,
         ));
     }
 }

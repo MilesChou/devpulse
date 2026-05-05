@@ -7,7 +7,8 @@ namespace App\Aggregation;
 use App\Aggregation\Dto\ReviewLatencyResult;
 use App\Models\Group;
 use App\Models\PullRequest;
-use App\Support\Time\MonthRange;
+use App\Domain\Shared\MonthRange;
+use App\Domain\Shared\RepoFullName;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -23,22 +24,19 @@ final class ReviewLatencyAggregator
      * draft（ready_at IS NULL）不計入。
      * 月底前未收到 review：以月底（或當下，取較早者）為 lower bound，isLowerBound=true。
      *
-     * @param string $month YYYY-MM
      * @return Collection<int, ReviewLatencyResult>
      */
-    public function aggregate(Group $group, string $month): Collection
+    public function aggregate(Group $group, MonthRange $month): Collection
     {
-        [$start, $end] = MonthRange::parse($month);
-
         $groupRepoIds = $group->repos()->pluck('repos.id');
 
         $now = $this->clock ?? CarbonImmutable::now('UTC');
-        $cutoff = $end->isBefore($now) ? $end : $now;
+        $cutoff = $month->end->isBefore($now) ? $month->end : $now;
 
         $prs = PullRequest::query()
             ->whereIn('repo_id', $groupRepoIds)
-            ->where('pr_created_at', '>=', $start)
-            ->where('pr_created_at', '<', $end)
+            ->where('pr_created_at', '>=', $month->start)
+            ->where('pr_created_at', '<', $month->end)
             ->whereNotNull('ready_at')
             ->whereNotNull('size_bucket')
             ->with('repo')
@@ -57,7 +55,7 @@ final class ReviewLatencyAggregator
             }
 
             return new ReviewLatencyResult(
-                repoFullName: $pr->repo->full_name,
+                repoFullName: new RepoFullName($pr->repo->full_name),
                 prNumber: $pr->number,
                 authorAccount: $pr->author_account,
                 sizeBucket: $pr->size_bucket,

@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace App\Domain\Vcs;
 
+use App\Domain\Shared\RepoFullName;
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
 final readonly class PullRequestSummary
 {
     public function __construct(
-        public string $repoFullName,
+        public RepoFullName $repoFullName,
         public int $number,
         public string $authorAccount,
         public PullRequestStatus $status,
@@ -21,26 +22,23 @@ final readonly class PullRequestSummary
         public ?CarbonImmutable $mergedAt,
         public ?CarbonImmutable $closedAt,
     ) {
-        if (! str_contains($repoFullName, '/')) {
-            throw new InvalidArgumentException('repoFullName 必須是 owner/name 格式');
-        }
         if ($number < 1) {
-            throw new InvalidArgumentException('number 必須 >= 1');
+            throw new InvalidArgumentException('number must be >= 1');
         }
         if ($authorAccount === '') {
-            throw new InvalidArgumentException('authorAccount 不能是空字串');
+            throw new InvalidArgumentException('authorAccount must not be empty');
         }
         if ($additions < 0) {
-            throw new InvalidArgumentException('additions 不能為負');
+            throw new InvalidArgumentException('additions must not be negative');
         }
         if ($deletions < 0) {
-            throw new InvalidArgumentException('deletions 不能為負');
+            throw new InvalidArgumentException('deletions must not be negative');
         }
         if ($status->isMerged() && $mergedAt === null) {
-            throw new InvalidArgumentException('已合併的 PR 必須有 mergedAt');
+            throw new InvalidArgumentException('mergedAt must be set when status is merged');
         }
         if (! $status->isOpen() && $closedAt === null) {
-            throw new InvalidArgumentException('已關閉或合併的 PR 必須有 closedAt');
+            throw new InvalidArgumentException('closedAt must be set when status is closed or merged');
         }
     }
 
@@ -64,18 +62,18 @@ final readonly class PullRequestSummary
         $base = $raw['base'] ?? null;
         $repo = is_array($base) ? ($base['repo'] ?? null) : null;
         if (! is_array($repo) || ! is_string($repo['full_name'] ?? null)) {
-            throw new InvalidArgumentException('GitHub PR payload 缺少 base.repo.full_name');
+            throw new InvalidArgumentException('GitHub PR payload missing base.repo.full_name');
         }
-        $repoFullName = $repo['full_name'];
+        $repoFullName = new RepoFullName($repo['full_name']);
 
         $number = $raw['number'] ?? null;
         if (! is_int($number)) {
-            throw new InvalidArgumentException('GitHub PR payload 缺少 number');
+            throw new InvalidArgumentException('GitHub PR payload missing number');
         }
 
         $user = $raw['user'] ?? null;
         if (! is_array($user) || ! is_string($user['login'] ?? null)) {
-            throw new InvalidArgumentException('GitHub PR payload 缺少 user.login');
+            throw new InvalidArgumentException('GitHub PR payload missing user.login');
         }
 
         $status = self::resolveStatus($raw);
@@ -133,7 +131,7 @@ final readonly class PullRequestSummary
     {
         $value = $raw[$key] ?? null;
         if (! is_string($value) || $value === '') {
-            throw new InvalidArgumentException("GitHub PR payload 缺少 {$key}");
+            throw new InvalidArgumentException("GitHub PR payload missing {$key}");
         }
 
         return CarbonImmutable::parse($value)->utc();

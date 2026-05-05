@@ -2,25 +2,25 @@
 
 declare(strict_types=1);
 
-namespace App\Domain\Ci\Travis;
+namespace App\Infrastructure\Vcs\GitHub;
 
 use Saloon\Enums\Method;
 use Saloon\Http\Request;
 
-class ListBuildsRequest extends Request
+class ListPullRequestsRequest extends Request
 {
     protected Method $method = Method::GET;
 
     public function __construct(
         private readonly string $repoFullName,
-        private readonly int $offset = 0,
-        private readonly int $limit = 25,
+        private readonly int $page = 1,
+        private readonly int $perPage = 100,
     ) {
     }
 
     public function resolveEndpoint(): string
     {
-        return '/repo/' . rawurlencode($this->repoFullName) . '/builds';
+        return '/repos/' . $this->repoFullName . '/pulls';
     }
 
     /**
@@ -29,10 +29,11 @@ class ListBuildsRequest extends Request
     protected function defaultQuery(): array
     {
         return [
-            'include' => 'build.commit,build.branch',
-            'offset' => $this->offset,
-            'limit' => $this->limit,
-            'sort_by' => 'started_at:desc',
+            'state' => 'all',
+            'sort' => 'created',
+            'direction' => 'desc',
+            'per_page' => $this->perPage,
+            'page' => $this->page,
         ];
     }
 }

@@ -24,7 +24,7 @@ final class PrSizeBucket
     public function __construct(array $buckets)
     {
         if (empty($buckets)) {
-            throw new InvalidArgumentException('pr_size_buckets 設定不能為空');
+            throw new InvalidArgumentException('pr_size_buckets config must not be empty');
         }
 
         $this->buckets = $buckets;
@@ -49,7 +49,7 @@ final class PrSizeBucket
             }
         }
 
-        return (string) array_key_last($this->buckets);
+        return (string)array_key_last($this->buckets);
     }
 
     /**

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Aggregation;
 
 use App\Aggregation\ReviewLatencyAggregator;
-use App\Domain\Ci\CiProviderType;
+use App\Domain\Shared\MonthRange;
 use App\Domain\Vcs\PullRequestStatus;
 use App\Models\Group;
 use App\Models\PullRequest;
@@ -25,7 +25,7 @@ class ReviewLatencyAggregatorTest extends TestCase
     {
         parent::setUp();
         $this->group = Group::create(['slug' => 'team-a', 'description' => '']);
-        $this->repo = Repo::create(['full_name' => 'org/repo', 'ci_provider' => CiProviderType::Travis->value]);
+        $this->repo = Repo::create(['full_name' => 'org/repo']);
         $this->group->repos()->attach($this->repo->id);
     }
 
@@ -36,7 +36,7 @@ class ReviewLatencyAggregatorTest extends TestCase
 
         $this->insertPr(number: 1, readyAt: $readyAt, firstReviewAt: $firstReviewAt, sizeBucket: 'S');
 
-        $results = (new ReviewLatencyAggregator())->aggregate($this->group, '2026-04');
+        $results = (new ReviewLatencyAggregator())->aggregate($this->group, MonthRange::fromString('2026-04'));
 
         $this->assertCount(1, $results);
         $pr = $results->first();
@@ -51,7 +51,7 @@ class ReviewLatencyAggregatorTest extends TestCase
         $this->insertPr(number: 2, readyAt: $readyAt, firstReviewAt: null, sizeBucket: 'XS');
 
         $clock = CarbonImmutable::parse('2026-05-05T00:00:00Z');
-        $results = (new ReviewLatencyAggregator($clock))->aggregate($this->group, '2026-04');
+        $results = (new ReviewLatencyAggregator($clock))->aggregate($this->group, MonthRange::fromString('2026-04'));
 
         $this->assertCount(1, $results);
         $pr = $results->first();
@@ -63,7 +63,7 @@ class ReviewLatencyAggregatorTest extends TestCase
     {
         $this->insertPr(number: 3, readyAt: null, firstReviewAt: null, sizeBucket: null);
 
-        $results = (new ReviewLatencyAggregator())->aggregate($this->group, '2026-04');
+        $results = (new ReviewLatencyAggregator())->aggregate($this->group, MonthRange::fromString('2026-04'));
 
         $this->assertCount(0, $results);
     }
@@ -71,7 +71,7 @@ class ReviewLatencyAggregatorTest extends TestCase
     public function testExcludesPrsFromOtherGroups(): void
     {
         $otherGroup = Group::create(['slug' => 'team-b', 'description' => '']);
-        $otherRepo = Repo::create(['full_name' => 'org/other', 'ci_provider' => CiProviderType::Travis->value]);
+        $otherRepo = Repo::create(['full_name' => 'org/other']);
         $otherGroup->repos()->attach($otherRepo->id);
 
         $this->insertPrForRepo(
@@ -82,7 +82,7 @@ class ReviewLatencyAggregatorTest extends TestCase
             sizeBucket: 'S',
         );
 
-        $results = (new ReviewLatencyAggregator())->aggregate($this->group, '2026-04');
+        $results = (new ReviewLatencyAggregator())->aggregate($this->group, MonthRange::fromString('2026-04'));
         $this->assertCount(0, $results);
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Domain\Vcs;
 
+use App\Domain\Shared\RepoFullName;
 use App\Domain\Vcs\ReviewState;
 use App\Domain\Vcs\ReviewSummary;
 use Carbon\CarbonImmutable;
@@ -15,16 +16,9 @@ class ReviewSummaryTest extends TestCase
     public function testBuildsValidInstance(): void
     {
         $review = $this->build();
-        $this->assertSame('your-org/your-repo', $review->repoFullName);
+        $this->assertSame('your-org/your-repo', (string)$review->repoFullName);
         $this->assertSame(42, $review->pullRequestNumber);
         $this->assertSame(ReviewState::Approved, $review->state);
-    }
-
-    public function testThrowsWhenRepoFullNameMissingSlash(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('repoFullName');
-        $this->build(repoFullName: 'invalid');
     }
 
     public function testThrowsWhenPullRequestNumberZero(): void
@@ -42,14 +36,13 @@ class ReviewSummaryTest extends TestCase
     }
 
     private function build(
-        string $repoFullName = 'your-org/your-repo',
         int $pullRequestNumber = 42,
         string $reviewerAccount = 'reviewer',
         ReviewState $state = ReviewState::Approved,
         ?CarbonImmutable $submittedAt = null,
     ): ReviewSummary {
         return new ReviewSummary(
-            repoFullName: $repoFullName,
+            repoFullName: new RepoFullName('your-org/your-repo'),
             pullRequestNumber: $pullRequestNumber,
             reviewerAccount: $reviewerAccount,
             state: $state,

@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
-namespace App\Domain\Vcs\GitHub;
+namespace App\Infrastructure\Vcs\GitHub;
+
+use App\Domain\Shared\RepoFullName;
 
 class GetPullRequestReviewsQuery extends GraphQLRequest
 {
     public function __construct(
-        private readonly string $repoFullName,
+        private readonly RepoFullName $repoFullName,
         private readonly int $pullNumber,
     ) {
     }
@@ -36,11 +38,9 @@ class GetPullRequestReviewsQuery extends GraphQLRequest
      */
     protected function graphqlVariables(): array
     {
-        [$owner, $name] = explode('/', $this->repoFullName, 2);
-
         return [
-            'owner' => $owner,
-            'name' => $name,
+            'owner' => $this->repoFullName->owner,
+            'name' => $this->repoFullName->name,
             'number' => $this->pullNumber,
         ];
     }

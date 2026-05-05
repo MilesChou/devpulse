@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Console\Devpulse;
 
-use App\Domain\Ci\CiProviderType;
 use App\Models\Group;
 use App\Models\Repo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -14,7 +13,7 @@ class RepoAddCommandTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function testCreatesRepoWithDefaultProviderTravis(): void
+    public function testCreatesRepo(): void
     {
         Group::create(['slug' => 'my-team']);
 
@@ -25,23 +24,6 @@ class RepoAddCommandTest extends TestCase
 
         $repo = Repo::query()->where('full_name', 'your-org/your-repo')->first();
         $this->assertNotNull($repo);
-        $this->assertSame(CiProviderType::Travis, $repo->ci_provider);
-    }
-
-    public function testCreatesRepoWithExplicitProvider(): void
-    {
-        Group::create(['slug' => 'my-team']);
-
-        $this->artisan('devpulse:repo:add', [
-            'group' => 'my-team',
-            'full_name' => 'your-org/your-repo',
-            '--ci-provider' => 'github_actions',
-        ])->assertSuccessful();
-
-        $this->assertSame(
-            CiProviderType::GitHubActions,
-            Repo::query()->where('full_name', 'your-org/your-repo')->first()->ci_provider,
-        );
     }
 
     public function testFailsWhenGroupDoesNotExist(): void
@@ -61,19 +43,6 @@ class RepoAddCommandTest extends TestCase
         $this->artisan('devpulse:repo:add', [
             'group' => 'my-team',
             'full_name' => 'invalid',
-        ])->assertFailed();
-
-        $this->assertDatabaseCount('repos', 0);
-    }
-
-    public function testFailsWhenCiProviderUnknown(): void
-    {
-        Group::create(['slug' => 'my-team']);
-
-        $this->artisan('devpulse:repo:add', [
-            'group' => 'my-team',
-            'full_name' => 'your-org/your-repo',
-            '--ci-provider' => 'jenkins',
         ])->assertFailed();
 
         $this->assertDatabaseCount('repos', 0);

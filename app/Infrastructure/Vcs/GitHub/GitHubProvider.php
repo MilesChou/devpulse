@@ -2,12 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Domain\Vcs\GitHub;
+namespace App\Infrastructure\Vcs\GitHub;
 
+use App\Domain\Shared\MonthRange;
+use App\Domain\Shared\RepoFullName;
 use App\Domain\Vcs\PullRequestSummary;
 use App\Domain\Vcs\ReviewSummary;
 use App\Support\Saloon\PayloadHelpers;
-use App\Support\Time\MonthRange;
 use Generator;
 
 class GitHubProvider
@@ -19,18 +20,15 @@ class GitHubProvider
     /**
      * 列出指定 repo 在指定月份內建立的所有 PR（已合併、已關閉、被 reject、仍在 draft 都包含）。
      *
-     * 月份格式：YYYY-MM。
-     *
      * @return Generator<int, PullRequestSummary>
      */
-    public function listPullRequestsInMonth(string $repoFullName, string $month): Generator
+    public function listPullRequestsInMonth(RepoFullName $repoFullName, MonthRange $month): Generator
     {
-        [$start, $end] = MonthRange::parse($month);
         $page = 1;
         $perPage = 100;
 
         while (true) {
-            $response = $this->connector->send(new ListPullRequestsRequest($repoFullName, $page, $perPage));
+            $response = $this->connector->send(new ListPullRequestsRequest((string)$repoFullName, $page, $perPage));
             $pulls = PayloadHelpers::listOfArrays($response->json());
             if ($pulls === []) {
                 break;
@@ -40,10 +38,10 @@ class GitHubProvider
             foreach ($pulls as $rawPull) {
                 $pr = PullRequestSummary::fromGitHubRaw($rawPull);
 
-                if ($pr->createdAt->greaterThanOrEqualTo($end)) {
+                if ($pr->createdAt->greaterThanOrEqualTo($month->end)) {
                     continue;
                 }
-                if ($pr->createdAt->lessThan($start)) {
+                if ($pr->createdAt->lessThan($month->start)) {
                     $reachedOlderThanRange = true;
                     continue;
                 }
@@ -64,9 +62,9 @@ class GitHubProvider
     /**
      * 取得單一 PR 的細節（含精確的 additions / deletions —— list endpoint 不回這兩個欄位）。
      */
-    public function getPullRequest(string $repoFullName, int $pullNumber): PullRequestSummary
+    public function getPullRequest(RepoFullName $repoFullName, int $pullNumber): PullRequestSummary
     {
-        $response = $this->connector->send(new GetPullRequestRequest($repoFullName, $pullNumber));
+        $response = $this->connector->send(new GetPullRequestRequest((string)$repoFullName, $pullNumber));
         $payload = PayloadHelpers::stringKeyedArray($response->json());
 
         return PullRequestSummary::fromGitHubRaw($payload);
@@ -75,9 +73,9 @@ class GitHubProvider
     /**
      * 取得 commit 對應的 author GitHub login（找不到則回 null）。
      */
-    public function getCommitAuthorAccount(string $repoFullName, string $sha): ?string
+    public function getCommitAuthorAccount(RepoFullName $repoFullName, string $sha): ?string
     {
-        $response = $this->connector->send(new GetCommitRequest($repoFullName, $sha));
+        $response = $this->connector->send(new GetCommitRequest((string)$repoFullName, $sha));
         $payload = PayloadHelpers::stringKeyedArray($response->json());
 
         $author = $payload['author'] ?? null;
@@ -96,7 +94,7 @@ class GitHubProvider
      * @param list<string> $shas
      * @return array<string, string|null>
      */
-    public function getCommitAuthorAccounts(string $repoFullName, array $shas): array
+    public function getCommitAuthorAccounts(RepoFullName $repoFullName, array $shas): array
     {
         $result = [];
         foreach ($shas as $sha) {
@@ -111,7 +109,7 @@ class GitHubProvider
      *
      * @return list<ReviewSummary>
      */
-    public function listReviews(string $repoFullName, int $pullNumber): array
+    public function listReviews(RepoFullName $repoFullName, int $pullNumber): array
     {
         $response = $this->connector->send(new GetPullRequestReviewsQuery($repoFullName, $pullNumber));
         $payload = PayloadHelpers::stringKeyedArray($response->json());

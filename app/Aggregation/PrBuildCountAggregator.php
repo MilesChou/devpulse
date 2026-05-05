@@ -7,26 +7,24 @@ namespace App\Aggregation;
 use App\Aggregation\Dto\PrBuildCountResult;
 use App\Models\Build;
 use App\Models\Group;
-use App\Support\Time\MonthRange;
+use App\Domain\Shared\MonthRange;
+use App\Domain\Shared\RepoFullName;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 final class PrBuildCountAggregator
 {
     /**
-     * @param string $month YYYY-MM
      * @return Collection<int, PrBuildCountResult>
      */
-    public function aggregate(Group $group, string $month): Collection
+    public function aggregate(Group $group, MonthRange $month): Collection
     {
-        [$start, $end] = MonthRange::parse($month);
-
         $groupRepoIds = $group->repos()->pluck('repos.id');
 
         $rows = Build::query()
             ->whereIn('repo_id', $groupRepoIds)
-            ->where('started_at', '>=', $start)
-            ->where('started_at', '<', $end)
+            ->where('started_at', '>=', $month->start)
+            ->where('started_at', '<', $month->end)
             ->where('is_pull_request', true)
             ->whereNotNull('pr_number')
             ->join('repos', 'repos.id', '=', 'builds.repo_id')
@@ -41,9 +39,9 @@ final class PrBuildCountAggregator
             ->get();
 
         return $rows->map(fn ($row) => new PrBuildCountResult(
-            repoFullName: $row->repo_full_name,
-            prNumber: (int) $row->pr_number,
-            buildCount: (int) $row->build_count,
+            repoFullName: new RepoFullName($row->repo_full_name),
+            prNumber: (int)$row->pr_number,
+            buildCount: (int)$row->build_count,
         ));
     }
 

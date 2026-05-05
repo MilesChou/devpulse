@@ -12,7 +12,6 @@ return new class () extends Migration {
         Schema::create('repos', function (Blueprint $table): void {
             $table->id();
             $table->string('full_name', 255)->unique();
-            $table->string('ci_provider', 32)->default('travis');
             $table->timestamps();
         });
     }

@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace App\Persistence\Mapper;
 
+use App\Domain\Ci\BuildStatus;
 use App\Domain\Ci\BuildSummary;
+use App\Domain\Ci\BuildTrigger;
+use App\Domain\Shared\CommitSha;
+use App\Domain\Shared\RepoFullName;
 use App\Models\Build;
 
 final class BuildMapper
@@ -19,13 +23,12 @@ final class BuildMapper
     {
         return [
             'repo_id' => $repoId,
-            'provider' => $vo->provider->value,
             'external_id' => $vo->externalId,
-            'commit_sha' => $vo->commitSha,
+            'commit_sha' => (string) $vo->commitSha,
             'author_account' => $vo->authorAccount,
             'pr_number' => $vo->prNumber,
-            'status' => $vo->status->value,
-            'event_type' => $vo->eventType,
+            'status' => $vo->status->name,
+            'trigger' => $vo->trigger->name,
             'branch' => $vo->branch,
             'is_post_merge' => $vo->isPostMerge(),
             'is_pull_request' => $vo->isPullRequest(),
@@ -42,20 +45,40 @@ final class BuildMapper
      *
      * repo_full_name 由 caller 提供（避免 N+1 lazy load relation）。
      */
-    public function toVo(Build $model, string $repoFullName): BuildSummary
+    public function toVo(Build $model, RepoFullName $repoFullName): BuildSummary
     {
         return new BuildSummary(
-            provider: $model->provider,
             externalId: $model->external_id,
             repoFullName: $repoFullName,
-            commitSha: $model->commit_sha,
+            commitSha: new CommitSha($model->commit_sha),
             authorAccount: $model->author_account,
             prNumber: $model->pr_number,
-            status: $model->status,
-            eventType: $model->event_type,
+            status: $this->resolveStatus($model->status),
+            trigger: $this->resolveTrigger($model->trigger),
             branch: $model->branch,
             startedAt: $model->started_at,
             durationSeconds: $model->duration_seconds,
         );
+    }
+
+    private function resolveTrigger(string $value): BuildTrigger
+    {
+        return match ($value) {
+            BuildTrigger::PULL_REQUEST->name => BuildTrigger::PULL_REQUEST,
+            BuildTrigger::POST_MERGE->name => BuildTrigger::POST_MERGE,
+            BuildTrigger::SCHEDULED->name => BuildTrigger::SCHEDULED,
+            BuildTrigger::MANUAL->name => BuildTrigger::MANUAL,
+            default => BuildTrigger::PULL_REQUEST,
+        };
+    }
+
+    private function resolveStatus(string $value): BuildStatus
+    {
+        return match ($value) {
+            BuildStatus::PASSED->name => BuildStatus::PASSED,
+            BuildStatus::FAILED->name, 'errored' => BuildStatus::FAILED,
+            BuildStatus::CANCELED->name => BuildStatus::CANCELED,
+            default => BuildStatus::IN_PROGRESS,
+        };
     }
 }

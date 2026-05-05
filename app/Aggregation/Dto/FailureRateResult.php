@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Aggregation\Dto;
 
+use App\Domain\Shared\RepoFullName;
+
 final readonly class FailureRateResult
 {
     public function __construct(
-        public string $repoFullName,
+        public RepoFullName $repoFullName,
         public string $authorAccount,
         public int $total,
         public int $failures,
@@ -15,7 +17,7 @@ final readonly class FailureRateResult
     ) {
     }
 
-    public static function from(string $repoFullName, string $authorAccount, int $total, int $failures): self
+    public static function from(RepoFullName $repoFullName, string $authorAccount, int $total, int $failures): self
     {
         return new self(
             repoFullName: $repoFullName,

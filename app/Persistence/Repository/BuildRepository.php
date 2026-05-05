@@ -15,7 +15,7 @@ final class BuildRepository
     }
 
     /**
-     * 把 VO 流寫入 DB，依 (provider, external_id) 去重（同一 build 不重複插入）。
+     * 把 VO 流寫入 DB，依 (repo_id, external_id) 去重（同一 build 不重複插入）。
      *
      * 用 updateOrCreate（每筆 SELECT + INSERT/UPDATE 兩 query）而非 batch upsert：
      * Stage 1 量小（單月單 repo 約 100~1000 筆）可接受，且 updateOrCreate 自動
@@ -33,7 +33,7 @@ final class BuildRepository
             $attributes = $this->mapper->toAttributes($vo, $repoId, $payload);
 
             Build::query()->updateOrCreate(
-                ['provider' => $attributes['provider'], 'external_id' => $attributes['external_id']],
+                ['repo_id' => $repoId, 'external_id' => $attributes['external_id']],
                 $attributes,
             );
             $count++;

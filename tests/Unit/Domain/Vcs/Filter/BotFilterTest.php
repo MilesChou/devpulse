@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Domain\Vcs\Filter;
 
+use App\Domain\Shared\RepoFullName;
 use App\Domain\Vcs\Filter\BotFilter;
 use App\Domain\Vcs\PullRequestStatus;
 use App\Domain\Vcs\PullRequestSummary;
@@ -49,7 +50,7 @@ class BotFilterTest extends TestCase
         $createdAt = CarbonImmutable::create(2026, 4, 15, 10, 0, 0, 'UTC');
 
         return new PullRequestSummary(
-            repoFullName: 'your-org/your-repo',
+            repoFullName: new RepoFullName('your-org/your-repo'),
             number: 1,
             authorAccount: $author,
             status: PullRequestStatus::Open,
@@ -65,7 +66,7 @@ class BotFilterTest extends TestCase
     private function review(string $reviewer): ReviewSummary
     {
         return new ReviewSummary(
-            repoFullName: 'your-org/your-repo',
+            repoFullName: new RepoFullName('your-org/your-repo'),
             pullRequestNumber: 1,
             reviewerAccount: $reviewer,
             state: ReviewState::Commented,

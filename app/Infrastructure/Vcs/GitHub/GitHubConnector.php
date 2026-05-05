@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Domain\Ci\Travis;
+namespace App\Infrastructure\Vcs\GitHub;
 
 use Saloon\Exceptions\Request\FatalRequestException;
 use Saloon\Exceptions\Request\RequestException;
@@ -11,7 +11,7 @@ use Saloon\Http\Connector;
 use Saloon\Http\Request;
 use Saloon\Traits\Plugins\AcceptsJson;
 
-class TravisConnector extends Connector
+class GitHubConnector extends Connector
 {
     use AcceptsJson;
 
@@ -25,7 +25,7 @@ class TravisConnector extends Connector
 
     /**
      * 只對 rate limit (429) 與 server errors (5xx) 與網路層失敗重試。
-     * 4xx auth / not found 等錯誤不重試（重試也不會好）。
+     * 4xx auth / not found / secondary rate limit 等不重試（重試也不會好）。
      */
     public function handleRetry(FatalRequestException|RequestException $exception, Request $request): bool
     {
@@ -40,7 +40,7 @@ class TravisConnector extends Connector
 
     public function resolveBaseUrl(): string
     {
-        return 'https://api.travis-ci.com';
+        return 'https://api.github.com';
     }
 
     /**
@@ -49,12 +49,13 @@ class TravisConnector extends Connector
     protected function defaultHeaders(): array
     {
         return [
-            'Travis-API-Version' => '3',
+            'Accept' => 'application/vnd.github+json',
+            'X-GitHub-Api-Version' => '2022-11-28',
         ];
     }
 
     protected function defaultAuth(): TokenAuthenticator
     {
-        return new TokenAuthenticator($this->token, prefix: 'token');
+        return new TokenAuthenticator($this->token, prefix: 'Bearer');
     }
 }

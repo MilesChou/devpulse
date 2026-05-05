@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Domain\Ci\Travis;
+namespace App\Infrastructure\Ci\Travis;
 
 use Saloon\Enums\Method;
 use Saloon\Http\Request;

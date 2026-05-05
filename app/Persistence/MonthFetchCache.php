@@ -7,7 +7,7 @@ namespace App\Persistence;
 use App\Models\MonthFetch;
 use App\Persistence\Enum\Dataset;
 use App\Persistence\Enum\MonthFetchStatus;
-use App\Support\Time\MonthRange;
+use App\Domain\Shared\MonthRange;
 use Carbon\CarbonImmutable;
 
 /**
@@ -63,10 +63,7 @@ final class MonthFetchCache
 
     private function isCurrentMonth(string $month): bool
     {
-        [$start, $end] = MonthRange::parse($month);
-        $now = $this->now();
-
-        return $now->greaterThanOrEqualTo($start) && $now->lessThan($end);
+        return MonthRange::fromString($month)->contains($this->now());
     }
 
     private function now(): CarbonImmutable

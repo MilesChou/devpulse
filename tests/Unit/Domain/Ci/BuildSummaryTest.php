@@ -6,7 +6,9 @@ namespace Tests\Unit\Domain\Ci;
 
 use App\Domain\Ci\BuildStatus;
 use App\Domain\Ci\BuildSummary;
-use App\Domain\Ci\CiProviderType;
+use App\Domain\Ci\BuildTrigger;
+use App\Domain\Shared\CommitSha;
+use App\Domain\Shared\RepoFullName;
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
@@ -17,7 +19,7 @@ class BuildSummaryTest extends TestCase
     {
         $build = $this->build();
         $this->assertSame('12345', $build->externalId);
-        $this->assertSame(BuildStatus::Passed, $build->status);
+        $this->assertSame(BuildStatus::PASSED, $build->status);
     }
 
     public function testThrowsWhenExternalIdIsEmpty(): void
@@ -27,25 +29,11 @@ class BuildSummaryTest extends TestCase
         $this->build(externalId: '');
     }
 
-    public function testThrowsWhenRepoFullNameMissingSlash(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('repoFullName');
-        $this->build(repoFullName: 'invalid');
-    }
-
     public function testThrowsWhenCommitShaTooShort(): void
     {
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('commitSha');
-        $this->build(commitSha: 'abc');
-    }
-
-    public function testThrowsWhenEventTypeIsEmpty(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('eventType');
-        $this->build(eventType: '');
+        $this->build(commitSha: new CommitSha('abc'));
     }
 
     public function testThrowsWhenDurationIsNegative(): void
@@ -61,84 +49,63 @@ class BuildSummaryTest extends TestCase
         $this->assertNull($build->durationSeconds);
     }
 
-    public function testIsPostMergeWhenPushToMaster(): void
+    public function testIsPostMerge(): void
     {
-        $build = $this->build(eventType: 'push', branch: 'master');
+        $build = $this->build(trigger: BuildTrigger::POST_MERGE);
         $this->assertTrue($build->isPostMerge());
         $this->assertFalse($build->isPullRequest());
         $this->assertFalse($build->isDeployEvent());
     }
 
-    public function testIsPostMergeWhenPushToMain(): void
+    public function testIsPullRequest(): void
     {
-        $build = $this->build(eventType: 'push', branch: 'main');
-        $this->assertTrue($build->isPostMerge());
-    }
-
-    public function testIsNotPostMergeWhenPushToFeatureBranch(): void
-    {
-        $build = $this->build(eventType: 'push', branch: 'feature/foo');
-        $this->assertFalse($build->isPostMerge());
-    }
-
-    public function testIsNotPostMergeWhenBranchIsNull(): void
-    {
-        $build = $this->build(eventType: 'push', branch: null);
-        $this->assertFalse($build->isPostMerge());
-    }
-
-    public function testIsPullRequestWhenEventTypeIsPullRequest(): void
-    {
-        $build = $this->build(eventType: 'pull_request');
+        $build = $this->build(trigger: BuildTrigger::PULL_REQUEST);
         $this->assertTrue($build->isPullRequest());
         $this->assertFalse($build->isPostMerge());
         $this->assertFalse($build->isDeployEvent());
     }
 
-    public function testIsDeployEventWhenEventTypeIsCron(): void
+    public function testIsDeployEventWhenScheduled(): void
     {
-        $build = $this->build(eventType: 'cron');
+        $build = $this->build(trigger: BuildTrigger::SCHEDULED);
         $this->assertTrue($build->isDeployEvent());
         $this->assertFalse($build->isPostMerge());
         $this->assertFalse($build->isPullRequest());
     }
 
-    public function testIsDeployEventWhenEventTypeIsApi(): void
+    public function testIsDeployEventWhenManual(): void
     {
-        $build = $this->build(eventType: 'api');
+        $build = $this->build(trigger: BuildTrigger::MANUAL);
         $this->assertTrue($build->isDeployEvent());
     }
 
     public function testIsFailureDelegatesToStatus(): void
     {
-        $this->assertTrue($this->build(status: BuildStatus::Failed)->isFailure());
-        $this->assertTrue($this->build(status: BuildStatus::Errored)->isFailure());
-        $this->assertFalse($this->build(status: BuildStatus::Passed)->isFailure());
-        $this->assertFalse($this->build(status: BuildStatus::Canceled)->isFailure());
+        $this->assertTrue($this->build(status: BuildStatus::FAILED)->isFailure());
+        $this->assertFalse($this->build(status: BuildStatus::PASSED)->isFailure());
+        $this->assertFalse($this->build(status: BuildStatus::CANCELED)->isFailure());
+        $this->assertFalse($this->build(status: BuildStatus::IN_PROGRESS)->isFailure());
     }
 
     private function build(
-        CiProviderType $provider = CiProviderType::Travis,
         string $externalId = '12345',
-        string $repoFullName = 'your-org/your-repo',
-        string $commitSha = 'abcdef0',
+        CommitSha $commitSha = new CommitSha('abcdef0'),
         ?string $authorAccount = null,
         ?int $prNumber = null,
-        BuildStatus $status = BuildStatus::Passed,
-        string $eventType = 'pull_request',
+        BuildStatus $status = BuildStatus::PASSED,
+        BuildTrigger $trigger = BuildTrigger::PULL_REQUEST,
         ?string $branch = 'feature/foo',
         ?CarbonImmutable $startedAt = null,
         ?int $durationSeconds = 120,
     ): BuildSummary {
         return new BuildSummary(
-            provider: $provider,
             externalId: $externalId,
-            repoFullName: $repoFullName,
+            repoFullName: new RepoFullName('your-org/your-repo'),
             commitSha: $commitSha,
             authorAccount: $authorAccount,
             prNumber: $prNumber,
             status: $status,
-            eventType: $eventType,
+            trigger: $trigger,
             branch: $branch,
             startedAt: $startedAt ?? CarbonImmutable::create(2026, 4, 15, 10, 0, 0, 'UTC'),
             durationSeconds: $durationSeconds,

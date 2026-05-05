@@ -2,13 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Tests\Feature\Domain\Vcs\GitHub;
+namespace Tests\Feature\Infrastructure\Vcs\GitHub;
 
-use App\Domain\Vcs\GitHub\GitHubConnector;
-use App\Domain\Vcs\GitHub\GitHubProvider;
-use App\Domain\Vcs\PullRequestStatus;
+use App\Domain\Shared\MonthRange;
+use App\Domain\Shared\RepoFullName;
 use App\Domain\Vcs\PullRequestSummary;
 use App\Domain\Vcs\ReviewState;
+use App\Infrastructure\Vcs\GitHub\GitHubConnector;
+use App\Infrastructure\Vcs\GitHub\GitHubProvider;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
 use Tests\TestCase;
@@ -28,7 +29,7 @@ class GitHubProviderTest extends TestCase
         ]);
 
         $provider = new GitHubProvider($this->connector($mock));
-        $prs = iterator_to_array($provider->listPullRequestsInMonth('your-org/your-repo', '2026-04'), false);
+        $prs = iterator_to_array($provider->listPullRequestsInMonth(new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
 
         $this->assertCount(3, $prs);
         $this->assertSame([100, 99, 98], array_map(static fn (PullRequestSummary $p): int => $p->number, $prs));
@@ -51,7 +52,7 @@ class GitHubProviderTest extends TestCase
         ]);
 
         $provider = new GitHubProvider($this->connector($mock));
-        $prs = iterator_to_array($provider->listPullRequestsInMonth('your-org/your-repo', '2026-04'), false);
+        $prs = iterator_to_array($provider->listPullRequestsInMonth(new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
 
         $this->assertCount(102, $prs);
     }
@@ -63,7 +64,7 @@ class GitHubProviderTest extends TestCase
         ]);
 
         $provider = new GitHubProvider($this->connector($mock));
-        $pr = $provider->getPullRequest('your-org/your-repo', 42);
+        $pr = $provider->getPullRequest(new RepoFullName('your-org/your-repo'), 42);
 
         $this->assertSame(42, $pr->number);
         $this->assertSame(100, $pr->additions);
@@ -78,7 +79,7 @@ class GitHubProviderTest extends TestCase
         ]);
 
         $provider = new GitHubProvider($this->connector($mock));
-        $this->assertSame('alice', $provider->getCommitAuthorAccount('your-org/your-repo', 'abc1234'));
+        $this->assertSame('alice', $provider->getCommitAuthorAccount(new RepoFullName('your-org/your-repo'), 'abc1234'));
     }
 
     public function testGetCommitAuthorAccountReturnsNullWhenAuthorMissing(): void
@@ -88,7 +89,7 @@ class GitHubProviderTest extends TestCase
         ]);
 
         $provider = new GitHubProvider($this->connector($mock));
-        $this->assertNull($provider->getCommitAuthorAccount('your-org/your-repo', 'abc1234'));
+        $this->assertNull($provider->getCommitAuthorAccount(new RepoFullName('your-org/your-repo'), 'abc1234'));
     }
 
     public function testGetCommitAuthorAccountsReturnsMap(): void
@@ -100,7 +101,7 @@ class GitHubProviderTest extends TestCase
         ]);
 
         $provider = new GitHubProvider($this->connector($mock));
-        $accounts = $provider->getCommitAuthorAccounts('your-org/your-repo', ['sha1', 'sha2', 'sha3']);
+        $accounts = $provider->getCommitAuthorAccounts(new RepoFullName('your-org/your-repo'), ['sha1', 'sha2', 'sha3']);
 
         $this->assertSame(['sha1' => 'alice', 'sha2' => 'bob', 'sha3' => null], $accounts);
     }
@@ -133,7 +134,7 @@ class GitHubProviderTest extends TestCase
         ]);
 
         $provider = new GitHubProvider($this->connector($mock));
-        $reviews = $provider->listReviews('your-org/your-repo', 42);
+        $reviews = $provider->listReviews(new RepoFullName('your-org/your-repo'), 42);
 
         $this->assertCount(2, $reviews);
         $this->assertSame(ReviewState::Approved, $reviews[0]->state);
@@ -156,7 +157,7 @@ class GitHubProviderTest extends TestCase
         ]);
 
         $provider = new GitHubProvider($this->connector($mock));
-        $this->assertSame([], $provider->listReviews('your-org/your-repo', 42));
+        $this->assertSame([], $provider->listReviews(new RepoFullName('your-org/your-repo'), 42));
     }
 
     public function testRetriesOn5xxThenSucceeds(): void
@@ -167,7 +168,7 @@ class GitHubProviderTest extends TestCase
         ]);
 
         $provider = new GitHubProvider($this->connector($mock));
-        $prs = iterator_to_array($provider->listPullRequestsInMonth('your-org/your-repo', '2026-04'), false);
+        $prs = iterator_to_array($provider->listPullRequestsInMonth(new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
 
         $this->assertCount(1, $prs);
     }
@@ -180,7 +181,7 @@ class GitHubProviderTest extends TestCase
         ]);
 
         $provider = new GitHubProvider($this->connector($mock));
-        $prs = iterator_to_array($provider->listPullRequestsInMonth('your-org/your-repo', '2026-04'), false);
+        $prs = iterator_to_array($provider->listPullRequestsInMonth(new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
 
         $this->assertCount(1, $prs);
     }
@@ -194,7 +195,7 @@ class GitHubProviderTest extends TestCase
         $provider = new GitHubProvider($this->connector($mock));
 
         $this->expectException(\Saloon\Exceptions\Request\RequestException::class);
-        iterator_to_array($provider->listPullRequestsInMonth('your-org/your-repo', '2026-04'), false);
+        iterator_to_array($provider->listPullRequestsInMonth(new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
     }
 
     private function connector(MockClient $mock): GitHubConnector

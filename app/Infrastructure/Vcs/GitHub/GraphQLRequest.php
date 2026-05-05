@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Domain\Vcs\GitHub;
+namespace App\Infrastructure\Vcs\GitHub;
 
 use Saloon\Contracts\Body\HasBody;
 use Saloon\Enums\Method;

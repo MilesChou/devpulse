@@ -4,22 +4,20 @@ declare(strict_types=1);
 
 namespace App\Domain\Ci;
 
-enum BuildStatus: string
+enum BuildStatus
 {
-    case Passed = 'passed';
-    case Failed = 'failed';
-    case Errored = 'errored';
-    case Canceled = 'canceled';
-    case Created = 'created';
-    case Started = 'started';
+    case PASSED;
+    case FAILED;
+    case CANCELED;
+    case IN_PROGRESS;
 
     public function isFailure(): bool
     {
-        return $this === self::Failed || $this === self::Errored;
+        return $this === self::FAILED;
     }
 
     public function isComplete(): bool
     {
-        return $this !== self::Created && $this !== self::Started;
+        return $this !== self::IN_PROGRESS;
     }
 }

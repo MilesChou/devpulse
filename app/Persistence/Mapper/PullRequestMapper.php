@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Persistence\Mapper;
 
+use App\Domain\Shared\RepoFullName;
 use App\Domain\Vcs\PullRequestSummary;
 use App\Models\PullRequest;
 use Carbon\CarbonImmutable;
@@ -40,7 +41,7 @@ final class PullRequestMapper
         ];
     }
 
-    public function toVo(PullRequest $model, string $repoFullName): PullRequestSummary
+    public function toVo(PullRequest $model, RepoFullName $repoFullName): PullRequestSummary
     {
         return new PullRequestSummary(
             repoFullName: $repoFullName,

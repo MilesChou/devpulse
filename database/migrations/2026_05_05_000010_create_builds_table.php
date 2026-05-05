@@ -12,7 +12,6 @@ return new class () extends Migration {
         Schema::create('builds', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('repo_id')->constrained('repos')->cascadeOnDelete();
-            $table->string('provider', 32);
             $table->string('external_id', 64);
             $table->string('commit_sha', 64);
             $table->string('status', 32);
@@ -33,7 +32,7 @@ return new class () extends Migration {
             $table->json('raw_payload');
             $table->timestamps();
 
-            $table->unique(['provider', 'external_id']);
+            $table->unique(['repo_id', 'external_id']);
             $table->index(['repo_id', 'started_at']);
         });
     }
