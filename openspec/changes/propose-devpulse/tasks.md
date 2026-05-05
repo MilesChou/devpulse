@@ -1,6 +1,6 @@
 ## 1. 專案基礎建置
 
-- [ ] 1.1 在本 repo 建立 Laravel 11/12 骨架（含 `composer.json`、`.env.example`）
+- [x] 1.1 在本 repo 建立 Laravel 11/12 骨架（含 `composer.json`、`.env.example`）
 - [ ] 1.2 設定本機開發資料庫（先用 SQLite，可切 PostgreSQL）
 - [ ] 1.3 建立 `.env.example` 包含 `GITHUB_TOKEN`、`TRAVIS_TOKEN` placeholder 與註解說明取得方式
 - [ ] 1.4 建立 `config/devpulse.php` 包含 `excluded_bots`、`pr_size_buckets` 預設值
