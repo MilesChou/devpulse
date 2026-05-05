@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Console\Devpulse;
 
-use App\Domain\Ci\CiProvider;
+use App\Domain\Ci\CiProviderType;
 use App\Models\Group;
 use App\Models\Repo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -25,7 +25,7 @@ class RepoAddCommandTest extends TestCase
 
         $repo = Repo::query()->where('full_name', 'your-org/your-repo')->first();
         $this->assertNotNull($repo);
-        $this->assertSame(CiProvider::Travis, $repo->ci_provider);
+        $this->assertSame(CiProviderType::Travis, $repo->ci_provider);
     }
 
     public function testCreatesRepoWithExplicitProvider(): void
@@ -39,7 +39,7 @@ class RepoAddCommandTest extends TestCase
         ])->assertSuccessful();
 
         $this->assertSame(
-            CiProvider::GitHubActions,
+            CiProviderType::GitHubActions,
             Repo::query()->where('full_name', 'your-org/your-repo')->first()->ci_provider,
         );
     }

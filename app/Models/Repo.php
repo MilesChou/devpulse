@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-use App\Domain\Ci\CiProvider;
+use App\Domain\Ci\CiProviderType;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 /**
  * @property int $id
  * @property string $full_name
- * @property CiProvider $ci_provider
+ * @property CiProviderType $ci_provider
  */
 #[Fillable(['full_name', 'ci_provider'])]
 class Repo extends Model
@@ -31,7 +31,7 @@ class Repo extends Model
     protected function casts(): array
     {
         return [
-            'ci_provider' => CiProvider::class,
+            'ci_provider' => CiProviderType::class,
         ];
     }
 }

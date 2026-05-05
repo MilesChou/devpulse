@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Devpulse;
 
-use App\Domain\Ci\CiProvider;
+use App\Domain\Ci\CiProviderType;
 use App\Models\Group;
 use App\Models\Repo;
 use Illuminate\Console\Attributes\Description;
@@ -34,9 +34,10 @@ class RepoAddCommand extends Command
             return self::FAILURE;
         }
 
-        $ciProvider = CiProvider::tryFrom($ciProviderValue);
+        $ciProvider = CiProviderType::tryFrom($ciProviderValue);
         if ($ciProvider === null) {
-            $allowed = implode(' / ', array_map(static fn (CiProvider $p): string => $p->value, CiProvider::cases()));
+            $values = array_map(static fn (CiProviderType $p): string => $p->value, CiProviderType::cases());
+            $allowed = implode(' / ', $values);
             $this->error("ci-provider 不支援：`{$ciProviderValue}`（允許：{$allowed}）");
 
             return self::FAILURE;
