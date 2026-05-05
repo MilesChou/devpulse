@@ -6,6 +6,7 @@ namespace App\Domain\Ci\Travis;
 
 use App\Domain\Ci\BuildSummary;
 use App\Domain\Ci\CiProvider;
+use App\Support\Saloon\PayloadHelpers;
 use Carbon\CarbonImmutable;
 use Generator;
 use InvalidArgumentException;
@@ -27,8 +28,8 @@ class TravisProvider implements CiProvider
 
         while (true) {
             $response = $this->connector->send(new ListBuildsRequest($repoFullName, $offset, $limit));
-            $payload = $this->stringKeyedArray($response->json());
-            $builds = $this->listOfArrays($payload['builds'] ?? null);
+            $payload = PayloadHelpers::stringKeyedArray($response->json());
+            $builds = PayloadHelpers::listOfArrays($payload['builds'] ?? null);
             if ($builds === []) {
                 break;
             }
@@ -61,8 +62,8 @@ class TravisProvider implements CiProvider
     public function getBuildLog(string $repoFullName, string $externalBuildId): string
     {
         $buildResponse = $this->connector->send(new GetBuildRequest($externalBuildId));
-        $buildPayload = $this->stringKeyedArray($buildResponse->json());
-        $jobs = $this->listOfArrays($buildPayload['jobs'] ?? null);
+        $buildPayload = PayloadHelpers::stringKeyedArray($buildResponse->json());
+        $jobs = PayloadHelpers::listOfArrays($buildPayload['jobs'] ?? null);
 
         $logs = [];
         foreach ($jobs as $job) {
@@ -77,7 +78,7 @@ class TravisProvider implements CiProvider
             }
 
             $logResponse = $this->connector->send(new GetJobLogRequest($jobIdStr));
-            $logPayload = $this->stringKeyedArray($logResponse->json());
+            $logPayload = PayloadHelpers::stringKeyedArray($logResponse->json());
             $content = $logPayload['content'] ?? null;
             if (is_string($content)) {
                 $logs[] = $content;
@@ -85,44 +86,6 @@ class TravisProvider implements CiProvider
         }
 
         return implode("\n", $logs);
-    }
-
-    /**
-     * @param mixed $value
-     * @return array<string, mixed>
-     */
-    private function stringKeyedArray($value): array
-    {
-        if (! is_array($value)) {
-            return [];
-        }
-        $result = [];
-        foreach ($value as $key => $item) {
-            if (is_string($key)) {
-                $result[$key] = $item;
-            }
-        }
-
-        return $result;
-    }
-
-    /**
-     * @param mixed $value
-     * @return list<array<string, mixed>>
-     */
-    private function listOfArrays($value): array
-    {
-        if (! is_array($value)) {
-            return [];
-        }
-        $result = [];
-        foreach ($value as $item) {
-            if (is_array($item)) {
-                $result[] = $this->stringKeyedArray($item);
-            }
-        }
-
-        return $result;
     }
 
     /**

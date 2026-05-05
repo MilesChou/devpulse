@@ -196,7 +196,8 @@ devpulse 是繼承自 Python prototype（`ci_analysis`）的「正規版本」�
 
 ## Open Questions
 
-- HTTP client 選 Guzzle 直用還是 Saloon（Laravel 友善的 API client wrapper）？傾向 Saloon，待 Stage 1 開始時確認
+- ~~HTTP client 選 Guzzle 直用還是 Saloon（Laravel 友善的 API client wrapper）？傾向 Saloon，待 Stage 1 開始時確認~~ → 已選 Saloon（task 3.4）
+- PR `ready_at` 在 GitHub REST API 沒回精確時間戳（draft → ready 切換的時間需要透過 issue events 或 GraphQL `pullRequest.timelineItems` 才能取得）。第一版 `PullRequestSummary::fromGitHubRaw` 用「draft 為 null、非 draft 取 created_at」的近似。task 4.3 改用 GraphQL 抓 review 時可順便精確化；待 4.3 開始時確認
 - aggregator 的 markdown 模板要不要從 Python prototype 的 `report/writer.py` 直接抄？傾向不抄、重新設計，因為 Python 版的 Obsidian transclusion 機制不一定適用
 - 是否提供 Python prototype 的 `.cache/` 目錄轉換工具，讓 PHP 版本能直接吃既有 cache？暫定不做（增加 scope）
 - Grafana 部署形式：Docker compose 跟 PostgreSQL 一起起、還是另外裝一份共用？傾向 Docker compose，待 Stage 2 開始 dashboard-rendering 時確認
