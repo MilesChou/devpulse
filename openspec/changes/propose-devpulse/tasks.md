@@ -11,7 +11,6 @@
 - [x] 2.1 建立 `members`、`groups`、`repos`、`group_repos`、`group_members` 等 migration
 - [x] 2.2 建立對應 Eloquent Model
 - [x] 2.3 建立 Artisan command `devpulse:group:create`、`devpulse:member:add`、`devpulse:repo:add`
-- [ ] 2.4 撰寫測試：group 切換能取得不同 repos 與 members
 
 ## 3. CI 資料抓取
 
@@ -55,6 +54,7 @@
 - [ ] 6.6 實作 daily passed duration 聚合
 - [ ] 6.7 實作 PR 重跑次數聚合
 - [ ] 6.8 撰寫單元測試：每個 aggregator 都有對應測試 fixture
+- [ ] 6.9 撰寫整合測試：指定不同 group 跑 aggregator，能取得對應的 repos 與 members 切片（對應 tool-configuration spec「切換 group 看不同團隊」場景）
 
 ## 7. 失敗 build 分類
 
