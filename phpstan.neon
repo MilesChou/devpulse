@@ -1,0 +1,9 @@
+# See https://github.com/larastan/larastan
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    tmpDir: .phpstan.result.cache
+    level: 9
+    paths:
+        - app/

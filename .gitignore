@@ -23,6 +23,7 @@ Desktop.ini
 .env.backup
 .env.production
 .phpactor.json
+.phpstan.result.cache
 .phpunit.result.cache
 /.codex
 /.cursor/
