@@ -75,7 +75,7 @@
 
 - [ ] 9.1 用 Python prototype（`ci_analysis`）跑出某月 markdown 報告作為 golden
 - [ ] 9.2 用相同月份 + 設定跑 PHP 版，比對失敗率、PR review latency、build 計數的數值
-- [ ] 9.3 文件化「兩版本必須一致」的核心數值清單
+- [x] 9.3 文件化「兩版本必須一致」的核心數值清單
 - [ ] 9.4 若有差異，紀錄差異原因（時區、邊界處理、bug）並修正 PHP 版
 
 ## 10. 文件與收尾
