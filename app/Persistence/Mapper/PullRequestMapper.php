@@ -38,5 +38,4 @@ final class PullRequestMapper
             'raw_payload' => $rawPayload,
         ];
     }
-
 }

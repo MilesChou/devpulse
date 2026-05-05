@@ -21,7 +21,7 @@ class ListBuildsRequest extends Request
 
     public function resolveEndpoint(): string
     {
-        return '/repo/' . rawurlencode((string) $this->repoFullName) . '/builds';
+        return '/repo/' . rawurlencode((string)$this->repoFullName) . '/builds';
     }
 
     /**

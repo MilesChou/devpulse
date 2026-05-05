@@ -19,7 +19,7 @@ final class BuildMapper
         return [
             'repo_id' => $repoId,
             'external_id' => $vo->externalId,
-            'commit_sha' => (string) $vo->commitSha,
+            'commit_sha' => (string)$vo->commitSha,
             'author_account' => $vo->authorAccount,
             'pr_number' => $vo->prNumber,
             'status' => $vo->status->name,
