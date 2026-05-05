@@ -12,7 +12,7 @@
 - 新增聚合與報告產出機制（先以 Artisan command 產出 markdown，不做 Web UI）
 - 新增 `.profile.yaml` 等價的設定機制（config + database），但拔掉特定組織的預設值
 - Python prototype（ci_analysis）保留為 reference / golden output 對照來源，不直接依賴或匯入
-- 非目標（暫不做）：Web Dashboard、CLI binary 分發、認證/權限模型、即時 webhook 接收
+- 非目標（暫不做）：自寫 Web Dashboard（Stage 2 改採 Grafana 直連 PostgreSQL，詳見 design.md Decision 7）、CLI binary 分發、認證/權限模型、即時 webhook 接收
 
 ## Capabilities
 

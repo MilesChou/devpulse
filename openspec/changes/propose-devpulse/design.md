@@ -116,6 +116,36 @@ devpulse 是繼承自 Python prototype（`ci_analysis`）的「正規版本」�
 - 直接刪 Python 版：失去 golden output 對照，重寫風險大幅升高
 - 寫成單向遷移工具：超出 Stage 1 範圍
 
+### Decision 7：view layer 採 markdown + Grafana dashboard 雙軌
+
+**選擇：** 第一版輸出維持 markdown report，將來新增 Grafana dashboard 作為第二個 view layer 直連 PostgreSQL；不自寫 web dashboard、不把 markdown 作為終極唯一輸出
+
+**重新定位：** markdown 的角色從「終極輸出」收斂為「reference 對照 + archive 用途」；dashboard 才是日常閱讀的終極形式
+
+**理由：**
+- Stage 1 終極目標是「有 dashboard 可看」，markdown 是過渡形式不是目標
+- Grafana 直連 PostgreSQL（Decision 3 已選），純 view layer，不重複任何 ETL / aggregator 工作
+- 自寫 web dashboard 在 PHP 為主、前端非主修的脈絡下邊際成本太高，會成為 Stage 2 的大坑
+- markdown 仍要做：兼任 golden output 對照工具（Decision 6）與 wiki / commit 用途
+- Grafana dashboard 是 SQL view + dashboard JSON，可 version control、可重複部署於不同團隊
+- 互動式 filter / variable 支援多 profile 切換，比 markdown 更貼近實際使用情境
+
+**適配度評估：**
+- 月對月對比、daily build duration 趨勢、失敗率 by 成員 × repo、PR review latency by size bucket、失敗 build 清單（含 PR 連結）→ Grafana panel 完全勝任
+- 失敗 build human signal 分類、bot 過濾、CI 屬性翻譯、cache 邏輯 → 仍由 devpulse aggregator / fetcher 做完寫進 DB，Grafana 只讀
+
+**替代方案：**
+- 完全用 Grafana 取代 devpulse：不可行，Grafana 不抓資料、不做業務邏輯分類
+- 完全不用 Grafana、自寫 web dashboard：Stage 2 工作量爆表，且前端不在熟練語言範圍內
+- 只做 markdown 不做 dashboard：違背「目標是 dashboard」的初衷
+
+**Trade-offs：**
+- 多一個 Grafana 部署依賴（Docker compose 多一個服務）
+- dashboard JSON 比 markdown 不直觀，需 version control 紀律
+- 客製化呈現（獨特 metric 公式）會被 Grafana 視覺化能力限制
+
+**範圍邊界：** Stage 1 不寫任何 Grafana dashboard，僅在 PostgreSQL schema 上預留方便 query 的 view 層思維（避免 schema 設計成只方便 Laravel ORM 用）。Grafana dashboard 設計與部署留待 Stage 2，新增獨立 capability `dashboard-rendering`
+
 ## Risks / Trade-offs
 
 - **Risk: Travis API 撈大量歷史資料慢、容易 rate limit** → Mitigation: 用 Laravel Queue + 重試、cache HTTP response（檔案層級，跟 Python prototype 同樣策略）、撈過的月份標記為 immutable 不重撈
@@ -124,6 +154,7 @@ devpulse 是繼承自 Python prototype（`ci_analysis`）的「正規版本」�
 - **Risk: schema 第一版設計錯了之後改很痛** → Mitigation: 先參考 Python prototype 的 dict 結構反推 schema、保留所有 raw response（一個 JSONB 欄位）以便將來補欄位、用 migration 演進
 - **Risk: side project 動力消退而棄坑** → Mitigation: Stage 1 範圍極度收斂（不做 Web、不做 CLI 分發、不做 auth），確保 1~2 個月內能跑出有用的東西
 - **Risk: Python prototype 與 PHP 版本長期並存導致心智雙重負擔** → Mitigation: 明確只把 Python 當 reference，Stage 1 結束後若 PHP 版本能跑出等價結果，就停止 Python 版本的功能演進
+- **Risk: Stage 1 為 markdown 設計的聚合層 schema，在 Grafana dashboard 上 query 起來不順** → Mitigation: schema 設計階段就把「直接 SQL query 也要好寫」當成設計原則之一，避免把所有東西都塞進 raw_payload JSON 欄位、需要的維度欄位拉出來成獨立欄位
 
 ## Migration Plan
 
@@ -138,4 +169,6 @@ devpulse 是繼承自 Python prototype（`ci_analysis`）的「正規版本」�
 - HTTP client 選 Guzzle 直用還是 Saloon（Laravel 友善的 API client wrapper）？傾向 Saloon，待 Stage 1 開始時確認
 - aggregator 的 markdown 模板要不要從 Python prototype 的 `report/writer.py` 直接抄？傾向不抄、重新設計，因為 Python 版的 Obsidian transclusion 機制不一定適用
 - 是否提供 Python prototype 的 `.cache/` 目錄轉換工具，讓 PHP 版本能直接吃既有 cache？暫定不做（增加 scope）
+- Grafana 部署形式：Docker compose 跟 PostgreSQL 一起起、還是另外裝一份共用？傾向 Docker compose，待 Stage 2 開始 dashboard-rendering 時確認
+- Grafana dashboard 的 SQL 由 view 統一封裝（DB 層）還是寫在 dashboard JSON 裡（dashboard 層）？傾向 view 層封裝以便重用，但會綁定資料庫類型，待 Stage 2 評估
 
