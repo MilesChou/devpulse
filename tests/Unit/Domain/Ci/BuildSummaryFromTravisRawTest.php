@@ -9,7 +9,6 @@ use App\Domain\Ci\BuildTrigger;
 use App\Domain\Shared\RepoFullName;
 use App\Infrastructure\Ci\Travis\TravisConnector;
 use App\Infrastructure\Ci\Travis\TravisProvider;
-use InvalidArgumentException;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
 use Tests\TestCase;
@@ -89,44 +88,45 @@ class BuildSummaryFromTravisRawTest extends TestCase
         $this->assertNull($build->durationSeconds);
     }
 
-    public function testThrowsWhenRepositorySlugMissing(): void
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function malformedPayloadFieldProvider(): iterable
     {
-        $payload = $this->payload();
-        unset($payload['repository']);
-
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('repository.slug');
-        $this->parse($payload, raw: true);
+        yield 'missing repository' => ['repository'];
+        yield 'missing commit' => ['commit'];
+        yield 'missing state' => ['state'];
+        yield 'missing started_at and finished_at' => ['started_at_and_finished_at'];
     }
 
-    public function testThrowsWhenCommitShaMissing(): void
+    /**
+     * 真實 Travis 回傳會混入欄位不全的 build（例如 cancelled-before-start）。
+     * provider 應跳過這些壞 payload，繼續處理其他 build，而不是中斷整批。
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('malformedPayloadFieldProvider')]
+    public function testSkipsBuildWithMalformedPayload(string $missingField): void
     {
         $payload = $this->payload();
-        unset($payload['commit']);
+        if ($missingField === 'started_at_and_finished_at') {
+            unset($payload['started_at']);
+        } else {
+            unset($payload[$missingField]);
+        }
 
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('commit.sha');
-        $this->parse($payload, raw: true);
-    }
+        $mock = new MockClient([MockResponse::make(['builds' => [$payload]])]);
+        $connector = new TravisConnector('test-token');
+        $connector->withMockClient($mock);
 
-    public function testThrowsWhenStateMissing(): void
-    {
-        $payload = $this->payload();
-        unset($payload['state']);
+        $provider = new TravisProvider($connector);
+        $builds = iterator_to_array(
+            $provider->listBuildsInMonth(
+                new RepoFullName('your-org/your-repo'),
+                \App\Domain\Shared\MonthRange::fromString('2026-04'),
+            ),
+            false,
+        );
 
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('state');
-        $this->parse($payload, raw: true);
-    }
-
-    public function testThrowsWhenStartedAtMissing(): void
-    {
-        $payload = $this->payload();
-        unset($payload['started_at']);
-
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('started_at');
-        $this->parse($payload, raw: true);
+        $this->assertSame([], $builds);
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Aggregation;
 
 use App\Aggregation\Dto\DailyBuildDuration;
+use App\Domain\Ci\BuildStatus;
 use App\Domain\Shared\MonthRange;
 use App\Domain\Shared\RepoFullName;
 use App\Models\Build;
@@ -25,7 +26,7 @@ final class DailyBuildDurationQuery
             ->whereIn('repo_id', $group->repoIds())
             ->where('started_at', '>=', $month->start)
             ->where('started_at', '<', $month->end)
-            ->where('status', 'passed')
+            ->where('status', BuildStatus::PASSED->name)
             ->whereNotNull('duration_seconds')
             ->join('repos', 'repos.id', '=', 'builds.repo_id')
             ->select(['repos.full_name as repo_full_name', 'builds.duration_seconds', 'builds.started_at'])

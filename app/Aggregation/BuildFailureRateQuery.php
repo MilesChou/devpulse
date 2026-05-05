@@ -52,7 +52,7 @@ final class BuildFailureRateQuery
                 'repos.full_name as repo_full_name',
                 'builds.author_account',
                 DB::raw('COUNT(*) as total'),
-                DB::raw('SUM(CASE WHEN builds.is_failure = 1 THEN 1 ELSE 0 END) as failures'),
+                DB::raw('SUM(CASE WHEN builds.is_failure THEN 1 ELSE 0 END) as failures'),
             ])
             ->groupBy('repos.full_name', 'builds.author_account')
             ->get();

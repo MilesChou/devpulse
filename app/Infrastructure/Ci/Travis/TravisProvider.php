@@ -25,12 +25,17 @@ class TravisProvider implements CiProvider
     }
 
     /**
+     * Travis API 的 sort_by=id:desc 不嚴格等於時間倒序：cancelled / re-run / pull_request
+     * vs push 的 build id 與時間軸會交錯。所以「遇到第一筆早於月份就 break」是錯的，
+     * 必須累積「連續 N 筆早於月份」才能安全停（沿用 Python prototype 的 50 筆閾值）。
+     *
      * @return Generator<int, BuildSummary>
      */
     public function listBuildsInMonth(RepoFullName $repoFullName, MonthRange $month): Generator
     {
         $offset = 0;
-        $limit = 25;
+        $limit = 100;
+        $consecutiveBelow = 0;
 
         while (true) {
             $response = $this->connector->send(new ListBuildsRequest($repoFullName, $offset, $limit));
@@ -40,22 +45,34 @@ class TravisProvider implements CiProvider
                 break;
             }
 
-            $reachedOlderThanRange = false;
+            $stop = false;
             foreach ($builds as $rawBuild) {
-                $build = $this->parseBuild($rawBuild);
+                try {
+                    $build = $this->parseBuild($rawBuild);
+                } catch (InvalidArgumentException) {
+                    // 跳過無法解析的 build（例如 state=canceled 且 started_at / finished_at 都 null）
+                    // 這類 build 沒有時間軸資訊、無法歸入任何月份，硬要 throw 會中斷整批
+                    continue;
+                }
 
                 if ($build->startedAt->greaterThanOrEqualTo($month->end)) {
+                    $consecutiveBelow = 0;
                     continue;
                 }
                 if ($build->startedAt->lessThan($month->start)) {
-                    $reachedOlderThanRange = true;
+                    $consecutiveBelow++;
+                    if ($consecutiveBelow >= 50) {
+                        $stop = true;
+                        break;
+                    }
                     continue;
                 }
 
+                $consecutiveBelow = 0;
                 yield $build;
             }
 
-            if ($reachedOlderThanRange) {
+            if ($stop) {
                 break;
             }
             if (count($builds) < $limit) {
@@ -112,8 +129,14 @@ class TravisProvider implements CiProvider
         if (! is_string($raw['event_type'] ?? null)) {
             throw new InvalidArgumentException('Travis payload missing event_type');
         }
-        if (! is_string($raw['started_at'] ?? null)) {
-            throw new InvalidArgumentException('Travis payload missing started_at');
+        // Travis 對 state=canceled / errored 的 build，started_at 可能為 null
+        // 退而求其次用 finished_at；都沒有才 throw（這種 build 確實沒時間軸可放）
+        $startedAtRaw = $raw['started_at'] ?? null;
+        if (! is_string($startedAtRaw)) {
+            $startedAtRaw = $raw['finished_at'] ?? null;
+        }
+        if (! is_string($startedAtRaw)) {
+            throw new InvalidArgumentException('Travis payload missing started_at and finished_at');
         }
 
         $branchName = is_array($branch) && is_string($branch['name'] ?? null)
@@ -133,29 +156,22 @@ class TravisProvider implements CiProvider
 
         $duration = $raw['duration'] ?? null;
 
-        $authorLogin = is_array($commit) && is_string($commit['author_name'] ?? null)
-            ? $commit['author_name']
-            : null;
-
-        // Travis commit.author_name 是顯示名稱，author_email / committer_* 也可能有
-        // 但統計用的 account 需要 GitHub login；此處先存 committer_email 作為 fallback，
-        // 真實 GitHub login 應由呼叫端在抓完 PR 資料後透過 GitHubProvider 補齊。
-        $authorEmail = is_array($commit) && is_string($commit['committer_email'] ?? null)
-            ? $commit['committer_email']
-            : null;
-
+        // Travis commit payload 只有 author.name（顯示名）+ avatar_url，無 GitHub login 也無 email。
+        // 真正的 GitHub login 必須由 caller（FetchOrchestrator）抓完 builds 後，
+        // 用 commit sha 透過 GitHubProvider::getCommitAuthorAccount(s) 補齊。
+        // 這裡留 null，避免「假的 author_account 污染下游 query」。
         $prNum = $raw['pull_request_number'] ?? null;
 
         return new BuildSummary(
             externalId: $externalId,
             repoFullName: new RepoFullName($repository['slug']),
             commitSha: new CommitSha($commit['sha']),
-            authorAccount: $authorEmail ?? $authorLogin,
+            authorAccount: null,
             prNumber: is_int($prNum) ? $prNum : null,
             status: $status,
             trigger: $this->resolveTrigger($raw['event_type'], $branchName),
             branch: $branchName,
-            startedAt: CarbonImmutable::parse($raw['started_at'])->utc(),
+            startedAt: CarbonImmutable::parse($startedAtRaw)->utc(),
             durationSeconds: is_int($duration) ? $duration : null,
         );
     }
