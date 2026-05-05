@@ -109,6 +109,7 @@ make test       # 只跑 phpunit
 
 - [docs/group-setup.md](docs/group-setup.md) — group / member / repo / human signals 設定
 - [docs/migration-from-prototype.md](docs/migration-from-prototype.md) — 什麼時候可以 retire Python prototype
+- [grafana/README.md](grafana/README.md) — 本機 Grafana dashboard（接 PostgreSQL）
 - [openspec/changes/propose-devpulse/](openspec/changes/propose-devpulse/) — 完整 spec、design decisions、tasks
 
 ## 技術棧

@@ -1,0 +1,231 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "title": "失敗率（成員 × repo；failed+errored / (total - canceled)）",
+      "description": "排除 is_post_merge 與 is_deploy_event。對照月報第 1 表。",
+      "type": "table",
+      "id": 1,
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 0},
+      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"align": "left"}
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "format": "table",
+          "rawSql": "WITH base AS (SELECT m.display_name AS member, r.full_name AS repo, b.status, b.is_failure FROM builds b JOIN repos r ON r.id = b.repo_id JOIN members m ON m.github_account = b.author_account JOIN group_repos gr ON gr.repo_id = r.id JOIN group_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND NOT b.is_post_merge AND NOT b.is_deploy_event), agg AS (SELECT member, repo, COUNT(*) FILTER (WHERE status <> 'CANCELED') AS denom, COUNT(*) FILTER (WHERE is_failure AND status <> 'CANCELED') AS fails FROM base GROUP BY member, repo) SELECT member, repo, CASE WHEN denom > 0 THEN fails || '/' || denom || ' (' || (fails * 100 / denom) || '%)' ELSE '-' END AS rate FROM agg ORDER BY member, repo"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {"columnField": "repo", "rowField": "member", "valueField": "rate", "emptyValue": "-"}
+        }
+      ]
+    },
+    {
+      "title": "失敗成本（成員 × repo；GHA Linux $0.008/min）",
+      "description": "(failed+errored) duration 加總 × $0.008/min。canceled 不計。對照月報第 2 表。",
+      "type": "table",
+      "id": 2,
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 9},
+      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"align": "left"}
+        },
+        "overrides": []
+      },
+      "options": {"showHeader": true, "cellHeight": "sm"},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "format": "table",
+          "rawSql": "WITH base AS (SELECT m.display_name AS member, r.full_name AS repo, COALESCE(SUM(b.duration_seconds) FILTER (WHERE b.is_failure AND b.status <> 'CANCELED'), 0) / 60.0 * 0.008 AS cost FROM builds b JOIN repos r ON r.id = b.repo_id JOIN members m ON m.github_account = b.author_account JOIN group_repos gr ON gr.repo_id = r.id JOIN group_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND NOT b.is_post_merge AND NOT b.is_deploy_event GROUP BY m.display_name, r.full_name) SELECT member, repo, CASE WHEN cost > 0 THEN '$' || to_char(cost, 'FM999990.00') ELSE '-' END AS cost FROM base ORDER BY member, repo"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {"columnField": "repo", "rowField": "member", "valueField": "cost", "emptyValue": "-"}
+        }
+      ]
+    },
+    {
+      "title": "PR 迭代次數（成員 × repo；builds / PRs）",
+      "description": "理想 = 1.0；越高代表 PR 反覆推 commit。對照月報第 3 表。",
+      "type": "table",
+      "id": 3,
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 18},
+      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+      "fieldConfig": {
+        "defaults": {"custom": {"align": "left"}},
+        "overrides": []
+      },
+      "options": {"showHeader": true, "cellHeight": "sm"},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "format": "table",
+          "rawSql": "WITH pr_builds AS (SELECT m.display_name AS member, r.full_name AS repo, b.pr_number, COUNT(*) AS build_count FROM builds b JOIN repos r ON r.id = b.repo_id JOIN members m ON m.github_account = b.author_account JOIN group_repos gr ON gr.repo_id = r.id JOIN group_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND b.is_pull_request AND b.pr_number IS NOT NULL GROUP BY m.display_name, r.full_name, b.pr_number), agg AS (SELECT member, repo, SUM(build_count)::int AS builds, COUNT(*)::int AS prs FROM pr_builds GROUP BY member, repo) SELECT member, repo, CASE WHEN prs > 0 THEN builds || '/' || prs || ' (' || to_char(builds::float / prs, 'FM990.0') || ')' ELSE '-' END AS iteration FROM agg ORDER BY member, repo"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {"columnField": "repo", "rowField": "member", "valueField": "iteration", "emptyValue": "-"}
+        }
+      ]
+    },
+    {
+      "title": "PR size × Review latency（中位 / p90 / p100，含未 review lower bound，小時）",
+      "description": "對照月報第 4 表。未 review PR 用「now（或月底）- ready_at」當 lower bound。",
+      "type": "table",
+      "id": 4,
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 27},
+      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+      "fieldConfig": {"defaults": {"custom": {"align": "left"}}, "overrides": []},
+      "options": {"showHeader": true, "cellHeight": "sm"},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "format": "table",
+          "rawSql": "WITH base AS (SELECT pr.size_bucket, EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0 AS lat_h, (pr.first_review_at IS NULL) AS unreviewed FROM pull_requests pr JOIN repos r ON r.id = pr.repo_id JOIN group_repos gr ON gr.repo_id = r.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL), per_bucket AS (SELECT size_bucket AS bucket, to_char(percentile_cont(0.5) WITHIN GROUP (ORDER BY lat_h), 'FM990.0') || 'h' AS median, to_char(percentile_cont(0.9) WITHIN GROUP (ORDER BY lat_h), 'FM990.0') || 'h' AS p90, to_char(MAX(lat_h), 'FM990.0') || 'h' AS p100, COUNT(*)::text AS n, NULLIF(COUNT(*) FILTER (WHERE unreviewed)::text, '0') AS unreviewed FROM base GROUP BY size_bucket), overall AS (SELECT 'Overall' AS bucket, to_char(percentile_cont(0.5) WITHIN GROUP (ORDER BY lat_h), 'FM990.0') || 'h' AS median, to_char(percentile_cont(0.9) WITHIN GROUP (ORDER BY lat_h), 'FM990.0') || 'h' AS p90, to_char(MAX(lat_h), 'FM990.0') || 'h' AS p100, COUNT(*)::text AS n, NULLIF(COUNT(*) FILTER (WHERE unreviewed)::text, '0') AS unreviewed FROM base), combined AS (SELECT * FROM per_bucket UNION ALL SELECT * FROM overall) SELECT bucket, median, p90, p100, n, unreviewed FROM combined ORDER BY CASE bucket WHEN 'XS' THEN 1 WHEN 'S' THEN 2 WHEN 'M' THEN 3 WHEN 'L' THEN 4 WHEN 'XL' THEN 5 WHEN 'Overall' THEN 6 ELSE 99 END"
+        }
+      ]
+    },
+    {
+      "title": "PR review latency（成員 × size；中位 / p90 (n=N)，小時）",
+      "description": "對照月報第 5 表。",
+      "type": "table",
+      "id": 5,
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 27},
+      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+      "fieldConfig": {"defaults": {"custom": {"align": "left"}}, "overrides": []},
+      "options": {"showHeader": true, "cellHeight": "sm"},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "format": "table",
+          "rawSql": "WITH base AS (SELECT m.display_name AS member, pr.size_bucket, EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0 AS lat_h FROM pull_requests pr JOIN repos r ON r.id = pr.repo_id JOIN members m ON m.github_account = pr.author_account JOIN group_repos gr ON gr.repo_id = r.id JOIN group_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL) SELECT member, size_bucket, to_char(percentile_cont(0.5) WITHIN GROUP (ORDER BY lat_h), 'FM990.0') || 'h/' || to_char(percentile_cont(0.9) WITHIN GROUP (ORDER BY lat_h), 'FM990.0') || 'h (n=' || COUNT(*) || ')' AS cell FROM base GROUP BY member, size_bucket ORDER BY member, CASE size_bucket WHEN 'XS' THEN 1 WHEN 'S' THEN 2 WHEN 'M' THEN 3 WHEN 'L' THEN 4 WHEN 'XL' THEN 5 ELSE 99 END"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {"columnField": "size_bucket", "rowField": "member", "valueField": "cell", "emptyValue": "-"}
+        }
+      ]
+    },
+    {
+      "title": "每日 passed build 中位時間（每 repo 一條，分鐘）",
+      "description": "對照月報第 6 項。passed only，不過濾成員。",
+      "type": "timeseries",
+      "id": 6,
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 36},
+      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 0, "showPoints": "always", "spanNulls": true},
+          "unit": "m"
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {"mode": "multi"},
+        "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"]}
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "format": "time_series",
+          "rawSql": "SELECT date_trunc('day', b.started_at) AS time, r.full_name AS metric, percentile_cont(0.5) WITHIN GROUP (ORDER BY b.duration_seconds) / 60.0 AS value FROM builds b JOIN repos r ON r.id = b.repo_id JOIN group_repos gr ON gr.repo_id = r.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND b.status = 'PASSED' AND b.duration_seconds IS NOT NULL AND NOT b.is_post_merge AND NOT b.is_deploy_event GROUP BY 1, 2 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "title": "失敗 build 清單（無 cause）",
+      "description": "對照月報第 7 項。cause 分類待 schema + classifier 接入後再加。",
+      "type": "table",
+      "id": 7,
+      "gridPos": {"h": 16, "w": 24, "x": 0, "y": 46},
+      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+      "fieldConfig": {
+        "defaults": {"custom": {"align": "left"}},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "duration_min"}, "properties": [{"id": "unit", "value": "m"}, {"id": "displayName", "value": "duration"}]},
+          {"matcher": {"id": "byName", "options": "cost_usd"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "displayName", "value": "cost"}]}
+        ]
+      },
+      "options": {"showHeader": true, "cellHeight": "sm"},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "format": "table",
+          "rawSql": "SELECT b.started_at AS \"date\", m.display_name AS \"member\", r.full_name AS \"repo\", b.status AS \"state\", b.external_id AS \"build\", b.branch AS \"branch\", b.duration_seconds / 60.0 AS \"duration_min\", CASE WHEN b.status <> 'CANCELED' THEN b.duration_seconds / 60.0 * 0.008 ELSE 0 END AS \"cost_usd\" FROM builds b JOIN repos r ON r.id = b.repo_id JOIN members m ON m.github_account = b.author_account JOIN group_repos gr ON gr.repo_id = r.id JOIN group_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND b.is_failure AND NOT b.is_post_merge AND NOT b.is_deploy_event ORDER BY b.started_at DESC LIMIT 500"
+        }
+      ]
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": ["devpulse"],
+  "templating": {
+    "list": [
+      {
+        "name": "group",
+        "label": "Group",
+        "type": "query",
+        "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+        "definition": "SELECT slug FROM groups ORDER BY slug",
+        "query": "SELECT slug FROM groups ORDER BY slug",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "refresh": 1,
+        "sort": 1
+      }
+    ]
+  },
+  "time": {"from": "now-90d", "to": "now"},
+  "timepicker": {},
+  "timezone": "",
+  "title": "devpulse overview",
+  "uid": "devpulse-overview",
+  "version": 5,
+  "weekStart": ""
+}
