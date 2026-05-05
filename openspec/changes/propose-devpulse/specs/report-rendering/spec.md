@@ -51,6 +51,6 @@
 
 #### Scenario: 兩版本結果對得起來
 
-- **WHEN** 使用者對同一個月份在兩個系統上跑相同 profile
+- **WHEN** 使用者對同一個月份在兩個系統上跑相同 group
 - **THEN** 兩個系統的失敗率、PR review latency、build 計數等核心數值相等
 

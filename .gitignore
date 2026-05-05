@@ -46,7 +46,7 @@ Homestead.json
 Homestead.yaml
 
 # devpulse local config
-.profile.yaml
+.group.yaml
 /database/database.sqlite
 
 # AI

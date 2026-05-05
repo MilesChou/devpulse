@@ -9,14 +9,14 @@
 - **WHEN** 使用者跑月報
 - **THEN** 報表的成員欄是設定中的顯示名稱（例如「Member1」），不是 GitHub login（例如「user-1」）
 
-### Requirement: 不同團隊或場景可以用不同 profile
+### Requirement: 不同團隊或場景可以用不同 group
 
-使用者 MUST 能設定多個 profile，每個 profile 含不同的 repos 與成員，讓「自己團隊」、「友隊」、「未來其他部署場景」可以分開觀測。
+使用者 MUST 能設定多個 group，每個 group 含不同的 repos 與成員，讓「自己團隊」、「友隊」、「未來其他部署場景」可以分開觀測。
 
-#### Scenario: 切換 profile 看不同團隊
+#### Scenario: 切換 group 看不同團隊
 
-- **WHEN** 使用者跑月報並指定不同 profile
-- **THEN** 系統依該 profile 的 repos 與 members 統計，不混到別的 profile
+- **WHEN** 使用者跑月報並指定不同 group
+- **THEN** 系統依該 group 的 repos 與 members 統計，不混到別的 group
 
 ### Requirement: 工具與特定組織解耦
 

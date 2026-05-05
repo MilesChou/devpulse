@@ -21,8 +21,8 @@ return [
     | Excluded bots
     |--------------------------------------------------------------------------
     |
-    | 開的 PR、留的 review 都會被排除在統計外。值對應 GitHub login。
-    | 使用者可在 .profile.yaml 或對應 DB profile 覆寫此清單。
+    | 開的 PR、留的 review 都會被排除在統計外。值對應 GitHub account。
+    | 使用者可在 .group.yaml 或對應 DB group 覆寫此清單。
     |
     */
 
@@ -41,7 +41,7 @@ return [
     |
     | 以 PR 改動的「總行數（additions + deletions）」分桶。
     | 鍵為桶名，值為「上限（不含）」；最後一個桶的上限為 null 代表無上限。
-    | 使用者可在 profile 層覆寫。
+    | 使用者可在 group 層覆寫。
     |
     */
 

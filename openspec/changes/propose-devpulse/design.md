@@ -93,15 +93,15 @@ devpulse 是繼承自 Python prototype（`ci_analysis`）的「正規版本」�
 
 **選擇：**
 - 不變的、跨環境共用的（PR size buckets、bot 排除清單）→ `config/devpulse.php`
-- 會變的、跟組織/團隊綁定的（people、repos、profiles）→ DB table（可由 seeder / artisan command 管理）
+- 會變的、跟組織/團隊綁定的（people、repos、groups）→ DB table（可由 seeder / artisan command 管理）
 
 **理由：**
-- Python prototype 把所有東西堆在 `.profile.yaml` 裡，部署到不同團隊時要手動修改 yaml，繁瑣
-- DB 化的好處：將來 Web UI 可以直接編輯、可以多 profile 並存
+- Python prototype 把所有東西堆在 `.profile.yaml` 裡（devpulse 採 `.group.yaml`），部署到不同團隊時要手動修改 yaml，繁瑣
+- DB 化的好處：將來 Web UI 可以直接編輯、可以多 group 並存
 
 **替代方案：**
 - 全部塞 yaml：與 prototype 一樣的痛
-- 全部塞 config：靜態化，多 profile / 動態切換麻煩
+- 全部塞 config：靜態化，多 group / 動態切換麻煩
 
 ### Decision 6：Python prototype 保留作為 reference / golden output
 
@@ -128,7 +128,7 @@ devpulse 是繼承自 Python prototype（`ci_analysis`）的「正規版本」�
 - 自寫 web dashboard 在 PHP 為主、前端非主修的脈絡下邊際成本太高，會成為 Stage 2 的大坑
 - markdown 仍要做：兼任 golden output 對照工具（Decision 6）與 wiki / commit 用途
 - Grafana dashboard 是 SQL view + dashboard JSON，可 version control、可重複部署於不同團隊
-- 互動式 filter / variable 支援多 profile 切換，比 markdown 更貼近實際使用情境
+- 互動式 filter / variable 支援多 group 切換，比 markdown 更貼近實際使用情境
 
 **適配度評估：**
 - 月對月對比、daily build duration 趨勢、失敗率 by 成員 × repo、PR review latency by size bucket、失敗 build 清單（含 PR 連結）→ Grafana panel 完全勝任
@@ -191,7 +191,7 @@ devpulse 是繼承自 Python prototype（`ci_analysis`）的「正規版本」�
 
 僅需確認：
 - Python prototype（`ci_analysis`）保留可執行狀態，作為 reference
-- devpulse 第一版的 settings 結構不要與 Python 的 `.profile.yaml` 強相依（不要做 import yaml 工具，會綁住 schema）
+- devpulse 第一版的 settings 結構（`.group.yaml`）不要與 Python 的 `.profile.yaml` 強相依（不要做 import yaml 工具，會綁住 schema）
 
 ## Open Questions
 

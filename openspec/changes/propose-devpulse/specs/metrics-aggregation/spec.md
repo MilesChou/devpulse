@@ -6,7 +6,7 @@
 
 #### Scenario: 月失敗率計算
 
-- **WHEN** 使用者指定 profile（含成員與 repo）與月份
+- **WHEN** 使用者指定 group（含成員與 repo）與月份
 - **THEN** 系統提供每個 (成員, repo) 組合的：執行總數、失敗數、失敗率
 
 ### Requirement: 失敗率預設排除非個人責任的執行

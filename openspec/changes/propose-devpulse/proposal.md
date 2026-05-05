@@ -10,7 +10,7 @@
 - 新增 CI 資料抓取層內部以 provider 抽象隔離具體 CI 服務，第一版只實作 Travis，預留 GitHub Actions 等未來擴充
 - 新增持久化資料庫（PostgreSQL），取代 Python prototype 的 file-based cache
 - 新增聚合與報告產出機制（先以 Artisan command 產出 markdown，不做 Web UI）
-- 新增 `.profile.yaml` 等價的設定機制（config + database），但拔掉特定組織的預設值
+- 新增 `.group.yaml` 等價的設定機制（config + database），但拔掉特定組織的預設值
 - Python prototype（ci_analysis）保留為 reference / golden output 對照來源，不直接依賴或匯入
 - 非目標（暫不做）：自寫 Web Dashboard（Stage 2 改採 Grafana 直連 PostgreSQL，詳見 design.md Decision 7）、CLI binary 分發、認證/權限模型、即時 webhook 接收
 
@@ -23,7 +23,7 @@
 - `metrics-aggregation`: 把 raw build / PR / review 資料聚合成研發效能指標（CI 失敗率、PR review latency、PR size 分桶、月對月對比）
 - `metrics-persistence`: 把抓回的 raw data 與聚合結果持久化到 PostgreSQL，支援後續查詢與長期累積
 - `report-rendering`: 將聚合結果以 markdown 形式輸出（為 Stage 2 的 Grafana dashboard 預留共用聚合層 / view layer 分離，詳見 design.md Decision 7）
-- `tool-configuration`: 提供 `.profile.yaml` 等價的設定機制，定義成員清單、repo 清單、bot 排除名單、PR size 分桶、human signal 規則
+- `tool-configuration`: 提供 `.group.yaml` 等價的設定機制，定義成員清單、repo 清單、bot 排除名單、PR size 分桶、human signal 規則
 
 ### Modified Capabilities
 
@@ -34,7 +34,7 @@
 - **程式碼**：本 repo 從零建立，採 Laravel 標準骨架
 - **依賴**：PHP 8.3+、Laravel 13、PostgreSQL（開發階段先用 SQLite）、Guzzle/Saloon（HTTP client）、Carbon（datetime）
 - **外部 API**：GitHub REST/GraphQL API、Travis CI API（需 personal token）
-- **設定**：新增 `.env`（API token）、`config/devpulse.php`（profile 設定）
+- **設定**：新增 `.env`（API token）、`config/devpulse.php`（group 設定）
 - **參考來源**：Python prototype（`ci_analysis`），保留不動，僅作為對照
 - **不影響**：Python prototype 所在 repo 的既有運作；prototype 仍可獨立執行
 
