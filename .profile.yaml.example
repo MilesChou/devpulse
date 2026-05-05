@@ -1,0 +1,43 @@
+# devpulse profile 範例
+#
+# 把此檔複製為 .profile.yaml 並填入實際值。
+# 一個 profile 對應一組「成員 + 觀測 repo」的組合，可以建立多個 profile
+# 分別觀測「自己團隊」、「友隊」等不同範圍。
+#
+# 此檔案不會被 commit（請見 .gitignore）。
+# 用 `php artisan db:seed --class=ProfileSeeder` 載入此檔到資料庫。
+
+profiles:
+  - name: my-team
+    description: 範例 profile —— 替換為你想觀測的團隊
+    repos:
+      - your-org/your-repo
+      - your-org/another-repo
+    members:
+      - display_name: Member1
+        github_login: user-1
+      - display_name: Member2
+        github_login: user-2
+
+# 額外（選填）：覆寫 config/devpulse.php 的預設值
+# excluded_bots:
+#   - extra-bot[bot]
+#
+# pr_size_buckets:
+#   XS: 100
+#   S: 300
+#   M: 600
+#   L: 1500
+#   XL: ~  # null = 無上限
+
+# repo 專屬的 human signal 規則（task 7.1）
+# repo_signals:
+#   your-org/your-repo:
+#     - name: lint
+#       any_of:
+#         - all_of:
+#             - "make phpcs"
+#             - "phpcs.xml"
+#         - all_of:
+#             - "phpunit"
+#             - "FAILURES!"
