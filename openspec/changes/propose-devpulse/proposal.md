@@ -10,7 +10,7 @@
 - 新增 CI 資料抓取層內部以 provider 抽象隔離具體 CI 服務，第一版只實作 Travis，預留 GitHub Actions 等未來擴充
 - 新增持久化資料庫（PostgreSQL），取代 Python prototype 的 file-based cache
 - 新增聚合與報告產出機制（先以 Artisan command 產出 markdown，不做 Web UI）
-- 新增 `.group.yaml` 等價的設定機制（config + database），但拔掉特定組織的預設值
+- 新增以 config（不變值）+ database（會變值，透過 CLI 維護）為主的設定機制；不保留 prototype 時代的 yaml 入口
 - Python prototype（ci_analysis）保留為 reference / golden output 對照來源，不直接依賴或匯入
 - 非目標（暫不做）：自寫 Web Dashboard（Stage 2 改採 Grafana 直連 PostgreSQL，詳見 design.md Decision 7）、CLI binary 分發、認證/權限模型、即時 webhook 接收
 
@@ -23,7 +23,7 @@
 - `metrics-aggregation`: 把 raw build / PR / review 資料聚合成研發效能指標（CI 失敗率、PR review latency、PR size 分桶、月對月對比）
 - `metrics-persistence`: 把抓回的 raw data 與聚合結果持久化到 PostgreSQL，支援後續查詢與長期累積
 - `report-rendering`: 將聚合結果以 markdown 形式輸出（為 Stage 2 的 Grafana dashboard 預留共用聚合層 / view layer 分離，詳見 design.md Decision 7）
-- `tool-configuration`: 提供 `.group.yaml` 等價的設定機制，定義成員清單、repo 清單、bot 排除名單、PR size 分桶、human signal 規則
+- `tool-configuration`: 透過 config（不變值）+ DB（會變值，CLI 維護）定義成員清單、repo 清單、bot 排除名單、PR size 分桶、human signal 規則
 
 ### Modified Capabilities
 

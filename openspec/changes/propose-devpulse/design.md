@@ -96,8 +96,9 @@ devpulse 是繼承自 Python prototype（`ci_analysis`）的「正規版本」�
 - 會變的、跟組織/團隊綁定的（people、repos、groups）→ DB table（可由 seeder / artisan command 管理）
 
 **理由：**
-- Python prototype 把所有東西堆在 `.profile.yaml` 裡（devpulse 採 `.group.yaml`），部署到不同團隊時要手動修改 yaml，繁瑣
-- DB 化的好處：將來 Web UI 可以直接編輯、可以多 group 並存
+- Python prototype 把所有東西堆在 `.profile.yaml` 裡，部署到不同團隊時要手動修改 yaml，繁瑣
+- DB 化是更乾淨的設計：CLI 可建立 / 修改、將來 Web UI 可以直接編輯、可以多 group 並存
+- devpulse 不再保留 yaml 路徑：DB 已經是 source of truth，yaml 只會變成「stale 或衝突的第二份事實」
 
 **替代方案：**
 - 全部塞 yaml：與 prototype 一樣的痛
@@ -191,7 +192,7 @@ devpulse 是繼承自 Python prototype（`ci_analysis`）的「正規版本」�
 
 僅需確認：
 - Python prototype（`ci_analysis`）保留可執行狀態，作為 reference
-- devpulse 第一版的 settings 結構（`.group.yaml`）不要與 Python 的 `.profile.yaml` 強相依（不要做 import yaml 工具，會綁住 schema）
+- devpulse 第一版設定一律走 DB（透過 Artisan command 建立），不提供 yaml 載入；Python prototype 的 `.profile.yaml` 不會直接被 import（避免 schema 綁住、且 DB 已成為 source of truth）
 
 ## Open Questions
 

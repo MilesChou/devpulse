@@ -4,16 +4,14 @@
 - [x] 1.2 設定本機開發資料庫（先用 SQLite，可切 PostgreSQL）
 - [x] 1.3 建立 `.env.example` 包含 `GITHUB_TOKEN`、`TRAVIS_TOKEN` placeholder 與註解說明取得方式
 - [x] 1.4 建立 `config/devpulse.php` 包含 `excluded_bots`、`pr_size_buckets` 預設值
-- [x] 1.5 建立 `.group.yaml.example`（org-agnostic，placeholder 為主）
-- [x] 1.6 設定 PHPUnit、PHPCS、PHPStan、GitHub Actions CI
+- [x] 1.5 設定 PHPUnit、PHPCS、PHPStan、GitHub Actions CI
 
 ## 2. 設定機制
 
 - [x] 2.1 建立 `members`、`groups`、`repos`、`group_repos`、`group_members` 等 migration
 - [x] 2.2 建立對應 Eloquent Model
 - [x] 2.3 建立 Artisan command `devpulse:group:create`、`devpulse:member:add`、`devpulse:repo:add`
-- [ ] 2.4 建立 seeder，能從 `.group.yaml.example` 載入範例設定
-- [ ] 2.5 撰寫測試：group 切換能取得不同 repos 與 members
+- [ ] 2.4 撰寫測試：group 切換能取得不同 repos 與 members
 
 ## 3. CI 資料抓取
 
@@ -86,5 +84,5 @@
 - [ ] 10.2 撰寫 `docs/group-setup.md`：如何設定 group / members / repos / human_signals
 - [ ] 10.3 撰寫 `docs/migration-from-prototype.md`：給未來的自己看，什麼時候 retire Python prototype
 - [ ] 10.4 加 LICENSE（建議 MIT）
-- [ ] 10.5 確認 `.gitignore` 排除 `.env`、`.group.yaml`、本機 cache 目錄
+- [ ] 10.5 確認 `.gitignore` 排除 `.env`、本機 cache 目錄
 
