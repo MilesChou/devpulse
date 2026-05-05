@@ -9,6 +9,11 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
+/**
+ * @property int $id
+ * @property string $full_name
+ * @property CiProvider $ci_provider
+ */
 #[Fillable(['full_name', 'ci_provider'])]
 class Repo extends Model
 {
