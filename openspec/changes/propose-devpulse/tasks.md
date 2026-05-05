@@ -19,9 +19,9 @@
 - [x] 3.3 在 `AppServiceProvider` 把 CI provider 抽象介面預設綁定到 Travis 實作
 - [x] 3.4 實作 Travis provider，包含 API client（Saloon 或 Guzzle）、token 注入
 - [x] 3.5 在 Travis provider 實作 `BuildSummary::fromTravisRaw()` named constructor，把原生欄位翻譯成 VO（如 event_type=push + branch=master → `isPostMerge()` 為真）
-- [ ] 3.6 加上 retry middleware 處理 rate limit / 5xx
+- [x] 3.6 加上 retry middleware 處理 rate limit / 5xx
 - [x] 3.7 撰寫單元測試：VO 不變式違反時 throw、`isPostMerge()` 等規則正確
-- [ ] 3.8 撰寫整合測試：用 cassette 或 mock server 模擬 Travis 回應
+- [x] 3.8 撰寫整合測試：用 cassette 或 mock server 模擬 Travis 回應
 
 ## 4. GitHub 資料抓取
 
