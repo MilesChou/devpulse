@@ -5,7 +5,7 @@
 ## What Changes
 
 - 新增 `devpulse` 為本 repo 的工具名稱（取代原本探索性的 `coverdiff`），定位為「研發效能觀測工具」
-- 新增 PHP Laravel 為主技術棧（取代 Python prototype 的角色），使用最新 LTS 版本
+- 新增 PHP Laravel 為主技術棧（取代 Python prototype 的角色），使用撰寫當下的最新穩定版（Laravel 13）
 - 新增資料抓取層：GitHub API（PR、commit author、PR review）+ Travis API（build 歷史）
 - 新增 CI provider 抽象介面，第一版只實作 Travis，預留 GitHub Actions 等未來擴充
 - 新增持久化資料庫（PostgreSQL），取代 Python prototype 的 file-based cache
@@ -33,7 +33,7 @@
 ## Impact
 
 - **程式碼**：本 repo 從零建立，採 Laravel 標準骨架
-- **依賴**：PHP 8.x、Laravel 11/12、PostgreSQL、Guzzle/Saloon（HTTP client）、Carbon（datetime）
+- **依賴**：PHP 8.3+、Laravel 13、PostgreSQL（開發階段先用 SQLite）、Guzzle/Saloon（HTTP client）、Carbon（datetime）
 - **外部 API**：GitHub REST/GraphQL API、Travis CI API（需 personal token）
 - **設定**：新增 `.env`（API token）、`config/devpulse.php`（profile 設定）
 - **參考來源**：Python prototype（`ci_analysis`），保留不動，僅作為對照

@@ -33,7 +33,7 @@ devpulse 是繼承自 Python prototype（`ci_analysis`）的「正規版本」�
 
 ### Decision 1：使用 Laravel（PHP）而非繼續 Python / 改用 Go / TS
 
-**選擇：** Laravel 11/12（PHP 8.x）
+**選擇：** Laravel 13（PHP 8.3+，骨架建立當下安裝為 13.x）
 
 **理由：**
 - PHP 是主開發語言，長期維護成本最低
