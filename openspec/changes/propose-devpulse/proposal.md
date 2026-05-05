@@ -7,7 +7,7 @@
 - 新增 `devpulse` 為本 repo 的工具名稱（取代原本探索性的 `coverdiff`），定位為「研發效能觀測工具」
 - 新增 PHP Laravel 為主技術棧（取代 Python prototype 的角色），使用撰寫當下的最新穩定版（Laravel 13）
 - 新增資料抓取層：GitHub API（PR、commit author、PR review）+ Travis API（build 歷史）
-- 新增 CI provider 抽象介面，第一版只實作 Travis，預留 GitHub Actions 等未來擴充
+- 新增 CI 資料抓取層內部以 provider 抽象隔離具體 CI 服務，第一版只實作 Travis，預留 GitHub Actions 等未來擴充
 - 新增持久化資料庫（PostgreSQL），取代 Python prototype 的 file-based cache
 - 新增聚合與報告產出機制（先以 Artisan command 產出 markdown，不做 Web UI）
 - 新增 `.profile.yaml` 等價的設定機制（config + database），但拔掉特定組織的預設值
@@ -19,8 +19,7 @@
 ### New Capabilities
 
 - `vcs-data-fetching`: 從 GitHub API 撈 PR、commit author、PR review 的歷史資料，含 rate limit 處理、bulk fetching、bot 過濾
-- `ci-data-fetching`: 從 CI provider（第一版 Travis）撈 build 歷史資料，含 build 屬性翻譯（is_post_merge / is_pull_request / is_deploy_event）
-- `ci-provider-abstraction`: 定義 CIProviderInterface，讓未來新增 GitHub Actions / CircleCI 等 provider 不需改動 caller
+- `ci-data-fetching`: 從 CI 服務撈 build 歷史資料，內部以 provider 抽象介面隔離具體 CI 服務（第一版實作 Travis），含 build 屬性翻譯（is_post_merge / is_pull_request / is_deploy_event）
 - `metrics-aggregation`: 把 raw build / PR / review 資料聚合成研發效能指標（CI 失敗率、PR review latency、PR size 分桶、月對月對比）
 - `metrics-persistence`: 把抓回的 raw data 與聚合結果持久化到 PostgreSQL，支援後續查詢與長期累積
 - `report-rendering`: 將聚合結果以 markdown 形式輸出（為將來 Web UI 預留聚合層 / view layer 分離）

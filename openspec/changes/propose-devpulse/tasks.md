@@ -15,12 +15,12 @@
 - [ ] 2.4 建立 seeder，能從 `.profile.yaml.example` 載入範例設定
 - [ ] 2.5 撰寫測試：profile 切換能取得不同 repos 與 members
 
-## 3. CI provider 抽象與 Travis 實作
+## 3. CI 資料抓取
 
-- [ ] 3.1 定義 `CIProviderInterface`（`listBuildsInMonth`、`getBuildLog`）
+- [ ] 3.1 定義 CI provider 抽象介面（含 `listBuildsInMonth`、`getBuildLog` 等核心操作）
 - [ ] 3.2 定義 `BuildSummary` DTO，含 `is_post_merge`、`is_pull_request`、`is_deploy_event` 等通用欄位
-- [ ] 3.3 在 `AppServiceProvider` 將 `CIProviderInterface` 預設綁定到 `TravisProvider`
-- [ ] 3.4 實作 `TravisProvider`，包含 API client（Saloon 或 Guzzle）、token 注入
+- [ ] 3.3 在 `AppServiceProvider` 把 CI provider 抽象介面預設綁定到 Travis 實作
+- [ ] 3.4 實作 Travis provider，包含 API client（Saloon 或 Guzzle）、token 注入
 - [ ] 3.5 實作 Travis 原生欄位翻譯（event_type=push+master → is_post_merge）
 - [ ] 3.6 加上 retry middleware 處理 rate limit / 5xx
 - [ ] 3.7 撰寫整合測試：用 cassette 或 mock server 模擬 Travis 回應

@@ -73,19 +73,21 @@ devpulse 是繼承自 Python prototype（`ci_analysis`）的「正規版本」�
 - ClickHouse：時序資料效能更好，但本工具的資料量遠未達到需要
 - Redis：適合 cache 不適合 source of truth
 
-### Decision 4：CI provider 抽象介面從第一版就建立
+### Decision 4：在 ci-data-fetching capability 內部以 provider 抽象隔離具體 CI 服務
 
-**選擇：** 定義 `CIProviderInterface`，第一版只實作 `TravisProvider`
+**選擇：** 在 `ci-data-fetching` capability 內部定義抽象介面，第一版只實作 Travis 一個 provider；不把 provider 抽象本身單獨列為一個 capability
 
 **理由：**
 - Python prototype 已驗證抽象的形狀（`providers/base.py` + `providers/travis.py`）
 - 業界趨勢上 GitHub Actions 是必然要支援的下一個 provider
 - 從第一版就抽象比之後重構便宜
 - Laravel Service Container 天生適合 bind interface
+- 抽象本身是 ci-data-fetching 的內部結構決策，不需要在 spec 層暴露為獨立 capability，避免概念過細
 
 **替代方案：**
 - 先寫死 Travis、未來再抽象：但 Python prototype 證明這個抽象成本不高、收益清楚
 - 一次支援多 provider：Stage 1 太貪心
+- 把 provider 抽象拆為獨立 capability：曾考慮過，但這拉高了 spec 的層級切分粒度，使用者視角看到的是「能不能撈 CI 資料」，介面是不是抽象屬於實作層
 
 ### Decision 5：設定機制：DB + config 雙層
 
