@@ -10,6 +10,7 @@ use App\Domain\Vcs\PullRequestSummary;
 use App\Domain\Vcs\ReviewSummary;
 use App\Support\Saloon\PayloadHelpers;
 use Generator;
+use InvalidArgumentException;
 
 class GitHubProvider
 {
@@ -156,7 +157,13 @@ class GitHubProvider
 
         $result = [];
         foreach ($nodes as $node) {
-            $result[] = ReviewSummary::fromGitHubGraphQL($node, $repoFullName, $pullNumber);
+            try {
+                $result[] = ReviewSummary::fromGitHubGraphQL($node, $repoFullName, $pullNumber);
+            } catch (InvalidArgumentException) {
+                // PENDING review 的 submittedAt 為 null、ghost 帳號的 author.login 為 null
+                // 這些是合法但不可用於 latency 計算的 node，跳過即可
+                continue;
+            }
         }
 
         return $result;
