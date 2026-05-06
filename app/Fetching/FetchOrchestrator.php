@@ -105,6 +105,7 @@ final class FetchOrchestrator
      */
     private function enrichBuildAuthors(Repo $repo, RepoFullName $repoFullName, MonthRange $month): void
     {
+        /** @var list<string> $shas */
         $shas = Build::query()
             ->where('repo_id', $repo->id)
             ->where('started_at', '>=', $month->start)

@@ -27,7 +27,8 @@ final class DailyBuildDurationRenderer
 
         foreach ($byRepo as $repoFullName => $rows) {
             $sorted = $rows->sortBy('date')->values();
-            $maxMedian = max($sorted->map(fn (DailyBuildDuration $r) => $r->medianSeconds)->all());
+            $medianValues = $sorted->map(fn (DailyBuildDuration $r) => $r->medianSeconds)->all();
+            $maxMedian = $medianValues !== [] ? max($medianValues) : 0.0;
 
             $lines[] = "### {$repoFullName}";
             $lines[] = '';

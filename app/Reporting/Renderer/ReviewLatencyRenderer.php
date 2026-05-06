@@ -37,6 +37,7 @@ final class ReviewLatencyRenderer
                 continue;
             }
             $group = $byBucket->get($bucket);
+            assert($group !== null);
             $hours = $group->map(fn (ReviewLatencyResult $r) => $r->latencyHours)
                 ->sort()
                 ->values()

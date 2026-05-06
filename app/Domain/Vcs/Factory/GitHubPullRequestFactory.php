@@ -61,7 +61,10 @@ final class GitHubPullRequestFactory
         $state = $raw['state'] ?? '';
         $mergedAt = $raw['merged_at'] ?? null;
 
-        return PullRequestStatus::fromGitHubState($state, $mergedAt);
+        return PullRequestStatus::fromGitHubState(
+            is_string($state) ? $state : '',
+            is_string($mergedAt) ? $mergedAt : null,
+        );
     }
 
     /**

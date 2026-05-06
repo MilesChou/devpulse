@@ -36,10 +36,10 @@ final class PrBuildCountQuery
             ->orderBy('pr_number')
             ->get();
 
-        return $rows->map(fn ($row) => new PrBuildCountResult(
+        return $rows->map(fn (Build $row) => new PrBuildCountResult(
             repoFullName: new RepoFullName($row->repo->full_name),
             prNumber: (int)$row->pr_number,
-            buildCount: (int)$row->build_count,
+            buildCount: (int)$row->build_count, // @phpstan-ignore property.notFound, cast.int
         ));
     }
 }

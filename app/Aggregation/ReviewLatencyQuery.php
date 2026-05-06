@@ -42,6 +42,7 @@ final class ReviewLatencyQuery
 
         return $prs->map(function (PullRequest $pr) use ($cutoff): ReviewLatencyResult {
             $readyAt = $pr->ready_at;
+            assert($readyAt !== null);
             $firstReviewAt = $pr->first_review_at;
 
             if ($firstReviewAt !== null) {
@@ -51,6 +52,9 @@ final class ReviewLatencyQuery
                 $latencySeconds = $readyAt->diffInSeconds($cutoff);
                 $isLowerBound = true;
             }
+
+            assert($pr->repo !== null);
+            assert($pr->size_bucket !== null);
 
             return new ReviewLatencyResult(
                 repoFullName: new RepoFullName($pr->repo->full_name),

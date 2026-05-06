@@ -22,6 +22,7 @@ final class DailyBuildDurationQuery
      */
     public function run(Group $group, MonthRange $month): Collection
     {
+        /** @var \Illuminate\Support\Collection<int, object{repo_full_name: string, duration_seconds: int, started_at: string}> $builds */
         $builds = Build::query()
             ->whereIn('repo_id', $group->repoIds())
             ->where('started_at', '>=', $month->start)
@@ -40,6 +41,8 @@ final class DailyBuildDurationQuery
 
         return $grouped->map(function (Collection $group): DailyBuildDuration {
             $first = $group->first();
+            assert($first !== null);
+            /** @phpstan-ignore cast.int */
             $durations = $group->pluck('duration_seconds')->map(fn ($v) => (int)$v)->sort()->values()->all();
             $date = CarbonImmutable::parse($first->started_at)->format('Y-m-d');
 
@@ -48,7 +51,7 @@ final class DailyBuildDurationQuery
                 date: $date,
                 count: count($durations),
                 medianSeconds: $this->calcMedian($durations),
-                maxSeconds: max($durations),
+                maxSeconds: $durations !== [] ? max($durations) : 0,
             );
         })->values();
     }

@@ -47,6 +47,7 @@ final class BuildFailureRateQuery
             $query->whereIn('builds.author_account', $authorAccounts);
         }
 
+        /** @var \Illuminate\Support\Collection<int, object{repo_full_name: string, author_account: string, total: int, failures: int}> $rows */
         $rows = $query
             ->select([
                 'repos.full_name as repo_full_name',
