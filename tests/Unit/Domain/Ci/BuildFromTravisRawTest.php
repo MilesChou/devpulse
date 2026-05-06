@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Domain\Ci;
 
+use App\Domain\Ci\Build;
 use App\Domain\Ci\BuildStatus;
 use App\Domain\Ci\BuildTrigger;
 use App\Domain\Shared\RepoFullName;
@@ -13,7 +14,7 @@ use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
 use Tests\TestCase;
 
-class BuildSummaryFromTravisRawTest extends TestCase
+class BuildFromTravisRawTest extends TestCase
 {
     public function testTranslatesPushToMasterAsPostMerge(): void
     {
@@ -132,7 +133,7 @@ class BuildSummaryFromTravisRawTest extends TestCase
     /**
      * @param array<string, mixed> $overrides
      */
-    private function parse(array $overrides, bool $raw = false): \App\Domain\Ci\BuildSummary
+    private function parse(array $overrides, bool $raw = false): Build
     {
         $payload = $raw ? $overrides : array_replace($this->payload(), $overrides);
 

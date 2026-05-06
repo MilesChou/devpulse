@@ -4,22 +4,24 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Persistence\Mapper;
 
-use App\Domain\Shared\RepoFullName;
+use App\Domain\Shared\RepoId;
+use App\Domain\Vcs\Author;
+use App\Domain\Vcs\PullRequestNumber;
 use App\Domain\Vcs\PullRequestStatus;
-use App\Domain\Vcs\PullRequestSummary;
+use App\Domain\Vcs\PullRequest;
 use App\Persistence\Mapper\PullRequestMapper;
 use Carbon\CarbonImmutable;
 use PHPUnit\Framework\TestCase;
 
 class PullRequestMapperTest extends TestCase
 {
-    public function testToAttributesIncludesDerivedDimensions(): void
+    public function testMapperIncludesDerivedDimensions(): void
     {
         $createdAt = CarbonImmutable::create(2026, 4, 15, 10, 0, 0, 'UTC');
-        $vo = new PullRequestSummary(
-            repoFullName: new RepoFullName('your-org/your-repo'),
-            number: 42,
-            authorAccount: 'alice',
+        $vo = new PullRequest(
+            repoId: new RepoId(7),
+            number: new PullRequestNumber(42),
+            author: new Author('alice'),
             status: PullRequestStatus::Open,
             additions: 100,
             deletions: 50,
@@ -29,7 +31,7 @@ class PullRequestMapperTest extends TestCase
             closedAt: null,
         );
 
-        $attributes = (new PullRequestMapper())->toAttributes($vo, repoId: 7, rawPayload: []);
+        $attributes = new PullRequestMapper()->toAttributes($vo);
 
         $this->assertSame(7, $attributes['repo_id']);
         $this->assertSame(42, $attributes['number']);
@@ -38,12 +40,12 @@ class PullRequestMapperTest extends TestCase
         $this->assertFalse($attributes['is_draft']);
     }
 
-    public function testToAttributesMarksDraftWhenReadyAtNull(): void
+    public function testMapperMarksDraftWhenReadyAtNull(): void
     {
-        $vo = new PullRequestSummary(
-            repoFullName: new RepoFullName('your-org/your-repo'),
-            number: 42,
-            authorAccount: 'alice',
+        $vo = new PullRequest(
+            repoId: new RepoId(1),
+            number: new PullRequestNumber(42),
+            author: new Author('alice'),
             status: PullRequestStatus::Open,
             additions: 1,
             deletions: 0,
@@ -53,7 +55,7 @@ class PullRequestMapperTest extends TestCase
             closedAt: null,
         );
 
-        $attributes = (new PullRequestMapper())->toAttributes($vo, repoId: 1, rawPayload: []);
+        $attributes = (new PullRequestMapper())->toAttributes($vo);
         $this->assertTrue($attributes['is_draft']);
     }
 }

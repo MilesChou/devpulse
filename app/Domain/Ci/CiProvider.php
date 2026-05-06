@@ -14,7 +14,7 @@ interface CiProvider
      *
      * 回傳 iterable 以允許 generator / lazy pagination；caller 可 foreach 一次性消費。
      *
-     * @return iterable<BuildSummary>
+     * @return iterable<Build>
      */
     public function listBuildsInMonth(RepoFullName $repoFullName, MonthRange $month): iterable;
 

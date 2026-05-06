@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Domain\Ci;
 
+use App\Domain\Ci\Build;
 use App\Domain\Ci\BuildStatus;
-use App\Domain\Ci\BuildSummary;
 use App\Domain\Ci\BuildTrigger;
 use App\Domain\Shared\CommitSha;
 use App\Domain\Shared\RepoFullName;
@@ -13,7 +13,7 @@ use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
-class BuildSummaryTest extends TestCase
+class BuildTest extends TestCase
 {
     public function testBuildsValidInstance(): void
     {
@@ -97,8 +97,8 @@ class BuildSummaryTest extends TestCase
         ?string $branch = 'feature/foo',
         ?CarbonImmutable $startedAt = null,
         ?int $durationSeconds = 120,
-    ): BuildSummary {
-        return new BuildSummary(
+    ): Build {
+        return new Build(
             externalId: $externalId,
             repoFullName: new RepoFullName('your-org/your-repo'),
             commitSha: $commitSha,

@@ -138,7 +138,7 @@ final class FetchOrchestrator
         MonthRange $month,
         string $monthLabel,
     ): int {
-        $pulls = $this->vcsProvider->listPullRequestsInMonth($repoFullName, $month);
+        $pulls = $this->vcsProvider->listPullRequestsInMonth($repo->id, $repoFullName, $month);
         // 過濾 bot 開的 PR（spec 4.6）；list endpoint 撈下來、寫入前先濾掉
         $filtered = (function () use ($pulls): \Generator {
             foreach ($pulls as $pr) {
@@ -148,7 +148,7 @@ final class FetchOrchestrator
                 yield $pr;
             }
         })();
-        $written = $this->pullRequestRepository->upsertMany($repo->id, $filtered);
+        $written = $this->pullRequestRepository->upsertMany($filtered);
         $this->enrichPullRequestReviews($repo, $repoFullName, $month);
         $this->cache->markComplete($repo->id, Dataset::PullRequests, $monthLabel);
 
@@ -170,7 +170,7 @@ final class FetchOrchestrator
             ->get(['id', 'number']);
 
         foreach ($prs as $pr) {
-            $detail = $this->vcsProvider->getPullRequest($repoFullName, $pr->number);
+            $detail = $this->vcsProvider->getPullRequest($repo->id, $repoFullName, $pr->number);
 
             $reviews = $this->vcsProvider->listReviews($repoFullName, $pr->number);
             $firstReviewAt = null;

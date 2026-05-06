@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Persistence\Repository;
 
 use App\Domain\Ci\BuildStatus;
-use App\Domain\Ci\BuildSummary;
+use App\Domain\Ci\Build as BuildVo;
 use App\Domain\Ci\BuildTrigger;
 use App\Domain\Shared\CommitSha;
 use App\Domain\Shared\RepoFullName;
@@ -74,9 +74,9 @@ class BuildRepositoryTest extends TestCase
         $this->assertSame(['some' => 'payload'], $build->raw_payload);
     }
 
-    private function build(string $externalId, string $startedAt, BuildStatus $status = BuildStatus::PASSED): BuildSummary
+    private function build(string $externalId, string $startedAt, BuildStatus $status = BuildStatus::PASSED): BuildVo
     {
-        return new BuildSummary(
+        return new BuildVo(
             externalId: $externalId,
             repoFullName: new RepoFullName('your-org/your-repo'),
             commitSha: new CommitSha('abcdef0'),

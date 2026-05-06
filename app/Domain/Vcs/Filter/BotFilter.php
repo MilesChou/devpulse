@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Vcs\Filter;
 
-use App\Domain\Vcs\PullRequestSummary;
+use App\Domain\Vcs\PullRequest;
 use App\Domain\Vcs\ReviewSummary;
 
 final readonly class BotFilter
@@ -12,7 +12,7 @@ final readonly class BotFilter
     /**
      * @param list<string> $excludedAccounts GitHub account 清單，命中即視為 bot
      */
-    public function __construct(private array $excludedAccounts)
+    public function __construct(private iterable $excludedAccounts)
     {
     }
 
@@ -21,9 +21,9 @@ final readonly class BotFilter
         return in_array($account, $this->excludedAccounts, true);
     }
 
-    public function isBotPullRequest(PullRequestSummary $pr): bool
+    public function isBotPullRequest(PullRequest $pr): bool
     {
-        return $this->isExcluded($pr->authorAccount);
+        return $this->isExcluded($pr->author->toString());
     }
 
     public function isBotReview(ReviewSummary $review): bool

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Infrastructure\Ci\Travis;
 
 use App\Domain\Ci\BuildStatus;
-use App\Domain\Ci\BuildSummary;
+use App\Domain\Ci\Build;
 use App\Domain\Ci\BuildTrigger;
 use App\Domain\Ci\CiProvider;
 use App\Domain\Shared\CommitSha;
@@ -29,7 +29,7 @@ class TravisProvider implements CiProvider
      * vs push 的 build id 與時間軸會交錯。所以「遇到第一筆早於月份就 break」是錯的，
      * 必須累積「連續 N 筆早於月份」才能安全停（沿用 Python prototype 的 50 筆閾值）。
      *
-     * @return Generator<int, BuildSummary>
+     * @return Generator<int, Build>
      */
     public function listBuildsInMonth(RepoFullName $repoFullName, MonthRange $month): Generator
     {
@@ -114,7 +114,7 @@ class TravisProvider implements CiProvider
     /**
      * @param array<string, mixed> $raw
      */
-    private function parseBuild(array $raw): BuildSummary
+    private function parseBuild(array $raw): Build
     {
         $repository = $raw['repository'] ?? null;
         $commit = $raw['commit'] ?? null;
@@ -162,7 +162,7 @@ class TravisProvider implements CiProvider
         // 這裡留 null，避免「假的 author_account 污染下游 query」。
         $prNum = $raw['pull_request_number'] ?? null;
 
-        return new BuildSummary(
+        return new Build(
             externalId: $externalId,
             repoFullName: new RepoFullName($repository['slug']),
             commitSha: new CommitSha($commit['sha']),

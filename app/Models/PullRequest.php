@@ -26,7 +26,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property CarbonImmutable|null $first_review_at
  * @property CarbonImmutable|null $merged_at
  * @property CarbonImmutable|null $closed_at
- * @property array<string, mixed> $raw_payload
  */
 #[Fillable([
     'repo_id',
@@ -43,7 +42,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'first_review_at',
     'merged_at',
     'closed_at',
-    'raw_payload',
 ])]
 class PullRequest extends Model
 {
@@ -68,7 +66,6 @@ class PullRequest extends Model
             'first_review_at' => 'immutable_datetime',
             'merged_at' => 'immutable_datetime',
             'closed_at' => 'immutable_datetime',
-            'raw_payload' => 'array',
         ];
     }
 }

@@ -19,7 +19,7 @@ return new class () extends Migration {
             $table->string('branch', 255)->nullable();
             // 以下 is_* 為去正規化的維度欄位，目的是讓 Grafana / SQL view 能直接
             // WHERE / GROUP BY，避免在 query 端 evaluate VO 業務規則。Source of truth
-            // 仍在 BuildSummary VO（fromXxxRaw / isPostMerge 等 method）。
+            // 仍在 Build VO（fromXxxRaw / isPostMerge 等 method）。
             $table->boolean('is_post_merge');
             $table->boolean('is_pull_request');
             $table->boolean('is_deploy_event');

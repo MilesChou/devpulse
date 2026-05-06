@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Persistence\Mapper;
 
+use App\Domain\Ci\Build;
 use App\Domain\Ci\BuildStatus;
-use App\Domain\Ci\BuildSummary;
 use App\Domain\Ci\BuildTrigger;
 use App\Domain\Shared\CommitSha;
 use App\Domain\Shared\RepoFullName;
@@ -17,7 +17,7 @@ class BuildMapperTest extends TestCase
 {
     public function testToAttributesIncludesDerivedDimensions(): void
     {
-        $vo = new BuildSummary(
+        $vo = new Build(
             externalId: '12345',
             repoFullName: new RepoFullName('your-org/your-repo'),
             commitSha: new CommitSha('abcdef0123'),
@@ -30,7 +30,7 @@ class BuildMapperTest extends TestCase
             durationSeconds: 120,
         );
 
-        $attributes = (new BuildMapper())->toAttributes($vo, repoId: 7, rawPayload: ['raw' => 'data']);
+        $attributes = new BuildMapper()->toAttributes($vo, repoId: 7, rawPayload: ['raw' => 'data']);
 
         $this->assertSame(7, $attributes['repo_id']);
         $this->assertSame('12345', $attributes['external_id']);

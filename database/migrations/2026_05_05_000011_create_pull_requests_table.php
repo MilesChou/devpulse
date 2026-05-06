@@ -25,8 +25,6 @@ return new class () extends Migration {
             $table->timestamp('ready_at')->nullable();
             $table->timestamp('merged_at')->nullable();
             $table->timestamp('closed_at')->nullable();
-            // 保留 provider 原始 JSON 以便日後新增分析欄位時不需重打 API。
-            $table->json('raw_payload');
             $table->timestamps();
 
             $table->unique(['repo_id', 'number']);

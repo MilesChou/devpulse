@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Vcs;
 
+/** PR review 的審查結果狀態；值為小寫，對應 GitHub GraphQL 的 PullRequestReviewState（大寫）。 */
 enum ReviewState: string
 {
     case Approved = 'approved';

@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Domain\Vcs;
 
-use App\Domain\Shared\RepoFullName;
+use App\Domain\Shared\RepoId;
+use App\Domain\Vcs\Author;
+use App\Domain\Vcs\Factory\GitHubPullRequestFactory;
+use App\Domain\Vcs\PullRequestNumber;
 use App\Domain\Vcs\PullRequestStatus;
-use App\Domain\Vcs\PullRequestSummary;
+use App\Domain\Vcs\PullRequest;
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
@@ -16,22 +19,22 @@ class PullRequestSummaryTest extends TestCase
     public function testBuildsValidInstance(): void
     {
         $pr = $this->build();
-        $this->assertSame('your-org/your-repo', (string)$pr->repoFullName);
-        $this->assertSame(42, $pr->number);
+        $this->assertSame(7, $pr->repoId->toInt());
+        $this->assertSame(42, $pr->number->toInt());
         $this->assertSame(PullRequestStatus::Open, $pr->status);
     }
 
     public function testThrowsWhenNumberZero(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('number');
+        $this->expectExceptionMessage('PullRequestNumber');
         $this->build(number: 0);
     }
 
     public function testThrowsWhenAuthorAccountIsEmpty(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('authorAccount');
+        $this->expectExceptionMessage('Author');
         $this->build(authorAccount: '');
     }
 
@@ -62,14 +65,14 @@ class PullRequestSummaryTest extends TestCase
         $this->assertFalse($this->build()->isDraft());
     }
 
-    private function buildWithReadyAtOverride(?CarbonImmutable $readyAt): PullRequestSummary
+    private function buildWithReadyAtOverride(?CarbonImmutable $readyAt): PullRequest
     {
         $createdAt = CarbonImmutable::create(2026, 4, 15, 10, 0, 0, 'UTC');
 
-        return new PullRequestSummary(
-            repoFullName: new RepoFullName('your-org/your-repo'),
-            number: 42,
-            authorAccount: 'alice',
+        return new PullRequest(
+            repoId: new RepoId(7),
+            number: new PullRequestNumber(42),
+            author: new Author('alice'),
             status: PullRequestStatus::Open,
             additions: 10,
             deletions: 5,
@@ -87,7 +90,7 @@ class PullRequestSummaryTest extends TestCase
 
     public function testFromGitHubRawTranslatesOpenPr(): void
     {
-        $pr = PullRequestSummary::fromGitHubRaw($this->payload());
+        $pr = GitHubPullRequestFactory::fromGitHubRaw($this->payload(), repoId: 7);
         $this->assertSame(PullRequestStatus::Open, $pr->status);
         $this->assertFalse($pr->isDraft());
         $this->assertNull($pr->mergedAt);
@@ -95,30 +98,20 @@ class PullRequestSummaryTest extends TestCase
 
     public function testFromGitHubRawTranslatesMergedPr(): void
     {
-        $pr = PullRequestSummary::fromGitHubRaw($this->payload([
+        $pr = GitHubPullRequestFactory::fromGitHubRaw($this->payload([
             'state' => 'closed',
             'merged_at' => '2026-04-15T11:00:00Z',
             'closed_at' => '2026-04-15T11:00:00Z',
-        ]));
+        ]), repoId: 7);
         $this->assertSame(PullRequestStatus::Merged, $pr->status);
         $this->assertNotNull($pr->mergedAt);
     }
 
     public function testFromGitHubRawTranslatesDraftPr(): void
     {
-        $pr = PullRequestSummary::fromGitHubRaw($this->payload(['draft' => true]));
+        $pr = GitHubPullRequestFactory::fromGitHubRaw($this->payload(['draft' => true]), repoId: 7);
         $this->assertTrue($pr->isDraft());
         $this->assertNull($pr->readyAt);
-    }
-
-    public function testFromGitHubRawThrowsWhenRepoMissing(): void
-    {
-        $payload = $this->payload();
-        unset($payload['base']);
-
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('base.repo.full_name');
-        PullRequestSummary::fromGitHubRaw($payload);
     }
 
     public function testFromGitHubRawThrowsWhenNumberMissing(): void
@@ -128,14 +121,14 @@ class PullRequestSummaryTest extends TestCase
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('number');
-        PullRequestSummary::fromGitHubRaw($payload);
+        GitHubPullRequestFactory::fromGitHubRaw($payload, repoId: 7);
     }
 
     public function testFromGitHubRawParsesTimesAsUtc(): void
     {
-        $pr = PullRequestSummary::fromGitHubRaw($this->payload([
+        $pr = GitHubPullRequestFactory::fromGitHubRaw($this->payload([
             'created_at' => '2026-04-15T10:00:00Z',
-        ]));
+        ]), repoId: 7);
 
         $this->assertSame('UTC', $pr->createdAt->getTimezone()->getName());
         $this->assertSame('2026-04-15 10:00:00', $pr->createdAt->format('Y-m-d H:i:s'));
@@ -151,13 +144,13 @@ class PullRequestSummaryTest extends TestCase
         ?CarbonImmutable $readyAt = null,
         ?CarbonImmutable $mergedAt = null,
         ?CarbonImmutable $closedAt = null,
-    ): PullRequestSummary {
+    ): PullRequest {
         $createdAt ??= CarbonImmutable::create(2026, 4, 15, 10, 0, 0, 'UTC');
 
-        return new PullRequestSummary(
-            repoFullName: new RepoFullName('your-org/your-repo'),
-            number: $number,
-            authorAccount: $authorAccount,
+        return new PullRequest(
+            repoId: new RepoId(7),
+            number: new PullRequestNumber($number),
+            author: new Author($authorAccount),
             status: $status,
             additions: $additions,
             deletions: $deletions,

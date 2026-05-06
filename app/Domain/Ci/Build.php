@@ -9,7 +9,7 @@ use App\Domain\Shared\RepoFullName;
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
-final readonly class BuildSummary
+final readonly class Build
 {
     public function __construct(
         public string $externalId,

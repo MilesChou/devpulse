@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Persistence\Repository;
 
-use App\Domain\Ci\BuildSummary;
-use App\Models\Build;
+use App\Domain\Ci\Build;
+use App\Models\Build as EloquentBuild;
 use App\Persistence\Mapper\BuildMapper;
 
 final class BuildRepository
@@ -22,7 +22,7 @@ final class BuildRepository
      * 套用 cast（JSON、enum、datetime），如果改用 Query Builder upsert 要 caller
      * 自己 json_encode raw_payload，trade-off 不划算。後續量大時再切 batch upsert。
      *
-     * @param iterable<BuildSummary> $builds
+     * @param iterable<Build> $builds
      * @param array<string, array<string, mixed>> $rawPayloads externalId => raw payload
      */
     public function upsertMany(int $repoId, iterable $builds, array $rawPayloads = []): int
@@ -32,7 +32,7 @@ final class BuildRepository
             $payload = $rawPayloads[$vo->externalId] ?? [];
             $attributes = $this->mapper->toAttributes($vo, $repoId, $payload);
 
-            Build::query()->updateOrCreate(
+            EloquentBuild::query()->updateOrCreate(
                 ['repo_id' => $repoId, 'external_id' => $attributes['external_id']],
                 $attributes,
             );

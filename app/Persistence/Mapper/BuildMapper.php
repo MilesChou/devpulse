@@ -4,17 +4,17 @@ declare(strict_types=1);
 
 namespace App\Persistence\Mapper;
 
-use App\Domain\Ci\BuildSummary;
+use App\Domain\Ci\Build;
 
 final class BuildMapper
 {
     /**
-     * 把 BuildSummary VO 轉成 Eloquent attribute array（給 firstOrCreate / upsert 用）。
+     * 把 Build VO 轉成 Eloquent attribute array（給 firstOrCreate / upsert 用）。
      *
      * @param array<string, mixed> $rawPayload Provider 原始 JSON（持久化用）
      * @return array<string, mixed>
      */
-    public function toAttributes(BuildSummary $vo, int $repoId, array $rawPayload): array
+    public function toAttributes(Build $vo, int $repoId, array $rawPayload): array
     {
         return [
             'repo_id' => $repoId,

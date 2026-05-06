@@ -2,12 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Tests\Unit\Domain\Vcs\Filter;
+namespace Unit\Domain\Vcs\Filter;
 
 use App\Domain\Shared\RepoFullName;
+use App\Domain\Shared\RepoId;
+use App\Domain\Vcs\Author;
 use App\Domain\Vcs\Filter\BotFilter;
+use App\Domain\Vcs\PullRequest;
+use App\Domain\Vcs\PullRequestNumber;
 use App\Domain\Vcs\PullRequestStatus;
-use App\Domain\Vcs\PullRequestSummary;
 use App\Domain\Vcs\ReviewState;
 use App\Domain\Vcs\ReviewSummary;
 use Carbon\CarbonImmutable;
@@ -45,14 +48,14 @@ class BotFilterTest extends TestCase
         $this->assertFalse($filter->isExcluded('dependabot[bot]'));
     }
 
-    private function pr(string $author): PullRequestSummary
+    private function pr(string $author): PullRequest
     {
         $createdAt = CarbonImmutable::create(2026, 4, 15, 10, 0, 0, 'UTC');
 
-        return new PullRequestSummary(
-            repoFullName: new RepoFullName('your-org/your-repo'),
-            number: 1,
-            authorAccount: $author,
+        return new PullRequest(
+            repoId: new RepoId(1),
+            number: new PullRequestNumber(1),
+            author: new Author($author),
             status: PullRequestStatus::Open,
             additions: 1,
             deletions: 1,

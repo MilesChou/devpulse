@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Persistence\Repository;
 
-use App\Domain\Vcs\PullRequestSummary;
-use App\Models\PullRequest;
+use App\Domain\Vcs\PullRequest;
+use App\Models\PullRequest as PullRequestModel;
 use App\Persistence\Mapper\PullRequestMapper;
 
 final class PullRequestRepository
@@ -15,19 +15,15 @@ final class PullRequestRepository
     }
 
     /**
-     * @param iterable<PullRequestSummary> $pulls
-     * @param array<int, array<string, mixed>> $rawPayloads number => raw payload
+     * @param iterable<PullRequest> $pulls
      */
-    public function upsertMany(int $repoId, iterable $pulls, array $rawPayloads = []): int
+    public function upsertMany(iterable $pulls): int
     {
         $count = 0;
         foreach ($pulls as $vo) {
-            $payload = $rawPayloads[$vo->number] ?? [];
-            $attributes = $this->mapper->toAttributes($vo, $repoId, $payload);
-
-            PullRequest::query()->updateOrCreate(
-                ['repo_id' => $repoId, 'number' => $vo->number],
-                $attributes,
+            PullRequestModel::updateOrCreate(
+                ['repo_id' => $vo->repoId->toInt(), 'number' => $vo->number->toInt()],
+                $this->mapper->toAttributes($vo),
             );
             $count++;
         }

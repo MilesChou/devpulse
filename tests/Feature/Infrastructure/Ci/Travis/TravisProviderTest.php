@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Infrastructure\Ci\Travis;
 
-use App\Domain\Ci\BuildSummary;
+use App\Domain\Ci\Build;
 use App\Domain\Shared\MonthRange;
 use App\Domain\Shared\RepoFullName;
 use App\Infrastructure\Ci\Travis\TravisConnector;
@@ -34,7 +34,7 @@ class TravisProviderTest extends TestCase
         $builds = iterator_to_array($provider->listBuildsInMonth(new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
 
         $this->assertCount(3, $builds);
-        $this->assertSame(['1', '2', '3'], array_map(static fn (BuildSummary $b): string => $b->externalId, $builds));
+        $this->assertSame(['1', '2', '3'], array_map(static fn (Build $b): string => $b->externalId, $builds));
     }
 
     public function testListBuildsInMonthFollowsPagination(): void
@@ -87,7 +87,7 @@ class TravisProviderTest extends TestCase
         );
 
         $this->assertCount(2, $builds);
-        $this->assertSame(['99', '98'], array_map(static fn (BuildSummary $b): string => $b->externalId, $builds));
+        $this->assertSame(['99', '98'], array_map(static fn (Build $b): string => $b->externalId, $builds));
     }
 
     public function testListBuildsInMonthStopsAfter50ConsecutiveOlderBuilds(): void

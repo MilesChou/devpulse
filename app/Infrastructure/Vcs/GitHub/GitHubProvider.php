@@ -6,7 +6,8 @@ namespace App\Infrastructure\Vcs\GitHub;
 
 use App\Domain\Shared\MonthRange;
 use App\Domain\Shared\RepoFullName;
-use App\Domain\Vcs\PullRequestSummary;
+use App\Domain\Vcs\Factory\GitHubPullRequestFactory;
+use App\Domain\Vcs\PullRequest;
 use App\Domain\Vcs\ReviewSummary;
 use App\Support\Saloon\PayloadHelpers;
 use Generator;
@@ -21,9 +22,9 @@ class GitHubProvider
     /**
      * 列出指定 repo 在指定月份內建立的所有 PR（已合併、已關閉、被 reject、仍在 draft 都包含）。
      *
-     * @return Generator<int, PullRequestSummary>
+     * @return Generator<int, PullRequest>
      */
-    public function listPullRequestsInMonth(RepoFullName $repoFullName, MonthRange $month): Generator
+    public function listPullRequestsInMonth(int $repoId, RepoFullName $repoFullName, MonthRange $month): Generator
     {
         $page = 1;
         $perPage = 100;
@@ -37,7 +38,7 @@ class GitHubProvider
 
             $reachedOlderThanRange = false;
             foreach ($pulls as $rawPull) {
-                $pr = PullRequestSummary::fromGitHubRaw($rawPull);
+                $pr = GitHubPullRequestFactory::fromGitHubRaw($rawPull, repoId: $repoId);
 
                 if ($pr->createdAt->greaterThanOrEqualTo($month->end)) {
                     continue;
@@ -63,12 +64,12 @@ class GitHubProvider
     /**
      * 取得單一 PR 的細節（含精確的 additions / deletions —— list endpoint 不回這兩個欄位）。
      */
-    public function getPullRequest(RepoFullName $repoFullName, int $pullNumber): PullRequestSummary
+    public function getPullRequest(int $repoId, RepoFullName $repoFullName, int $pullNumber): PullRequest
     {
         $response = $this->connector->send(new GetPullRequestRequest((string)$repoFullName, $pullNumber));
         $payload = PayloadHelpers::stringKeyedArray($response->json());
 
-        return PullRequestSummary::fromGitHubRaw($payload);
+        return GitHubPullRequestFactory::fromGitHubRaw($payload, repoId: $repoId);
     }
 
     /**
