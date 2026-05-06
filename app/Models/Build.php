@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property CarbonImmutable $started_at
  * @property int|null $duration_seconds
  * @property array<string, mixed> $raw_payload
+ * @property-read Repo $repo
  */
 #[Fillable([
     'repo_id',
