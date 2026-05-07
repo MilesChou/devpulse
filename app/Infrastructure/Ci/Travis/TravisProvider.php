@@ -11,6 +11,7 @@ use App\Domain\Ci\CiProvider;
 use App\Domain\Shared\CommitSha;
 use App\Domain\Shared\MonthRange;
 use App\Domain\Shared\RepoFullName;
+use App\Domain\Vcs\PullRequestNumber;
 use App\Support\Saloon\PayloadHelpers;
 use Carbon\CarbonImmutable;
 use Generator;
@@ -167,7 +168,7 @@ class TravisProvider implements CiProvider
             repoFullName: new RepoFullName($repository['slug']),
             commitSha: new CommitSha($commit['sha']),
             authorAccount: null,
-            prNumber: is_int($prNum) ? $prNum : null,
+            prNumber: is_int($prNum) ? new PullRequestNumber($prNum) : null,
             status: $status,
             trigger: $this->resolveTrigger($raw['event_type'], $branchName),
             branch: $branchName,

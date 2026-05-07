@@ -37,12 +37,12 @@ class PrBuildCountQueryTest extends TestCase
 
         $this->assertSame(2, $results->count());
 
-        $pr1 = $results->firstWhere('prNumber', 1);
+        $pr1 = $results->first(fn ($r) => $r->prNumber->value === 1);
         $this->assertNotNull($pr1);
         $this->assertSame(2, $pr1->buildCount);
         $this->assertSame('org/repo-a', (string)$pr1->repoFullName);
 
-        $pr2 = $results->firstWhere('prNumber', 2);
+        $pr2 = $results->first(fn ($r) => $r->prNumber->value === 2);
         $this->assertNotNull($pr2);
         $this->assertSame(1, $pr2->buildCount);
     }
@@ -86,7 +86,7 @@ class PrBuildCountQueryTest extends TestCase
         $results = $this->query->run($group, MonthRange::fromString('2026-04'));
 
         $this->assertSame(1, $results->count());
-        $this->assertSame(1, $results->first()->prNumber);
+        $this->assertSame(1, $results->first()->prNumber->value);
     }
 
     public function testReturnsEmptyWhenNoBuilds(): void

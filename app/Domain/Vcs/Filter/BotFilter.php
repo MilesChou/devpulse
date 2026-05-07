@@ -23,7 +23,7 @@ final readonly class BotFilter
 
     public function isBotPullRequest(PullRequest $pr): bool
     {
-        return $this->isExcluded($pr->author->toString());
+        return $this->isExcluded((string)$pr->author);
     }
 
     public function isBotReview(ReviewSummary $review): bool

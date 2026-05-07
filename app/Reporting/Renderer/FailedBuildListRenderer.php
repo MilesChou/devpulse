@@ -28,16 +28,16 @@ final class FailedBuildListRenderer
         foreach ($items as $item) {
             $repo = (string)$item->repoFullName;
             $prCell = $item->prNumber !== null
-                ? sprintf('[#%d](https://github.com/%s/pull/%d)', $item->prNumber, $repo, $item->prNumber)
+                ? sprintf('[#%d](https://github.com/%s/pull/%d)', $item->prNumber->value, $repo, $item->prNumber->value)
                 : '—';
-            $shortSha = substr($item->commitSha, 0, 7);
+            $shortSha = substr((string)$item->commitSha, 0, 7);
             $commitCell = sprintf('[%s](https://github.com/%s/commit/%s)', $shortSha, $repo, $item->commitSha);
 
             $lines[] = sprintf(
                 '| %s | %s | %s | %s | %s | %s |',
                 $item->startedAt->format('Y-m-d H:i'),
                 $repo,
-                $item->authorAccount ?? '—',
+                $item->authorAccount !== null ? (string)$item->authorAccount : '—',
                 $prCell,
                 $commitCell,
                 $item->status,

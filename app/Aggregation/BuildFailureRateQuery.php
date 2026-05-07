@@ -8,12 +8,13 @@ use App\Aggregation\Dto\FailureRateResult;
 use App\Aggregation\Filter\BuildEventFilter;
 use App\Domain\Shared\MonthRange;
 use App\Domain\Shared\RepoFullName;
+use App\Domain\Vcs\Author;
 use App\Models\Build;
 use App\Models\Group;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
-final class BuildFailureRateQuery
+class BuildFailureRateQuery
 {
     public function __construct(private readonly BuildEventFilter $filter)
     {
@@ -60,7 +61,7 @@ final class BuildFailureRateQuery
 
         return $rows->map(fn ($row) => FailureRateResult::from(
             repoFullName: new RepoFullName($row->repo_full_name),
-            authorAccount: $row->author_account,
+            authorAccount: new Author($row->author_account),
             total: (int)$row->total,
             failures: (int)$row->failures,
         ));

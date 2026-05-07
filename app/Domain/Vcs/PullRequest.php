@@ -52,4 +52,3 @@ final readonly class PullRequest
         return $this->additions + $this->deletions;
     }
 }
-

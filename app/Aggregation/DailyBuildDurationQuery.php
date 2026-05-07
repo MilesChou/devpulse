@@ -13,7 +13,7 @@ use App\Models\Group;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
-final class DailyBuildDurationQuery
+class DailyBuildDurationQuery
 {
     /**
      * 計算指定月份、指定 group 內每個 repo 每日「通過 build」的時間統計。

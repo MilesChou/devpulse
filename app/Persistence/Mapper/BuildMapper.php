@@ -21,7 +21,7 @@ final class BuildMapper
             'external_id' => $vo->externalId,
             'commit_sha' => (string)$vo->commitSha,
             'author_account' => $vo->authorAccount,
-            'pr_number' => $vo->prNumber,
+            'pr_number' => $vo->prNumber?->toInt(),
             'status' => $vo->status->name,
             'trigger' => $vo->trigger->name,
             'branch' => $vo->branch,

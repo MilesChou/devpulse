@@ -7,12 +7,14 @@ namespace App\Aggregation;
 use App\Aggregation\Dto\ReviewLatencyResult;
 use App\Domain\Shared\MonthRange;
 use App\Domain\Shared\RepoFullName;
+use App\Domain\Vcs\Author;
+use App\Domain\Vcs\PullRequestNumber;
 use App\Models\Group;
 use App\Models\PullRequest;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
-final class ReviewLatencyQuery
+class ReviewLatencyQuery
 {
     public function __construct(private readonly ?CarbonImmutable $clock = null)
     {
@@ -58,8 +60,8 @@ final class ReviewLatencyQuery
 
             return new ReviewLatencyResult(
                 repoFullName: new RepoFullName($pr->repo->full_name),
-                prNumber: $pr->number,
-                authorAccount: $pr->author_account,
+                prNumber: new PullRequestNumber($pr->number),
+                authorAccount: new Author($pr->author_account),
                 sizeBucket: $pr->size_bucket,
                 latencyHours: max(0.0, $latencySeconds / 3600.0),
                 isLowerBound: $isLowerBound,

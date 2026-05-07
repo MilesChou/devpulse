@@ -20,7 +20,7 @@ final class PullRequestMapper
         return [
             'repo_id' => $vo->repoId->toInt(),
             'number' => $vo->number->toInt(),
-            'author_account' => $vo->author->toString(),
+            'author_account' => (string)$vo->author,
             'status' => $vo->status->value,
             'additions' => $vo->additions,
             'deletions' => $vo->deletions,
@@ -35,4 +35,3 @@ final class PullRequestMapper
         ];
     }
 }
-

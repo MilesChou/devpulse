@@ -6,9 +6,9 @@ namespace Tests\Unit\Persistence\Mapper;
 
 use App\Domain\Shared\RepoId;
 use App\Domain\Vcs\Author;
+use App\Domain\Vcs\PullRequest;
 use App\Domain\Vcs\PullRequestNumber;
 use App\Domain\Vcs\PullRequestStatus;
-use App\Domain\Vcs\PullRequest;
 use App\Persistence\Mapper\PullRequestMapper;
 use Carbon\CarbonImmutable;
 use PHPUnit\Framework\TestCase;
@@ -55,7 +55,7 @@ class PullRequestMapperTest extends TestCase
             closedAt: null,
         );
 
-        $attributes = (new PullRequestMapper())->toAttributes($vo);
+        $attributes = new PullRequestMapper()->toAttributes($vo);
         $this->assertTrue($attributes['is_draft']);
     }
 }

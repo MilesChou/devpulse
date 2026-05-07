@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace App\Domain\Vcs;
 
 use InvalidArgumentException;
+use Stringable;
 
-final readonly class Author
+final readonly class Author implements Stringable
 {
     public function __construct(public string $value)
     {
@@ -15,7 +16,7 @@ final readonly class Author
         }
     }
 
-    public function toString(): string
+    public function __toString(): string
     {
         return $this->value;
     }

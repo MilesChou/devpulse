@@ -6,6 +6,7 @@ namespace App\Domain\Ci;
 
 use App\Domain\Shared\CommitSha;
 use App\Domain\Shared\RepoFullName;
+use App\Domain\Vcs\PullRequestNumber;
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
@@ -16,7 +17,7 @@ final readonly class Build
         public RepoFullName $repoFullName,
         public CommitSha $commitSha,
         public ?string $authorAccount,
-        public ?int $prNumber,
+        public ?PullRequestNumber $prNumber,
         public BuildStatus $status,
         public BuildTrigger $trigger,
         public ?string $branch,

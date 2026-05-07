@@ -6,14 +6,17 @@ namespace App\Aggregation;
 
 use App\Aggregation\Dto\FailedBuildItem;
 use App\Aggregation\Filter\BuildEventFilter;
+use App\Domain\Shared\CommitSha;
 use App\Domain\Shared\MonthRange;
 use App\Domain\Shared\RepoFullName;
+use App\Domain\Vcs\Author;
+use App\Domain\Vcs\PullRequestNumber;
 use App\Models\Build;
 use App\Models\Group;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
-final class FailedBuildListQuery
+class FailedBuildListQuery
 {
     public function __construct(private readonly BuildEventFilter $filter)
     {
@@ -52,9 +55,9 @@ final class FailedBuildListQuery
         return $rows->map(fn ($row) => new FailedBuildItem(
             repoFullName: new RepoFullName($row->repo_full_name),
             externalId: (string)$row->external_id,
-            commitSha: (string)$row->commit_sha,
-            authorAccount: $row->author_account,
-            prNumber: $row->pr_number !== null ? (int)$row->pr_number : null,
+            commitSha: new CommitSha((string)$row->commit_sha),
+            authorAccount: $row->author_account !== null ? new Author($row->author_account) : null,
+            prNumber: $row->pr_number !== null ? new PullRequestNumber((int)$row->pr_number) : null,
             status: (string)$row->status,
             startedAt: CarbonImmutable::parse($row->started_at),
         ));

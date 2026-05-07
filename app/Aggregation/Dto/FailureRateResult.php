@@ -5,19 +5,20 @@ declare(strict_types=1);
 namespace App\Aggregation\Dto;
 
 use App\Domain\Shared\RepoFullName;
+use App\Domain\Vcs\Author;
 
 final readonly class FailureRateResult
 {
     public function __construct(
         public RepoFullName $repoFullName,
-        public string $authorAccount,
+        public Author $authorAccount,
         public int $total,
         public int $failures,
         public float $rate,
     ) {
     }
 
-    public static function from(RepoFullName $repoFullName, string $authorAccount, int $total, int $failures): self
+    public static function from(RepoFullName $repoFullName, Author $authorAccount, int $total, int $failures): self
     {
         return new self(
             repoFullName: $repoFullName,

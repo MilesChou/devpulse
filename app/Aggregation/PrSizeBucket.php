@@ -51,12 +51,4 @@ final class PrSizeBucket
 
         return (string)array_key_last($this->buckets);
     }
-
-    /**
-     * @return array<string, int|null>
-     */
-    public function buckets(): array
-    {
-        return $this->buckets;
-    }
 }

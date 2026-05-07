@@ -7,12 +7,13 @@ namespace App\Aggregation;
 use App\Aggregation\Dto\PrBuildCountResult;
 use App\Domain\Shared\MonthRange;
 use App\Domain\Shared\RepoFullName;
+use App\Domain\Vcs\PullRequestNumber;
 use App\Models\Build;
 use App\Models\Group;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
-final class PrBuildCountQuery
+class PrBuildCountQuery
 {
     /**
      * @return Collection<int, PrBuildCountResult>
@@ -38,7 +39,7 @@ final class PrBuildCountQuery
 
         return $rows->map(fn (Build $row) => new PrBuildCountResult(
             repoFullName: new RepoFullName($row->repo->full_name),
-            prNumber: (int)$row->pr_number,
+            prNumber: new PullRequestNumber((int)$row->pr_number),
             buildCount: (int)$row->build_count, // @phpstan-ignore property.notFound, cast.int
         ));
     }

@@ -42,4 +42,3 @@ enum PullRequestStatus: string
         };
     }
 }
-

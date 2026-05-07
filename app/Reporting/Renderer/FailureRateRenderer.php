@@ -25,7 +25,7 @@ final class FailureRateRenderer
             ->sort()
             ->values()
             ->all();
-        $authors = $results->map(fn (FailureRateResult $r) => $r->authorAccount)
+        $authors = $results->map(fn (FailureRateResult $r) => (string)$r->authorAccount)
             ->unique()
             ->sort()
             ->values()
@@ -33,7 +33,7 @@ final class FailureRateRenderer
 
         $byKey = [];
         foreach ($results as $r) {
-            $byKey[$r->authorAccount][(string)$r->repoFullName] = $r;
+            $byKey[(string)$r->authorAccount][(string)$r->repoFullName] = $r;
         }
 
         $header = array_merge(['author'], $repos, ['Overall']);
