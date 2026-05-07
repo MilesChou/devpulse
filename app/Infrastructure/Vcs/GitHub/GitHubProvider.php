@@ -8,10 +8,12 @@ use DevPulse\Shared\MonthRange;
 use DevPulse\Shared\RepoFullName;
 use DevPulse\Vcs\Factory\GitHubPullRequestFactory;
 use DevPulse\Vcs\PullRequest;
+use DevPulse\Vcs\PullRequestId;
 use DevPulse\Vcs\ReviewSummary;
 use App\Support\Saloon\PayloadHelpers;
 use Generator;
 use InvalidArgumentException;
+use Symfony\Component\Uid\Ulid;
 
 class GitHubProvider
 {
@@ -38,7 +40,8 @@ class GitHubProvider
 
             $reachedOlderThanRange = false;
             foreach ($pulls as $rawPull) {
-                $pr = GitHubPullRequestFactory::fromGitHubRaw($rawPull, repoId: $repoId);
+                $id = new PullRequestId((string)new Ulid());
+                $pr = GitHubPullRequestFactory::fromGitHubRaw($rawPull, repoId: $repoId, id: $id);
 
                 if ($pr->createdAt->greaterThanOrEqualTo($month->end)) {
                     continue;
@@ -69,7 +72,9 @@ class GitHubProvider
         $response = $this->connector->send(new GetPullRequestRequest((string)$repoFullName, $pullNumber));
         $payload = PayloadHelpers::stringKeyedArray($response->json());
 
-        return GitHubPullRequestFactory::fromGitHubRaw($payload, repoId: $repoId);
+        $id = new PullRequestId((string)new Ulid());
+
+        return GitHubPullRequestFactory::fromGitHubRaw($payload, repoId: $repoId, id: $id);
     }
 
     /**

@@ -12,6 +12,9 @@ return new class () extends Migration {
         Schema::create('repos', function (Blueprint $table): void {
             $table->id();
             $table->string('full_name', 255)->unique();
+            // human_signals 用於 classifier：每筆 { "category": "lint", "pattern": "PHPCS:" }
+            // classifier 對失敗 build 的 log 做字串比對，把 build 歸類為 human / infra。
+            $table->json('human_signals')->default(json_encode([]));
             $table->timestamps();
         });
     }

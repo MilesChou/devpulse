@@ -61,7 +61,7 @@ stan:
 
 .PHONY: test
 test:
-	${PHP} artisan test --parallel --without-databases --processes=${PROCESSORS_NUM} --no-coverage --stop-on-failure --stop-on-error --passthru-php="${PHP_GLOBAL_CONFIG} ${PHP_DISABLE_COVERAGE_MODE}" ${TARGET_FILES}
+	${PHP} artisan test --parallel --processes=${PROCESSORS_NUM} --no-coverage --stop-on-failure --stop-on-error --passthru-php="${PHP_GLOBAL_CONFIG} ${PHP_DISABLE_COVERAGE_MODE}" ${TARGET_FILES}
 
 # ---- Fast (staged files only) ------------------------------------
 

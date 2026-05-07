@@ -190,7 +190,7 @@ final class FetchOrchestrator
             ->where('pr_created_at', '>=', $month->start)
             ->where('pr_created_at', '<', $month->end)
             ->whereNull('size_bucket')
-            ->get(['id', 'number', 'ready_at', 'merged_at']);
+            ->get(['id', 'repo_id', 'number', 'ready_at', 'merged_at']);
 
         foreach ($prs as $pr) {
             $this->enrichOnePullRequest($pr, $repoFullName);

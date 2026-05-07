@@ -19,6 +19,8 @@ final class PullRequest
     private ?CarbonImmutable $closedAt;
 
     public function __construct(
+        public readonly PullRequestId $id,
+        public readonly Platform $platform,
         public readonly RepoId $repoId,
         public readonly PullRequestNumber $number,
         public readonly Author $author,

@@ -14,8 +14,10 @@ return new class () extends Migration {
             $table->foreignId('repo_id')->constrained('repos')->cascadeOnDelete();
             $table->string('external_id', 64);
             $table->string('commit_sha', 64);
+            $table->string('author_account', 64)->nullable();
+            $table->integer('pr_number')->nullable();
             $table->string('status', 32);
-            $table->string('event_type', 32);
+            $table->string('trigger', 32);
             $table->string('branch', 255)->nullable();
             // 以下 is_* 為去正規化的維度欄位，目的是讓 Grafana / SQL view 能直接
             // WHERE / GROUP BY，避免在 query 端 evaluate VO 業務規則。Source of truth
@@ -34,6 +36,8 @@ return new class () extends Migration {
 
             $table->unique(['repo_id', 'external_id']);
             $table->index(['repo_id', 'started_at']);
+            $table->index(['repo_id', 'author_account', 'started_at']);
+            $table->index(['repo_id', 'pr_number']);
         });
     }
 

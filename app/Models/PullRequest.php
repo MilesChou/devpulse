@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use DevPulse\Vcs\Platform;
 use DevPulse\Vcs\PullRequestStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -11,7 +12,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * @property int $id
+ * @property string $ulid
+ * @property Platform $platform
  * @property int $repo_id
  * @property int $number PR 編號
  * @property string $author_account 作者帳號
@@ -31,6 +33,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property CarbonImmutable|null $closed_at 關閉時間
  */
 #[Fillable([
+    'ulid',
+    'platform',
     'repo_id',
     'number',
     'author_account',
@@ -62,6 +66,7 @@ class PullRequest extends Model
     protected function casts(): array
     {
         return [
+            'platform' => Platform::class,
             'status' => PullRequestStatus::class,
             'is_draft' => 'boolean',
             'pr_created_at' => 'immutable_datetime',

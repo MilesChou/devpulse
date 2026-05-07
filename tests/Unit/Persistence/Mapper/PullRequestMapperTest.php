@@ -7,7 +7,9 @@ namespace Tests\Unit\Persistence\Mapper;
 use DevPulse\Shared\RepoId;
 use DevPulse\Vcs\Author;
 use DevPulse\Vcs\ChangeStats;
+use DevPulse\Vcs\Platform;
 use DevPulse\Vcs\PullRequest;
+use DevPulse\Vcs\PullRequestId;
 use DevPulse\Vcs\PullRequestNumber;
 use DevPulse\Vcs\PullRequestStatus;
 use App\Persistence\Mapper\PullRequestMapper;
@@ -20,6 +22,8 @@ class PullRequestMapperTest extends TestCase
     {
         $createdAt = CarbonImmutable::create(2026, 4, 15, 10, 0, 0, 'UTC');
         $vo = new PullRequest(
+            id: new PullRequestId('01JTEST000000000000000000D'),
+            platform: Platform::GitHub,
             repoId: new RepoId(7),
             number: new PullRequestNumber(42),
             author: new Author('alice'),
@@ -42,6 +46,8 @@ class PullRequestMapperTest extends TestCase
     public function testMapperMarksDraftWhenReadyAtNull(): void
     {
         $vo = new PullRequest(
+            id: new PullRequestId('01JTEST000000000000000000E'),
+            platform: Platform::GitHub,
             repoId: new RepoId(1),
             number: new PullRequestNumber(42),
             author: new Author('alice'),

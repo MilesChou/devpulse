@@ -9,7 +9,9 @@ use DevPulse\Shared\RepoId;
 use DevPulse\Vcs\Author;
 use DevPulse\Vcs\ChangeStats;
 use DevPulse\Vcs\Filter\BotFilter;
+use DevPulse\Vcs\Platform;
 use DevPulse\Vcs\PullRequest;
+use DevPulse\Vcs\PullRequestId;
 use DevPulse\Vcs\PullRequestNumber;
 use DevPulse\Vcs\PullRequestStatus;
 use DevPulse\Vcs\ReviewState;
@@ -54,6 +56,8 @@ class BotFilterTest extends TestCase
         $createdAt = CarbonImmutable::parse('2026-04-15T10:00:00Z');
 
         return new PullRequest(
+            id: new PullRequestId('01JTEST000000000000000000C'),
+            platform: Platform::GitHub,
             repoId: new RepoId(1),
             number: new PullRequestNumber(1),
             author: new Author($author),

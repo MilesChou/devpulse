@@ -7,7 +7,9 @@ namespace DevPulse\Vcs\Factory;
 use DevPulse\Shared\RepoId;
 use DevPulse\Vcs\Author;
 use DevPulse\Vcs\ChangeStats;
+use DevPulse\Vcs\Platform;
 use DevPulse\Vcs\PullRequest;
+use DevPulse\Vcs\PullRequestId;
 use DevPulse\Vcs\PullRequestNumber;
 use DevPulse\Vcs\PullRequestStatus;
 use Carbon\CarbonImmutable;
@@ -20,7 +22,7 @@ final class GitHubPullRequestFactory
      *
      * @param array<string, mixed> $raw
      */
-    public static function fromGitHubRaw(array $raw, int $repoId): PullRequest
+    public static function fromGitHubRaw(array $raw, int $repoId, PullRequestId $id): PullRequest
     {
         $repoIdVo = new RepoId($repoId);
         $number = $raw['number'] ?? null;
@@ -41,6 +43,8 @@ final class GitHubPullRequestFactory
         $deletions = $raw['deletions'] ?? null;
 
         return new PullRequest(
+            id: $id,
+            platform: Platform::GitHub,
             repoId: $repoIdVo,
             number: $numberVo,
             author: $authorVo,

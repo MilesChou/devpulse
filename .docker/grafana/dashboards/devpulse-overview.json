@@ -301,8 +301,8 @@
       ]
     },
     {
-      "title": "PR Review latency 月趨勢（各 size bucket median，小時）",
-      "description": "每月各 size bucket 的 median review latency，含未 review lower bound。",
+      "title": "PR Review latency 週趨勢（各 size bucket median，小時）",
+      "description": "每週各 size bucket 的 median review latency，含未 review lower bound。",
       "type": "timeseries",
       "id": 8,
       "gridPos": {
@@ -350,7 +350,7 @@
             "uid": "devpulse-pg"
           },
           "format": "time_series",
-          "rawSql": "SELECT date_trunc('month', pr.pr_created_at) AS time, pr.size_bucket AS metric, percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, pr.merged_at, pr.closed_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0) AS value FROM pull_requests pr JOIN repos r ON r.id = pr.repo_id JOIN group_repos gr ON gr.repo_id = r.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL AND (pr.first_review_at IS NOT NULL OR pr.merged_at IS NOT NULL OR pr.closed_at IS NOT NULL) GROUP BY 1, 2 ORDER BY 1"
+          "rawSql": "SELECT date_trunc('week', pr.pr_created_at) AS time, pr.size_bucket AS metric, percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, pr.merged_at, pr.closed_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0) AS value FROM pull_requests pr JOIN repos r ON r.id = pr.repo_id JOIN group_repos gr ON gr.repo_id = r.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL AND (pr.first_review_at IS NOT NULL OR pr.merged_at IS NOT NULL OR pr.closed_at IS NOT NULL) GROUP BY 1, 2 ORDER BY 1"
         }
       ]
     },
@@ -477,6 +477,95 @@
           },
           "format": "table",
           "rawSql": "SELECT b.started_at AS \"date\", m.display_name AS \"member\", r.full_name AS \"repo\", b.status AS \"state\", b.external_id AS \"build\", b.branch AS \"branch\", b.duration_seconds / 60.0 AS \"duration_min\", CASE WHEN b.status <> 'CANCELED' THEN b.duration_seconds / 60.0 * 0.008 ELSE 0 END AS \"cost_usd\" FROM builds b JOIN repos r ON r.id = b.repo_id JOIN members m ON m.github_account = b.author_account JOIN group_repos gr ON gr.repo_id = r.id JOIN group_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND b.is_failure AND NOT b.is_post_merge AND NOT b.is_deploy_event ORDER BY b.started_at DESC LIMIT 500"
+        }
+      ]
+    },
+    {
+      "title": "成員互 Approve 矩陣（approved PR 數）",
+      "description": "列：reviewer，欄：PR 作者。同一 PR 同一 reviewer 多次 approve 只算一次。",
+      "type": "table",
+      "id": 11,
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 106
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "devpulse-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "devpulse-pg"
+          },
+          "format": "table",
+          "rawSql": "WITH agg AS (SELECT prr.reviewer_account, pr.author_account, COUNT(DISTINCT pr.id) AS approved_prs FROM pull_request_reviews prr JOIN pull_requests pr ON pr.id = prr.pull_request_id JOIN repos r ON r.id = pr.repo_id JOIN group_repos gr ON gr.repo_id = r.id JOIN groups g ON g.id = gr.group_id JOIN members reviewer_m ON reviewer_m.github_account = prr.reviewer_account JOIN group_members reviewer_gm ON reviewer_gm.member_id = reviewer_m.id AND reviewer_gm.group_id = gr.group_id JOIN members author_m ON author_m.github_account = pr.author_account JOIN group_members author_gm ON author_gm.member_id = author_m.id AND author_gm.group_id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND prr.state = 'approved' GROUP BY prr.reviewer_account, pr.author_account) SELECT reviewer_m.display_name AS reviewer, author_m.display_name AS author, agg.approved_prs FROM agg JOIN members reviewer_m ON reviewer_m.github_account = agg.reviewer_account JOIN members author_m ON author_m.github_account = agg.author_account ORDER BY 1, 2"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "columnField": "author",
+            "rowField": "reviewer",
+            "valueField": "approved_prs",
+            "emptyValue": "-"
+          }
+        }
+      ]
+    },
+    {
+      "title": "善心人士排行（群組內成員 comment 數，不含 AI 帳號）",
+      "description": "統計群組內成員在其他成員 PR 上的 commented review 數，由多到少排列。",
+      "type": "table",
+      "id": 12,
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 115
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "devpulse-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "devpulse-pg"
+          },
+          "format": "table",
+          "rawSql": "SELECT m.display_name AS reviewer, COUNT(*) AS comments FROM pull_request_reviews prr JOIN pull_requests pr ON pr.id = prr.pull_request_id JOIN repos r ON r.id = pr.repo_id JOIN group_repos gr ON gr.repo_id = r.id JOIN groups g ON g.id = gr.group_id JOIN members m ON m.github_account = prr.reviewer_account JOIN group_members gm ON gm.member_id = m.id AND gm.group_id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND prr.state = 'commented' AND prr.reviewer_account NOT LIKE '%[bot]%' AND prr.reviewer_account <> pr.author_account GROUP BY m.display_name ORDER BY comments DESC"
         }
       ]
     },
