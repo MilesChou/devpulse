@@ -13,6 +13,7 @@ use DevPulse\Vcs\Filter\BotFilter;
 use App\Models\Build;
 use App\Models\Group;
 use App\Models\PullRequest;
+use App\Models\PullRequestReview;
 use App\Models\Repo;
 use App\Persistence\Enum\Dataset;
 use App\Persistence\MonthFetchCache;
@@ -162,36 +163,96 @@ final class FetchOrchestrator
      * GitHub list endpoint 不回 additions/deletions，必須對每個 PR 打 detail；
      * reviews 也要另外撈 GraphQL。每筆 PR 兩次 API 請求，量大時可考慮 GraphQL 一次抓。
      */
+    /**
+     * 對單一 PR 強制重跑 enrich（忽略 size_bucket 狀態）。
+     */
+    public function enrichOnePullRequestByNumber(Repo $repo, int $prNumber): bool
+    {
+        $pr = PullRequest::query()
+            ->where('repo_id', $repo->id)
+            ->where('number', $prNumber)
+            ->first(['id', 'number', 'ready_at', 'merged_at']);
+
+        if ($pr === null) {
+            return false;
+        }
+
+        $repoFullName = new RepoFullName($repo->full_name);
+        $this->enrichOnePullRequest($pr, $repoFullName);
+
+        return true;
+    }
+
     private function enrichPullRequestReviews(Repo $repo, RepoFullName $repoFullName, MonthRange $month): void
     {
         $prs = PullRequest::query()
             ->where('repo_id', $repo->id)
             ->where('pr_created_at', '>=', $month->start)
             ->where('pr_created_at', '<', $month->end)
-            ->get(['id', 'number']);
+            ->whereNull('size_bucket')
+            ->get(['id', 'number', 'ready_at', 'merged_at']);
 
         foreach ($prs as $pr) {
-            $detail = $this->vcsProvider->getPullRequest($repo->id, $repoFullName, $pr->number);
+            $this->enrichOnePullRequest($pr, $repoFullName);
+        }
+    }
 
-            $reviews = $this->vcsProvider->listReviews($repoFullName, $pr->number);
-            $firstReviewAt = null;
-            foreach ($reviews as $review) {
-                if ($this->botFilter->isBotReview($review)) {
-                    continue;
-                }
-                if ($firstReviewAt === null || $review->submittedAt->isBefore($firstReviewAt)) {
-                    $firstReviewAt = $review->submittedAt;
-                }
+    private function enrichOnePullRequest(PullRequest $pr, RepoFullName $repoFullName): void
+    {
+        $detail = $this->vcsProvider->getPullRequest($pr->repo_id, $repoFullName, $pr->number);
+        $reviews = $this->vcsProvider->listReviews($repoFullName, $pr->number);
+
+        $firstReviewAt = null;
+        $firstApprovedAt = null;
+
+        foreach ($reviews as $review) {
+            if ($this->botFilter->isBotReview($review)) {
+                continue;
             }
 
-            $totalLines = $detail->changes()->total();
-            $pr->update([
-                'additions' => $detail->changes()->additions,
-                'deletions' => $detail->changes()->deletions,
-                'total_changed_lines' => $totalLines,
-                'size_bucket' => $this->sizeBucket->classify($totalLines),
-                'first_review_at' => $firstReviewAt,
-            ]);
+            // draft 期間的 review 不計入（ready_at 之後才算）
+            if ($pr->ready_at !== null && $review->submittedAt->isBefore($pr->ready_at)) {
+                continue;
+            }
+
+            PullRequestReview::updateOrCreate(
+                [
+                    'pull_request_id' => $pr->id,
+                    'reviewer_account' => $review->reviewerAccount,
+                    'submitted_at' => $review->submittedAt,
+                ],
+                ['state' => $review->state->value],
+            );
+
+            if ($firstReviewAt === null || $review->submittedAt->isBefore($firstReviewAt)) {
+                $firstReviewAt = $review->submittedAt;
+            }
+
+            if ($review->state === \DevPulse\Vcs\ReviewState::Approved) {
+                if ($firstApprovedAt === null || $review->submittedAt->isBefore($firstApprovedAt)) {
+                    $firstApprovedAt = $review->submittedAt;
+                }
+            }
         }
+
+        $timeToApproval = ($pr->ready_at !== null && $firstApprovedAt !== null)
+            ? $pr->ready_at->diffInSeconds($firstApprovedAt)
+            : null;
+
+        $timeToMerge = ($firstApprovedAt !== null && $pr->merged_at !== null)
+            ? $firstApprovedAt->diffInSeconds($pr->merged_at)
+            : null;
+
+        $totalLines = $detail->changes()->total();
+        $pr->update([
+            'additions' => $detail->changes()->additions,
+            'deletions' => $detail->changes()->deletions,
+            'total_changed_lines' => $totalLines,
+            'size_bucket' => $this->sizeBucket->classify($totalLines),
+            'first_review_at' => $firstReviewAt,
+            'first_approved_at' => $firstApprovedAt,
+            'time_to_approval' => $timeToApproval,
+            'time_to_merge' => $timeToMerge,
+        ]);
     }
 }
