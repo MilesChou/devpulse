@@ -3,7 +3,10 @@
     "list": [
       {
         "builtIn": 1,
-        "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
         "enable": true,
         "hide": true,
         "iconColor": "rgba(0, 211, 255, 1)",
@@ -24,11 +27,21 @@
       "description": "排除 is_post_merge 與 is_deploy_event。對照月報第 1 表。",
       "type": "table",
       "id": 1,
-      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 0},
-      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "devpulse-pg"
+      },
       "fieldConfig": {
         "defaults": {
-          "custom": {"align": "left"}
+          "custom": {
+            "align": "left"
+          }
         },
         "overrides": []
       },
@@ -39,7 +52,10 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "datasource": {
+            "type": "postgres",
+            "uid": "devpulse-pg"
+          },
           "format": "table",
           "rawSql": "WITH base AS (SELECT m.display_name AS member, r.full_name AS repo, b.status, b.is_failure FROM builds b JOIN repos r ON r.id = b.repo_id JOIN members m ON m.github_account = b.author_account JOIN group_repos gr ON gr.repo_id = r.id JOIN group_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND NOT b.is_post_merge AND NOT b.is_deploy_event), agg AS (SELECT member, repo, COUNT(*) FILTER (WHERE status <> 'CANCELED') AS denom, COUNT(*) FILTER (WHERE is_failure AND status <> 'CANCELED') AS fails FROM base GROUP BY member, repo) SELECT member, repo, CASE WHEN denom > 0 THEN fails || '/' || denom || ' (' || (fails * 100 / denom) || '%)' ELSE '-' END AS rate FROM agg ORDER BY member, repo"
         }
@@ -47,7 +63,12 @@
       "transformations": [
         {
           "id": "groupingToMatrix",
-          "options": {"columnField": "repo", "rowField": "member", "valueField": "rate", "emptyValue": "-"}
+          "options": {
+            "columnField": "repo",
+            "rowField": "member",
+            "valueField": "rate",
+            "emptyValue": "-"
+          }
         }
       ]
     },
@@ -56,19 +77,35 @@
       "description": "(failed+errored) duration 加總 × $0.008/min。canceled 不計。對照月報第 2 表。",
       "type": "table",
       "id": 2,
-      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 9},
-      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "devpulse-pg"
+      },
       "fieldConfig": {
         "defaults": {
-          "custom": {"align": "left"}
+          "custom": {
+            "align": "left"
+          }
         },
         "overrides": []
       },
-      "options": {"showHeader": true, "cellHeight": "sm"},
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "datasource": {
+            "type": "postgres",
+            "uid": "devpulse-pg"
+          },
           "format": "table",
           "rawSql": "WITH base AS (SELECT m.display_name AS member, r.full_name AS repo, COALESCE(SUM(b.duration_seconds) FILTER (WHERE b.is_failure AND b.status <> 'CANCELED'), 0) / 60.0 * 0.008 AS cost FROM builds b JOIN repos r ON r.id = b.repo_id JOIN members m ON m.github_account = b.author_account JOIN group_repos gr ON gr.repo_id = r.id JOIN group_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND NOT b.is_post_merge AND NOT b.is_deploy_event GROUP BY m.display_name, r.full_name) SELECT member, repo, CASE WHEN cost > 0 THEN '$' || to_char(cost, 'FM999990.00') ELSE '-' END AS cost FROM base ORDER BY member, repo"
         }
@@ -76,7 +113,12 @@
       "transformations": [
         {
           "id": "groupingToMatrix",
-          "options": {"columnField": "repo", "rowField": "member", "valueField": "cost", "emptyValue": "-"}
+          "options": {
+            "columnField": "repo",
+            "rowField": "member",
+            "valueField": "cost",
+            "emptyValue": "-"
+          }
         }
       ]
     },
@@ -85,17 +127,35 @@
       "description": "理想 = 1.0；越高代表 PR 反覆推 commit。對照月報第 3 表。",
       "type": "table",
       "id": 3,
-      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 18},
-      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "devpulse-pg"
+      },
       "fieldConfig": {
-        "defaults": {"custom": {"align": "left"}},
+        "defaults": {
+          "custom": {
+            "align": "left"
+          }
+        },
         "overrides": []
       },
-      "options": {"showHeader": true, "cellHeight": "sm"},
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "datasource": {
+            "type": "postgres",
+            "uid": "devpulse-pg"
+          },
           "format": "table",
           "rawSql": "WITH pr_builds AS (SELECT m.display_name AS member, r.full_name AS repo, b.pr_number, COUNT(*) AS build_count FROM builds b JOIN repos r ON r.id = b.repo_id JOIN members m ON m.github_account = b.author_account JOIN group_repos gr ON gr.repo_id = r.id JOIN group_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND b.is_pull_request AND b.pr_number IS NOT NULL GROUP BY m.display_name, r.full_name, b.pr_number), agg AS (SELECT member, repo, SUM(build_count)::int AS builds, COUNT(*)::int AS prs FROM pr_builds GROUP BY member, repo) SELECT member, repo, CASE WHEN prs > 0 THEN builds || '/' || prs || ' (' || to_char(builds::float / prs, 'FM990.0') || ')' ELSE '-' END AS iteration FROM agg ORDER BY member, repo"
         }
@@ -103,7 +163,12 @@
       "transformations": [
         {
           "id": "groupingToMatrix",
-          "options": {"columnField": "repo", "rowField": "member", "valueField": "iteration", "emptyValue": "-"}
+          "options": {
+            "columnField": "repo",
+            "rowField": "member",
+            "valueField": "iteration",
+            "emptyValue": "-"
+          }
         }
       ]
     },
@@ -112,32 +177,113 @@
       "description": "對照月報第 4 表。未 review PR 用「now（或月底）- ready_at」當 lower bound。",
       "type": "table",
       "id": 4,
-      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 27},
-      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
-      "fieldConfig": {"defaults": {"custom": {"align": "left"}}, "overrides": []},
-      "options": {"showHeader": true, "cellHeight": "sm"},
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "devpulse-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "datasource": {
+            "type": "postgres",
+            "uid": "devpulse-pg"
+          },
           "format": "table",
           "rawSql": "WITH base AS (SELECT pr.size_bucket, EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, pr.merged_at, pr.closed_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0 AS lat_h, (pr.first_review_at IS NULL) AS unreviewed FROM pull_requests pr JOIN repos r ON r.id = pr.repo_id JOIN group_repos gr ON gr.repo_id = r.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL), per_bucket AS (SELECT size_bucket AS bucket, to_char(percentile_cont(0.5) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h' AS median, to_char(percentile_cont(0.9) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h' AS p90, to_char(MAX(lat_h), 'FM9990.0') || 'h' AS p100, COUNT(*)::text AS n, NULLIF(COUNT(*) FILTER (WHERE unreviewed)::text, '0') AS unreviewed FROM base GROUP BY size_bucket), overall AS (SELECT 'Overall' AS bucket, to_char(percentile_cont(0.5) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h' AS median, to_char(percentile_cont(0.9) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h' AS p90, to_char(MAX(lat_h), 'FM9990.0') || 'h' AS p100, COUNT(*)::text AS n, NULLIF(COUNT(*) FILTER (WHERE unreviewed)::text, '0') AS unreviewed FROM base), combined AS (SELECT * FROM per_bucket UNION ALL SELECT * FROM overall) SELECT bucket, median, p90, p100, n, unreviewed FROM combined ORDER BY CASE bucket WHEN 'XS' THEN 1 WHEN 'S' THEN 2 WHEN 'M' THEN 3 WHEN 'L' THEN 4 WHEN 'XL' THEN 5 WHEN 'Overall' THEN 6 ELSE 99 END"
         }
       ]
     },
     {
+      "id": 10,
+      "title": "PR Lifecycle p90（Pickup / Approval / Merge，小時）",
+      "type": "table",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "devpulse-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "devpulse-pg"
+          },
+          "rawSql": "WITH base AS (SELECT pr.size_bucket, EXTRACT(EPOCH FROM (pr.first_review_at - pr.ready_at)) / 3600.0 AS pickup_h, pr.time_to_approval::float / 3600.0 AS approval_h, pr.time_to_merge::float / 3600.0 AS merge_h FROM pull_requests pr JOIN repos r ON r.id = pr.repo_id JOIN group_repos gr ON gr.repo_id = r.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL), per_bucket AS (SELECT size_bucket AS bucket, percentile_cont(0.9) WITHIN GROUP (ORDER BY pickup_h) AS pickup_p90_raw, percentile_cont(0.9) WITHIN GROUP (ORDER BY approval_h) AS approval_p90_raw, percentile_cont(0.9) WITHIN GROUP (ORDER BY merge_h) AS merge_p90_raw, COUNT(*)::text AS n FROM base GROUP BY size_bucket), overall AS (SELECT 'Overall' AS bucket, percentile_cont(0.9) WITHIN GROUP (ORDER BY pickup_h) AS pickup_p90_raw, percentile_cont(0.9) WITHIN GROUP (ORDER BY approval_h) AS approval_p90_raw, percentile_cont(0.9) WITHIN GROUP (ORDER BY merge_h) AS merge_p90_raw, COUNT(*)::text AS n FROM base), combined AS (SELECT * FROM per_bucket UNION ALL SELECT * FROM overall) SELECT bucket, CASE WHEN pickup_p90_raw < 24 THEN to_char(pickup_p90_raw, 'FM9990.0') || 'h' ELSE to_char(pickup_p90_raw / 24.0, 'FM9990.0') || 'd' END AS pickup_p90, CASE WHEN approval_p90_raw < 24 THEN to_char(approval_p90_raw, 'FM9990.0') || 'h' ELSE to_char(approval_p90_raw / 24.0, 'FM9990.0') || 'd' END AS approval_p90, CASE WHEN merge_p90_raw < 24 THEN to_char(merge_p90_raw, 'FM9990.0') || 'h' ELSE to_char(merge_p90_raw / 24.0, 'FM9990.0') || 'd' END AS merge_p90, n FROM combined ORDER BY CASE bucket WHEN 'XS' THEN 1 WHEN 'S' THEN 2 WHEN 'M' THEN 3 WHEN 'L' THEN 4 WHEN 'XL' THEN 5 WHEN 'Overall' THEN 6 ELSE 99 END",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "transformations": []
+    },
+    {
       "title": "PR review latency（成員 × size；中位 / p90 (n=N)，小時）",
       "description": "對照月報第 5 表。",
       "type": "table",
       "id": 5,
-      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 36},
-      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
-      "fieldConfig": {"defaults": {"custom": {"align": "left"}}, "overrides": []},
-      "options": {"showHeader": true, "cellHeight": "sm"},
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 45
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "devpulse-pg"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "datasource": {
+            "type": "postgres",
+            "uid": "devpulse-pg"
+          },
           "format": "table",
           "rawSql": "WITH base AS (SELECT m.display_name AS member, pr.size_bucket, EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, pr.merged_at, pr.closed_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0 AS lat_h FROM pull_requests pr JOIN repos r ON r.id = pr.repo_id JOIN members m ON m.github_account = pr.author_account JOIN group_repos gr ON gr.repo_id = r.id JOIN group_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL) SELECT member, size_bucket, to_char(percentile_cont(0.5) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h/' || to_char(percentile_cont(0.9) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h (n=' || COUNT(*) || ')' AS cell FROM base GROUP BY member, size_bucket ORDER BY member, CASE size_bucket WHEN 'XS' THEN 1 WHEN 'S' THEN 2 WHEN 'M' THEN 3 WHEN 'L' THEN 4 WHEN 'XL' THEN 5 ELSE 99 END"
         }
@@ -145,7 +291,12 @@
       "transformations": [
         {
           "id": "groupingToMatrix",
-          "options": {"columnField": "size_bucket", "rowField": "member", "valueField": "cell", "emptyValue": "-"}
+          "options": {
+            "columnField": "size_bucket",
+            "rowField": "member",
+            "valueField": "cell",
+            "emptyValue": "-"
+          }
         }
       ]
     },
@@ -154,23 +305,50 @@
       "description": "每月各 size bucket 的 median review latency，含未 review lower bound。",
       "type": "timeseries",
       "id": 8,
-      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 45},
-      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 54
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "devpulse-pg"
+      },
       "fieldConfig": {
         "defaults": {
-          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 0, "showPoints": "always", "spanNulls": true},
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "spanNulls": true
+          },
           "unit": "h"
         },
         "overrides": []
       },
       "options": {
-        "tooltip": {"mode": "multi"},
-        "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "last"]}
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "last"
+          ]
+        }
       },
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "datasource": {
+            "type": "postgres",
+            "uid": "devpulse-pg"
+          },
           "format": "time_series",
           "rawSql": "SELECT date_trunc('month', pr.pr_created_at) AS time, pr.size_bucket AS metric, percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, pr.merged_at, pr.closed_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0) AS value FROM pull_requests pr JOIN repos r ON r.id = pr.repo_id JOIN group_repos gr ON gr.repo_id = r.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL AND (pr.first_review_at IS NOT NULL OR pr.merged_at IS NOT NULL OR pr.closed_at IS NOT NULL) GROUP BY 1, 2 ORDER BY 1"
         }
@@ -181,23 +359,50 @@
       "description": "對照月報第 6 項。passed only，不過濾成員。",
       "type": "timeseries",
       "id": 6,
-      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 55},
-      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 64
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "devpulse-pg"
+      },
       "fieldConfig": {
         "defaults": {
-          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 0, "showPoints": "always", "spanNulls": true},
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "spanNulls": true
+          },
           "unit": "m"
         },
         "overrides": []
       },
       "options": {
-        "tooltip": {"mode": "multi"},
-        "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"]}
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        }
       },
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "datasource": {
+            "type": "postgres",
+            "uid": "devpulse-pg"
+          },
           "format": "time_series",
           "rawSql": "SELECT date_trunc('day', b.started_at) AS time, r.full_name AS metric, percentile_cont(0.5) WITHIN GROUP (ORDER BY b.duration_seconds) / 60.0 AS value FROM builds b JOIN repos r ON r.id = b.repo_id JOIN group_repos gr ON gr.repo_id = r.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND b.status = 'PASSED' AND b.duration_seconds IS NOT NULL AND NOT b.is_post_merge AND NOT b.is_deploy_event GROUP BY 1, 2 ORDER BY 1"
         }
@@ -208,20 +413,68 @@
       "description": "對照月報第 7 項。cause 分類待 schema + classifier 接入後再加。",
       "type": "table",
       "id": 7,
-      "gridPos": {"h": 16, "w": 24, "x": 0, "y": 65},
-      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+      "gridPos": {
+        "h": 16,
+        "w": 24,
+        "x": 0,
+        "y": 74
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "devpulse-pg"
+      },
       "fieldConfig": {
-        "defaults": {"custom": {"align": "left"}},
+        "defaults": {
+          "custom": {
+            "align": "left"
+          }
+        },
         "overrides": [
-          {"matcher": {"id": "byName", "options": "duration_min"}, "properties": [{"id": "unit", "value": "m"}, {"id": "displayName", "value": "duration"}]},
-          {"matcher": {"id": "byName", "options": "cost_usd"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "displayName", "value": "cost"}]}
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "duration_min"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "m"
+              },
+              {
+                "id": "displayName",
+                "value": "duration"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cost_usd"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "displayName",
+                "value": "cost"
+              }
+            ]
+          }
         ]
       },
-      "options": {"showHeader": true, "cellHeight": "sm"},
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "datasource": {
+            "type": "postgres",
+            "uid": "devpulse-pg"
+          },
           "format": "table",
           "rawSql": "SELECT b.started_at AS \"date\", m.display_name AS \"member\", r.full_name AS \"repo\", b.status AS \"state\", b.external_id AS \"build\", b.branch AS \"branch\", b.duration_seconds / 60.0 AS \"duration_min\", CASE WHEN b.status <> 'CANCELED' THEN b.duration_seconds / 60.0 * 0.008 ELSE 0 END AS \"cost_usd\" FROM builds b JOIN repos r ON r.id = b.repo_id JOIN members m ON m.github_account = b.author_account JOIN group_repos gr ON gr.repo_id = r.id JOIN group_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND b.is_failure AND NOT b.is_post_merge AND NOT b.is_deploy_event ORDER BY b.started_at DESC LIMIT 500"
         }
@@ -232,34 +485,70 @@
       "description": "含未 review PR（lower bound）。latency_h 欄位點擊可開啟 GitHub PR。",
       "type": "table",
       "id": 9,
-      "gridPos": {"h": 16, "w": 24, "x": 0, "y": 81},
-      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+      "gridPos": {
+        "h": 16,
+        "w": 24,
+        "x": 0,
+        "y": 90
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "devpulse-pg"
+      },
       "fieldConfig": {
-        "defaults": {"custom": {"align": "left"}},
+        "defaults": {
+          "custom": {
+            "align": "left"
+          }
+        },
         "overrides": [
           {
-            "matcher": {"id": "byName", "options": "latency_h"},
+            "matcher": {
+              "id": "byName",
+              "options": "latency_h"
+            },
             "properties": [
-              {"id": "displayName", "value": "latency (h)"},
-              {"id": "decimals", "value": 1}
+              {
+                "id": "displayName",
+                "value": "latency (h)"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
             ]
           },
           {
-            "matcher": {"id": "byName", "options": "url"},
+            "matcher": {
+              "id": "byName",
+              "options": "url"
+            },
             "properties": [
               {
                 "id": "links",
-                "value": [{"title": "Open PR", "url": "${__value.text}", "targetBlank": true}]
+                "value": [
+                  {
+                    "title": "Open PR",
+                    "url": "${__value.text}",
+                    "targetBlank": true
+                  }
+                ]
               }
             ]
           }
         ]
       },
-      "options": {"showHeader": true, "cellHeight": "sm"},
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "datasource": {
+            "type": "postgres",
+            "uid": "devpulse-pg"
+          },
           "format": "table",
           "rawSql": "SELECT pr.pr_created_at AS created, m.display_name AS member, r.full_name AS repo, pr.number AS pr_number, pr.size_bucket AS size, ROUND(EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, pr.merged_at, pr.closed_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0, 1) AS latency_h, (pr.closed_at IS NULL AND pr.merged_at IS NULL) AS opening, 'https://github.com/' || r.full_name || '/pull/' || pr.number AS url FROM pull_requests pr JOIN repos r ON r.id = pr.repo_id JOIN members m ON m.github_account = pr.author_account JOIN group_repos gr ON gr.repo_id = r.id JOIN group_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL ORDER BY latency_h DESC LIMIT 200"
         }
@@ -268,14 +557,19 @@
   ],
   "refresh": "",
   "schemaVersion": 39,
-  "tags": ["devpulse"],
+  "tags": [
+    "devpulse"
+  ],
   "templating": {
     "list": [
       {
         "name": "group",
         "label": "Group",
         "type": "query",
-        "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+        "datasource": {
+          "type": "postgres",
+          "uid": "devpulse-pg"
+        },
         "definition": "SELECT slug FROM groups ORDER BY slug",
         "query": "SELECT slug FROM groups ORDER BY slug",
         "multi": true,
@@ -286,7 +580,10 @@
       }
     ]
   },
-  "time": {"from": "now-90d", "to": "now"},
+  "time": {
+    "from": "now-90d",
+    "to": "now"
+  },
   "timepicker": {},
   "timezone": "",
   "title": "devpulse overview",
