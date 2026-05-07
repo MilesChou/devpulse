@@ -7,6 +7,7 @@ namespace Unit\Domain\Vcs\Filter;
 use App\Domain\Shared\RepoFullName;
 use App\Domain\Shared\RepoId;
 use App\Domain\Vcs\Author;
+use App\Domain\Vcs\ChangeStats;
 use App\Domain\Vcs\Filter\BotFilter;
 use App\Domain\Vcs\PullRequest;
 use App\Domain\Vcs\PullRequestNumber;
@@ -57,8 +58,7 @@ class BotFilterTest extends TestCase
             number: new PullRequestNumber(1),
             author: new Author($author),
             status: PullRequestStatus::Open,
-            additions: 1,
-            deletions: 1,
+            changes: new ChangeStats(1, 1),
             createdAt: $createdAt,
             readyAt: $createdAt,
             mergedAt: null,

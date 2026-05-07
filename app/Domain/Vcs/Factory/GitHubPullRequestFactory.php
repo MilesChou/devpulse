@@ -6,6 +6,7 @@ namespace App\Domain\Vcs\Factory;
 
 use App\Domain\Shared\RepoId;
 use App\Domain\Vcs\Author;
+use App\Domain\Vcs\ChangeStats;
 use App\Domain\Vcs\PullRequest;
 use App\Domain\Vcs\PullRequestNumber;
 use App\Domain\Vcs\PullRequestStatus;
@@ -44,8 +45,10 @@ final class GitHubPullRequestFactory
             number: $numberVo,
             author: $authorVo,
             status: $status,
-            additions: is_int($additions) ? $additions : 0,
-            deletions: is_int($deletions) ? $deletions : 0,
+            changes: new ChangeStats(
+                additions: is_int($additions) ? $additions : 0,
+                deletions: is_int($deletions) ? $deletions : 0,
+            ),
             createdAt: self::parseTimeRequired($raw, 'created_at'),
             readyAt: self::inferReadyAtFromDraft($raw),
             mergedAt: self::parseTimeOptional($raw, 'merged_at'),

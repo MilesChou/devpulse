@@ -6,6 +6,7 @@ namespace Tests\Unit\Domain\Vcs;
 
 use App\Domain\Shared\RepoId;
 use App\Domain\Vcs\Author;
+use App\Domain\Vcs\ChangeStats;
 use App\Domain\Vcs\Factory\GitHubPullRequestFactory;
 use App\Domain\Vcs\PullRequestNumber;
 use App\Domain\Vcs\PullRequestStatus;
@@ -74,8 +75,7 @@ class PullRequestSummaryTest extends TestCase
             number: new PullRequestNumber(42),
             author: new Author('alice'),
             status: PullRequestStatus::Open,
-            additions: 10,
-            deletions: 5,
+            changes: new ChangeStats(10, 5),
             createdAt: $createdAt,
             readyAt: $readyAt,
             mergedAt: null,
@@ -152,8 +152,7 @@ class PullRequestSummaryTest extends TestCase
             number: new PullRequestNumber($number),
             author: new Author($authorAccount),
             status: $status,
-            additions: $additions,
-            deletions: $deletions,
+            changes: new ChangeStats($additions, $deletions),
             createdAt: $createdAt,
             readyAt: $readyAt ?? $createdAt,
             mergedAt: $mergedAt,

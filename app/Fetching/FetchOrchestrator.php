@@ -184,10 +184,10 @@ final class FetchOrchestrator
                 }
             }
 
-            $totalLines = $detail->totalChangedLines();
+            $totalLines = $detail->changes->total();
             $pr->update([
-                'additions' => $detail->additions,
-                'deletions' => $detail->deletions,
+                'additions' => $detail->changes->additions,
+                'deletions' => $detail->changes->deletions,
                 'total_changed_lines' => $totalLines,
                 'size_bucket' => $this->sizeBucket->classify($totalLines),
                 'first_review_at' => $firstReviewAt,

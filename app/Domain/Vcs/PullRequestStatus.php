@@ -7,7 +7,7 @@ namespace App\Domain\Vcs;
 use InvalidArgumentException;
 
 /**
- * PR 的生命週期狀態；值與 GitHub REST API 的 state 欄位對應（Merged 為本系統擴充）。
+ * PR 的生命週期狀態；值與 GitHub REST API 的 state 欄位對應
  */
 enum PullRequestStatus: string
 {

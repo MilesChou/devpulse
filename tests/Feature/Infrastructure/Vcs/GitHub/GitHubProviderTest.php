@@ -67,9 +67,9 @@ class GitHubProviderTest extends TestCase
         $pr = $provider->getPullRequest(1, new RepoFullName('your-org/your-repo'), 42);
 
         $this->assertSame(42, $pr->number->toInt());
-        $this->assertSame(100, $pr->additions);
-        $this->assertSame(20, $pr->deletions);
-        $this->assertSame(120, $pr->totalChangedLines());
+        $this->assertSame(100, $pr->changes->additions);
+        $this->assertSame(20, $pr->changes->deletions);
+        $this->assertSame(120, $pr->changes->total());
     }
 
     public function testGetCommitAuthorAccountReturnsLogin(): void

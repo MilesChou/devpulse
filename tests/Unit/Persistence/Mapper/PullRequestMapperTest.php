@@ -6,6 +6,7 @@ namespace Tests\Unit\Persistence\Mapper;
 
 use App\Domain\Shared\RepoId;
 use App\Domain\Vcs\Author;
+use App\Domain\Vcs\ChangeStats;
 use App\Domain\Vcs\PullRequest;
 use App\Domain\Vcs\PullRequestNumber;
 use App\Domain\Vcs\PullRequestStatus;
@@ -23,8 +24,7 @@ class PullRequestMapperTest extends TestCase
             number: new PullRequestNumber(42),
             author: new Author('alice'),
             status: PullRequestStatus::Open,
-            additions: 100,
-            deletions: 50,
+            changes: new ChangeStats(100, 50),
             createdAt: $createdAt,
             readyAt: $createdAt,
             mergedAt: null,
@@ -47,8 +47,7 @@ class PullRequestMapperTest extends TestCase
             number: new PullRequestNumber(42),
             author: new Author('alice'),
             status: PullRequestStatus::Open,
-            additions: 1,
-            deletions: 0,
+            changes: new ChangeStats(1, 0),
             createdAt: CarbonImmutable::create(2026, 4, 15, 10, 0, 0, 'UTC'),
             readyAt: null,
             mergedAt: null,
