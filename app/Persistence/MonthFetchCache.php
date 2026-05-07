@@ -7,7 +7,7 @@ namespace App\Persistence;
 use App\Models\MonthFetch;
 use App\Persistence\Enum\Dataset;
 use App\Persistence\Enum\MonthFetchStatus;
-use App\Domain\Shared\MonthRange;
+use DevPulse\Shared\MonthRange;
 use Carbon\CarbonImmutable;
 
 /**

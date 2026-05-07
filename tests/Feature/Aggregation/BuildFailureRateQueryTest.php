@@ -6,9 +6,9 @@ namespace Tests\Feature\Aggregation;
 
 use App\Aggregation\BuildFailureRateQuery;
 use App\Aggregation\Filter\BuildEventFilter;
-use App\Domain\Ci\BuildStatus;
-use App\Domain\Ci\BuildTrigger;
-use App\Domain\Shared\MonthRange;
+use DevPulse\Ci\BuildStatus;
+use DevPulse\Ci\BuildTrigger;
+use DevPulse\Shared\MonthRange;
 use App\Models\Build;
 use App\Models\Group;
 use App\Models\Repo;

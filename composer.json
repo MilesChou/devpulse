@@ -29,13 +29,15 @@
     "autoload": {
         "psr-4": {
             "App\\": "app/",
+            "DevPulse\\": "src/DevPulse/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Tests\\": "tests/"
+            "Tests\\": "tests/",
+            "Tests\\Domain\\": "src/Tests/"
         }
     },
     "scripts": {

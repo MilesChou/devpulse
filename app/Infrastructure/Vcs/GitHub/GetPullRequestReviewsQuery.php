@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Infrastructure\Vcs\GitHub;
 
-use App\Domain\Shared\RepoFullName;
+use DevPulse\Shared\RepoFullName;
 
 class GetPullRequestReviewsQuery extends GraphQLRequest
 {

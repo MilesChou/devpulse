@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Infrastructure\Ci\Travis;
 
-use App\Domain\Shared\RepoFullName;
+use DevPulse\Shared\RepoFullName;
 use Saloon\Enums\Method;
 use Saloon\Http\Request;
 

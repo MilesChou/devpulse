@@ -6,11 +6,11 @@ namespace App\Aggregation;
 
 use App\Aggregation\Dto\FailedBuildItem;
 use App\Aggregation\Filter\BuildEventFilter;
-use App\Domain\Shared\CommitSha;
-use App\Domain\Shared\MonthRange;
-use App\Domain\Shared\RepoFullName;
-use App\Domain\Vcs\Author;
-use App\Domain\Vcs\PullRequestNumber;
+use DevPulse\Shared\CommitSha;
+use DevPulse\Shared\MonthRange;
+use DevPulse\Shared\RepoFullName;
+use DevPulse\Vcs\Author;
+use DevPulse\Vcs\PullRequestNumber;
 use App\Models\Build;
 use App\Models\Group;
 use Carbon\CarbonImmutable;

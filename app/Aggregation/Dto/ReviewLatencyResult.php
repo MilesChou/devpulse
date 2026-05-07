@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Aggregation\Dto;
 
-use App\Domain\Shared\RepoFullName;
-use App\Domain\Vcs\Author;
-use App\Domain\Vcs\PullRequestNumber;
+use DevPulse\Shared\RepoFullName;
+use DevPulse\Vcs\Author;
+use DevPulse\Vcs\PullRequestNumber;
 
 final readonly class ReviewLatencyResult
 {

@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Aggregation;
 
 use App\Aggregation\Dto\DailyBuildDuration;
-use App\Domain\Ci\BuildStatus;
-use App\Domain\Shared\MonthRange;
-use App\Domain\Shared\RepoFullName;
+use DevPulse\Ci\BuildStatus;
+use DevPulse\Shared\MonthRange;
+use DevPulse\Shared\RepoFullName;
 use App\Models\Build;
 use App\Models\Group;
 use Carbon\CarbonImmutable;

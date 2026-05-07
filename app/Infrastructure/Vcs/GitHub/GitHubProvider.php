@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Infrastructure\Vcs\GitHub;
 
-use App\Domain\Shared\MonthRange;
-use App\Domain\Shared\RepoFullName;
-use App\Domain\Vcs\Factory\GitHubPullRequestFactory;
-use App\Domain\Vcs\PullRequest;
-use App\Domain\Vcs\ReviewSummary;
+use DevPulse\Shared\MonthRange;
+use DevPulse\Shared\RepoFullName;
+use DevPulse\Vcs\Factory\GitHubPullRequestFactory;
+use DevPulse\Vcs\PullRequest;
+use DevPulse\Vcs\ReviewSummary;
 use App\Support\Saloon\PayloadHelpers;
 use Generator;
 use InvalidArgumentException;

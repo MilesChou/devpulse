@@ -8,7 +8,7 @@ use App\Aggregation\BuildFailureRateQuery;
 use App\Aggregation\DailyBuildDurationQuery;
 use App\Aggregation\FailedBuildListQuery;
 use App\Aggregation\ReviewLatencyQuery;
-use App\Domain\Shared\MonthRange;
+use DevPulse\Shared\MonthRange;
 use App\Models\Group;
 use App\Reporting\Renderer\DailyBuildDurationRenderer;
 use App\Reporting\Renderer\FailedBuildListRenderer;

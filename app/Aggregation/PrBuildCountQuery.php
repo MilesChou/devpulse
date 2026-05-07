@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Aggregation;
 
 use App\Aggregation\Dto\PrBuildCountResult;
-use App\Domain\Shared\MonthRange;
-use App\Domain\Shared\RepoFullName;
-use App\Domain\Vcs\PullRequestNumber;
+use DevPulse\Shared\MonthRange;
+use DevPulse\Shared\RepoFullName;
+use DevPulse\Vcs\PullRequestNumber;
 use App\Models\Build;
 use App\Models\Group;
 use Illuminate\Support\Collection;

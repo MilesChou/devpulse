@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Devpulse;
 
-use App\Domain\Shared\RepoFullName;
+use DevPulse\Shared\RepoFullName;
 use App\Models\Group;
 use App\Models\Repo;
 use InvalidArgumentException;

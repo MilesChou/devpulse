@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
 #[Description('建立一個 group（觀測群體）')]
 class GroupCreateCommand extends Command
 {
-    private const SLUG_PATTERN = '/^[a-z0-9-]+$/';
+    private const string SLUG_PATTERN = '/^[a-z0-9-]+$/';
 
     public function handle(): int
     {
@@ -33,7 +33,7 @@ class GroupCreateCommand extends Command
             return self::FAILURE;
         }
 
-        $group = Group::create([
+        $group = Group::query()->create([
             'slug' => $slug,
             'description' => $description,
         ]);

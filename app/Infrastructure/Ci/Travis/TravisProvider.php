@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace App\Infrastructure\Ci\Travis;
 
-use App\Domain\Ci\BuildStatus;
-use App\Domain\Ci\Build;
-use App\Domain\Ci\BuildTrigger;
-use App\Domain\Ci\CiProvider;
-use App\Domain\Shared\CommitSha;
-use App\Domain\Shared\MonthRange;
-use App\Domain\Shared\RepoFullName;
-use App\Domain\Vcs\PullRequestNumber;
+use DevPulse\Ci\BuildStatus;
+use DevPulse\Ci\Build;
+use DevPulse\Ci\BuildTrigger;
+use DevPulse\Ci\CiProvider;
+use DevPulse\Shared\CommitSha;
+use DevPulse\Shared\MonthRange;
+use DevPulse\Shared\RepoFullName;
+use DevPulse\Vcs\PullRequestNumber;
 use App\Support\Saloon\PayloadHelpers;
 use Carbon\CarbonImmutable;
 use Generator;

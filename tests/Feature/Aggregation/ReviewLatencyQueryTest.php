@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Aggregation;
 
 use App\Aggregation\ReviewLatencyQuery;
-use App\Domain\Shared\MonthRange;
-use App\Domain\Vcs\PullRequestStatus;
+use DevPulse\Shared\MonthRange;
+use DevPulse\Vcs\PullRequestStatus;
 use App\Models\Group;
 use App\Models\PullRequest;
 use App\Models\Repo;

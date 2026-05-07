@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Fetching;
 
 use App\Aggregation\PrSizeBucket;
-use App\Domain\Ci\CiProvider;
-use App\Domain\Shared\MonthRange;
-use App\Domain\Shared\RepoFullName;
+use DevPulse\Ci\CiProvider;
+use DevPulse\Shared\MonthRange;
+use DevPulse\Shared\RepoFullName;
 use App\Infrastructure\Vcs\GitHub\GitHubProvider;
-use App\Domain\Vcs\Filter\BotFilter;
+use DevPulse\Vcs\Filter\BotFilter;
 use App\Models\Build;
 use App\Models\Group;
 use App\Models\PullRequest;
@@ -184,10 +184,10 @@ final class FetchOrchestrator
                 }
             }
 
-            $totalLines = $detail->changes->total();
+            $totalLines = $detail->changes()->total();
             $pr->update([
-                'additions' => $detail->changes->additions,
-                'deletions' => $detail->changes->deletions,
+                'additions' => $detail->changes()->additions,
+                'deletions' => $detail->changes()->deletions,
                 'total_changed_lines' => $totalLines,
                 'size_bucket' => $this->sizeBucket->classify($totalLines),
                 'first_review_at' => $firstReviewAt,

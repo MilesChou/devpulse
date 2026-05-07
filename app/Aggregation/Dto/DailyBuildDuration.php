@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Aggregation\Dto;
 
-use App\Domain\Shared\RepoFullName;
+use DevPulse\Shared\RepoFullName;
 
 final readonly class DailyBuildDuration
 {

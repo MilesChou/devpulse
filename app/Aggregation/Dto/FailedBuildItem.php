@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Aggregation\Dto;
 
-use App\Domain\Shared\CommitSha;
-use App\Domain\Shared\RepoFullName;
-use App\Domain\Vcs\Author;
-use App\Domain\Vcs\PullRequestNumber;
+use DevPulse\Shared\CommitSha;
+use DevPulse\Shared\RepoFullName;
+use DevPulse\Vcs\Author;
+use DevPulse\Vcs\PullRequestNumber;
 use Carbon\CarbonImmutable;
 
 final readonly class FailedBuildItem

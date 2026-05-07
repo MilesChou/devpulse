@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Tests\Unit\Aggregation;
 
 use App\Aggregation\Dto\FailureRateResult;
-use App\Domain\Shared\RepoFullName;
-use App\Domain\Vcs\Author;
+use DevPulse\Shared\RepoFullName;
+use DevPulse\Vcs\Author;
 use PHPUnit\Framework\TestCase;
 
 class FailureRateResultTest extends TestCase

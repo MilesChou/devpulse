@@ -7,6 +7,9 @@
     <!-- use colors in output -->
     <arg name="colors"/>
 
+    <!-- register Slevomat standard path -->
+    <config name="installed_paths" value="../../slevomat/coding-standard"/>
+
     <!-- inherit rules from: -->
     <rule ref="PSR12"/>
 
@@ -61,12 +64,14 @@
     <!-- specific and just exclude rules in some file -->
     <rule ref="Generic.Files.LineLength.TooLong">
         <exclude-pattern>tests</exclude-pattern>
+        <exclude-pattern>src/Tests</exclude-pattern>
     </rule>
 
     <!-- Paths and file to check -->
     <file>app</file>
     <file>database/factories</file>
     <file>database/seeders</file>
+    <file>src</file>
     <file>tests</file>
     <exclude-pattern>.blade.php$</exclude-pattern>
     <exclude-pattern>.js$</exclude-pattern>

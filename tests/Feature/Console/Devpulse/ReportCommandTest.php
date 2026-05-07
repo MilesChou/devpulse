@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Console\Devpulse;
 
-use App\Domain\Ci\BuildStatus;
-use App\Domain\Ci\BuildTrigger;
-use App\Domain\Vcs\PullRequestStatus;
+use DevPulse\Ci\BuildStatus;
+use DevPulse\Ci\BuildTrigger;
+use DevPulse\Vcs\PullRequestStatus;
 use App\Models\Build;
 use App\Models\Group;
 use App\Models\PullRequest;

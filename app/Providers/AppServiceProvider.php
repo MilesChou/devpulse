@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Aggregation\PrSizeBucket;
-use App\Domain\Ci\CiProvider;
-use App\Domain\Vcs\Filter\BotFilter;
+use DevPulse\Ci\CiProvider;
+use DevPulse\Vcs\Filter\BotFilter;
 use App\Infrastructure\Ci\Travis\TravisConnector;
 use App\Infrastructure\Ci\Travis\TravisProvider;
 use App\Infrastructure\Vcs\GitHub\GitHubConnector;

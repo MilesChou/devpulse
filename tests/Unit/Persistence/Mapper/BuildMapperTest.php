@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Persistence\Mapper;
 
-use App\Domain\Ci\Build;
-use App\Domain\Ci\BuildStatus;
-use App\Domain\Ci\BuildTrigger;
-use App\Domain\Shared\CommitSha;
-use App\Domain\Shared\RepoFullName;
+use DevPulse\Ci\Build;
+use DevPulse\Ci\BuildStatus;
+use DevPulse\Ci\BuildTrigger;
+use DevPulse\Shared\CommitSha;
+use DevPulse\Shared\RepoFullName;
 use App\Persistence\Mapper\BuildMapper;
 use Carbon\CarbonImmutable;
 use PHPUnit\Framework\TestCase;

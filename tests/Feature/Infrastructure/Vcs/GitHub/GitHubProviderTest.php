@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Infrastructure\Vcs\GitHub;
 
-use App\Domain\Shared\MonthRange;
-use App\Domain\Shared\RepoFullName;
-use App\Domain\Vcs\PullRequest;
-use App\Domain\Vcs\ReviewState;
+use DevPulse\Shared\MonthRange;
+use DevPulse\Shared\RepoFullName;
+use DevPulse\Vcs\PullRequest;
+use DevPulse\Vcs\ReviewState;
 use App\Infrastructure\Vcs\GitHub\GitHubConnector;
 use App\Infrastructure\Vcs\GitHub\GitHubProvider;
 use Saloon\Http\Faking\MockClient;
@@ -67,9 +67,9 @@ class GitHubProviderTest extends TestCase
         $pr = $provider->getPullRequest(1, new RepoFullName('your-org/your-repo'), 42);
 
         $this->assertSame(42, $pr->number->toInt());
-        $this->assertSame(100, $pr->changes->additions);
-        $this->assertSame(20, $pr->changes->deletions);
-        $this->assertSame(120, $pr->changes->total());
+        $this->assertSame(100, $pr->changes()->additions);
+        $this->assertSame(20, $pr->changes()->deletions);
+        $this->assertSame(120, $pr->changes()->total());
     }
 
     public function testGetCommitAuthorAccountReturnsLogin(): void

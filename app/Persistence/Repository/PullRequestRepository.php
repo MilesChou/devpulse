@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Persistence\Repository;
 
-use App\Domain\Vcs\PullRequest;
+use DevPulse\Vcs\PullRequest;
 use App\Models\PullRequest as PullRequestModel;
 use App\Persistence\Mapper\PullRequestMapper;
 

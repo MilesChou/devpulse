@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Persistence\Repository;
 
-use App\Domain\Ci\BuildStatus;
-use App\Domain\Ci\Build as BuildVo;
-use App\Domain\Ci\BuildTrigger;
-use App\Domain\Shared\CommitSha;
-use App\Domain\Shared\RepoFullName;
+use DevPulse\Ci\BuildStatus;
+use DevPulse\Ci\Build as BuildVo;
+use DevPulse\Ci\BuildTrigger;
+use DevPulse\Shared\CommitSha;
+use DevPulse\Shared\RepoFullName;
 use App\Models\Build;
 use App\Models\Repo;
 use App\Persistence\Mapper\BuildMapper;

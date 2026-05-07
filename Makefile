@@ -39,7 +39,7 @@ lint: lint-syntax phpcs
 
 .PHONY: lint-syntax
 lint-syntax:
-	${PHP} vendor/bin/parallel-lint -j ${PROCESSORS_NUM} $(if $(TARGET_FILES),$(TARGET_FILES),app database tests)
+	${PHP} vendor/bin/parallel-lint -j ${PROCESSORS_NUM} $(if $(TARGET_FILES),$(TARGET_FILES),app database src tests)
 
 .PHONY: phpcs
 phpcs:

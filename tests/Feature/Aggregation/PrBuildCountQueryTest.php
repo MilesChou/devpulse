@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Aggregation;
 
 use App\Aggregation\PrBuildCountQuery;
-use App\Domain\Shared\MonthRange;
+use DevPulse\Shared\MonthRange;
 use App\Models\Build;
 use App\Models\Group;
 use App\Models\Repo;

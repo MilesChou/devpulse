@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Devpulse;
 
-use App\Domain\Shared\MonthRange;
+use DevPulse\Shared\MonthRange;
 use App\Fetching\FetchOrchestrator;
 use App\Models\Group;
 use Illuminate\Console\Attributes\Description;
@@ -21,12 +21,7 @@ use InvalidArgumentException;
 #[Description('撈指定 group 在指定月份的 builds + pull requests，寫入 DB')]
 class FetchCommand extends Command
 {
-    public function __construct(private readonly FetchOrchestrator $orchestrator)
-    {
-        parent::__construct();
-    }
-
-    public function handle(): int
+    public function handle(FetchOrchestrator $orchestrator): int
     {
         $groupSlug = (string)$this->argument('group');
         $monthRaw = (string)$this->argument('month');
@@ -42,21 +37,21 @@ class FetchCommand extends Command
 
         $group = Group::query()->where('slug', $groupSlug)->first();
         if ($group === null) {
-            $this->error("group `{$groupSlug}` 不存在");
+            $this->error("group `$groupSlug` 不存在");
 
             return self::FAILURE;
         }
 
         $repoCount = $group->repos()->count();
         if ($repoCount === 0) {
-            $this->warn("group `{$groupSlug}` 沒有任何 repo，請先用 devpulse:repo:add 加 repo");
+            $this->warn("group `$groupSlug` 沒有任何 repo，請先用 devpulse:repo:add 加 repo");
 
             return self::SUCCESS;
         }
 
-        $this->info("撈取 {$groupSlug} / {$monthRaw}（{$repoCount} repos）" . ($force ? '（force mode）' : ''));
+        $this->info("撈取 $groupSlug / {$monthRaw}（{$repoCount} repos）" . ($force ? '（force mode）' : ''));
 
-        $result = $this->orchestrator->fetch($group, $month, $force);
+        $result = $orchestrator->fetch($group, $month, $force);
 
         $hasError = false;
         foreach ($result->repos as $outcome) {

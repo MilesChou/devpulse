@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Infrastructure\Ci\Travis;
 
-use App\Domain\Ci\Build;
-use App\Domain\Shared\MonthRange;
-use App\Domain\Shared\RepoFullName;
+use DevPulse\Ci\Build;
+use DevPulse\Shared\MonthRange;
+use DevPulse\Shared\RepoFullName;
 use App\Infrastructure\Ci\Travis\TravisConnector;
 use App\Infrastructure\Ci\Travis\TravisProvider;
 use Saloon\Http\Faking\MockClient;

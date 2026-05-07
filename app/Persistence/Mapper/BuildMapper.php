@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Persistence\Mapper;
 
-use App\Domain\Ci\Build;
+use DevPulse\Ci\Build;
 
 final class BuildMapper
 {

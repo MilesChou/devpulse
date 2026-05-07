@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Persistence\Repository;
 
-use App\Domain\Ci\Build;
+use DevPulse\Ci\Build;
 use App\Models\Build as EloquentBuild;
 use App\Persistence\Mapper\BuildMapper;
 

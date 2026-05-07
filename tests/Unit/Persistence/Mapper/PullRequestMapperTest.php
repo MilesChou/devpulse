@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Persistence\Mapper;
 
-use App\Domain\Shared\RepoId;
-use App\Domain\Vcs\Author;
-use App\Domain\Vcs\ChangeStats;
-use App\Domain\Vcs\PullRequest;
-use App\Domain\Vcs\PullRequestNumber;
-use App\Domain\Vcs\PullRequestStatus;
+use DevPulse\Shared\RepoId;
+use DevPulse\Vcs\Author;
+use DevPulse\Vcs\ChangeStats;
+use DevPulse\Vcs\PullRequest;
+use DevPulse\Vcs\PullRequestNumber;
+use DevPulse\Vcs\PullRequestStatus;
 use App\Persistence\Mapper\PullRequestMapper;
 use Carbon\CarbonImmutable;
 use PHPUnit\Framework\TestCase;
@@ -27,7 +27,6 @@ class PullRequestMapperTest extends TestCase
             changes: new ChangeStats(100, 50),
             createdAt: $createdAt,
             readyAt: $createdAt,
-            mergedAt: null,
             closedAt: null,
         );
 
@@ -50,7 +49,6 @@ class PullRequestMapperTest extends TestCase
             changes: new ChangeStats(1, 0),
             createdAt: CarbonImmutable::create(2026, 4, 15, 10, 0, 0, 'UTC'),
             readyAt: null,
-            mergedAt: null,
             closedAt: null,
         );
 

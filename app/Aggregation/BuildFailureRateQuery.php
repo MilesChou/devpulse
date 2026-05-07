@@ -6,9 +6,9 @@ namespace App\Aggregation;
 
 use App\Aggregation\Dto\FailureRateResult;
 use App\Aggregation\Filter\BuildEventFilter;
-use App\Domain\Shared\MonthRange;
-use App\Domain\Shared\RepoFullName;
-use App\Domain\Vcs\Author;
+use DevPulse\Shared\MonthRange;
+use DevPulse\Shared\RepoFullName;
+use DevPulse\Vcs\Author;
 use App\Models\Build;
 use App\Models\Group;
 use Illuminate\Support\Collection;

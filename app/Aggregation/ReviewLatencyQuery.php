@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Aggregation;
 
 use App\Aggregation\Dto\ReviewLatencyResult;
-use App\Domain\Shared\MonthRange;
-use App\Domain\Shared\RepoFullName;
-use App\Domain\Vcs\Author;
-use App\Domain\Vcs\PullRequestNumber;
+use DevPulse\Shared\MonthRange;
+use DevPulse\Shared\RepoFullName;
+use DevPulse\Vcs\Author;
+use DevPulse\Vcs\PullRequestNumber;
 use App\Models\Group;
 use App\Models\PullRequest;
 use Carbon\CarbonImmutable;
