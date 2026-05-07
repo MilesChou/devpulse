@@ -13,6 +13,7 @@ datasources:
       sslmode: ${DEVPULSE_DB_SSLMODE}
       postgresVersion: 1500
       timescaledb: false
+      database: ${DEVPULSE_DB_NAME}
     secureJsonData:
       password: ${DEVPULSE_DB_PASSWORD}
     editable: true

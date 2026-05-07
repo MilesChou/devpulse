@@ -112,7 +112,7 @@
       "description": "對照月報第 4 表。未 review PR 用「now（或月底）- ready_at」當 lower bound。",
       "type": "table",
       "id": 4,
-      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 27},
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 27},
       "datasource": {"type": "postgres", "uid": "devpulse-pg"},
       "fieldConfig": {"defaults": {"custom": {"align": "left"}}, "overrides": []},
       "options": {"showHeader": true, "cellHeight": "sm"},
@@ -121,7 +121,7 @@
           "refId": "A",
           "datasource": {"type": "postgres", "uid": "devpulse-pg"},
           "format": "table",
-          "rawSql": "WITH base AS (SELECT pr.size_bucket, EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0 AS lat_h, (pr.first_review_at IS NULL) AS unreviewed FROM pull_requests pr JOIN repos r ON r.id = pr.repo_id JOIN group_repos gr ON gr.repo_id = r.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL), per_bucket AS (SELECT size_bucket AS bucket, to_char(percentile_cont(0.5) WITHIN GROUP (ORDER BY lat_h), 'FM990.0') || 'h' AS median, to_char(percentile_cont(0.9) WITHIN GROUP (ORDER BY lat_h), 'FM990.0') || 'h' AS p90, to_char(MAX(lat_h), 'FM990.0') || 'h' AS p100, COUNT(*)::text AS n, NULLIF(COUNT(*) FILTER (WHERE unreviewed)::text, '0') AS unreviewed FROM base GROUP BY size_bucket), overall AS (SELECT 'Overall' AS bucket, to_char(percentile_cont(0.5) WITHIN GROUP (ORDER BY lat_h), 'FM990.0') || 'h' AS median, to_char(percentile_cont(0.9) WITHIN GROUP (ORDER BY lat_h), 'FM990.0') || 'h' AS p90, to_char(MAX(lat_h), 'FM990.0') || 'h' AS p100, COUNT(*)::text AS n, NULLIF(COUNT(*) FILTER (WHERE unreviewed)::text, '0') AS unreviewed FROM base), combined AS (SELECT * FROM per_bucket UNION ALL SELECT * FROM overall) SELECT bucket, median, p90, p100, n, unreviewed FROM combined ORDER BY CASE bucket WHEN 'XS' THEN 1 WHEN 'S' THEN 2 WHEN 'M' THEN 3 WHEN 'L' THEN 4 WHEN 'XL' THEN 5 WHEN 'Overall' THEN 6 ELSE 99 END"
+          "rawSql": "WITH base AS (SELECT pr.size_bucket, EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, pr.merged_at, pr.closed_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0 AS lat_h, (pr.first_review_at IS NULL) AS unreviewed FROM pull_requests pr JOIN repos r ON r.id = pr.repo_id JOIN group_repos gr ON gr.repo_id = r.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL), per_bucket AS (SELECT size_bucket AS bucket, to_char(percentile_cont(0.5) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h' AS median, to_char(percentile_cont(0.9) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h' AS p90, to_char(MAX(lat_h), 'FM9990.0') || 'h' AS p100, COUNT(*)::text AS n, NULLIF(COUNT(*) FILTER (WHERE unreviewed)::text, '0') AS unreviewed FROM base GROUP BY size_bucket), overall AS (SELECT 'Overall' AS bucket, to_char(percentile_cont(0.5) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h' AS median, to_char(percentile_cont(0.9) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h' AS p90, to_char(MAX(lat_h), 'FM9990.0') || 'h' AS p100, COUNT(*)::text AS n, NULLIF(COUNT(*) FILTER (WHERE unreviewed)::text, '0') AS unreviewed FROM base), combined AS (SELECT * FROM per_bucket UNION ALL SELECT * FROM overall) SELECT bucket, median, p90, p100, n, unreviewed FROM combined ORDER BY CASE bucket WHEN 'XS' THEN 1 WHEN 'S' THEN 2 WHEN 'M' THEN 3 WHEN 'L' THEN 4 WHEN 'XL' THEN 5 WHEN 'Overall' THEN 6 ELSE 99 END"
         }
       ]
     },
@@ -130,7 +130,7 @@
       "description": "對照月報第 5 表。",
       "type": "table",
       "id": 5,
-      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 27},
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 36},
       "datasource": {"type": "postgres", "uid": "devpulse-pg"},
       "fieldConfig": {"defaults": {"custom": {"align": "left"}}, "overrides": []},
       "options": {"showHeader": true, "cellHeight": "sm"},
@@ -139,7 +139,7 @@
           "refId": "A",
           "datasource": {"type": "postgres", "uid": "devpulse-pg"},
           "format": "table",
-          "rawSql": "WITH base AS (SELECT m.display_name AS member, pr.size_bucket, EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0 AS lat_h FROM pull_requests pr JOIN repos r ON r.id = pr.repo_id JOIN members m ON m.github_account = pr.author_account JOIN group_repos gr ON gr.repo_id = r.id JOIN group_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL) SELECT member, size_bucket, to_char(percentile_cont(0.5) WITHIN GROUP (ORDER BY lat_h), 'FM990.0') || 'h/' || to_char(percentile_cont(0.9) WITHIN GROUP (ORDER BY lat_h), 'FM990.0') || 'h (n=' || COUNT(*) || ')' AS cell FROM base GROUP BY member, size_bucket ORDER BY member, CASE size_bucket WHEN 'XS' THEN 1 WHEN 'S' THEN 2 WHEN 'M' THEN 3 WHEN 'L' THEN 4 WHEN 'XL' THEN 5 ELSE 99 END"
+          "rawSql": "WITH base AS (SELECT m.display_name AS member, pr.size_bucket, EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, pr.merged_at, pr.closed_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0 AS lat_h FROM pull_requests pr JOIN repos r ON r.id = pr.repo_id JOIN members m ON m.github_account = pr.author_account JOIN group_repos gr ON gr.repo_id = r.id JOIN group_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL) SELECT member, size_bucket, to_char(percentile_cont(0.5) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h/' || to_char(percentile_cont(0.9) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h (n=' || COUNT(*) || ')' AS cell FROM base GROUP BY member, size_bucket ORDER BY member, CASE size_bucket WHEN 'XS' THEN 1 WHEN 'S' THEN 2 WHEN 'M' THEN 3 WHEN 'L' THEN 4 WHEN 'XL' THEN 5 ELSE 99 END"
         }
       ],
       "transformations": [
@@ -150,11 +150,38 @@
       ]
     },
     {
+      "title": "PR Review latency 月趨勢（各 size bucket median，小時）",
+      "description": "每月各 size bucket 的 median review latency，含未 review lower bound。",
+      "type": "timeseries",
+      "id": 8,
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 45},
+      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 0, "showPoints": "always", "spanNulls": true},
+          "unit": "h"
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {"mode": "multi"},
+        "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "last"]}
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "format": "time_series",
+          "rawSql": "SELECT date_trunc('month', pr.pr_created_at) AS time, pr.size_bucket AS metric, percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, pr.merged_at, pr.closed_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0) AS value FROM pull_requests pr JOIN repos r ON r.id = pr.repo_id JOIN group_repos gr ON gr.repo_id = r.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL AND (pr.first_review_at IS NOT NULL OR pr.merged_at IS NOT NULL OR pr.closed_at IS NOT NULL) GROUP BY 1, 2 ORDER BY 1"
+        }
+      ]
+    },
+    {
       "title": "每日 passed build 中位時間（每 repo 一條，分鐘）",
       "description": "對照月報第 6 項。passed only，不過濾成員。",
       "type": "timeseries",
       "id": 6,
-      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 36},
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 55},
       "datasource": {"type": "postgres", "uid": "devpulse-pg"},
       "fieldConfig": {
         "defaults": {
@@ -181,7 +208,7 @@
       "description": "對照月報第 7 項。cause 分類待 schema + classifier 接入後再加。",
       "type": "table",
       "id": 7,
-      "gridPos": {"h": 16, "w": 24, "x": 0, "y": 46},
+      "gridPos": {"h": 16, "w": 24, "x": 0, "y": 65},
       "datasource": {"type": "postgres", "uid": "devpulse-pg"},
       "fieldConfig": {
         "defaults": {"custom": {"align": "left"}},
@@ -197,6 +224,44 @@
           "datasource": {"type": "postgres", "uid": "devpulse-pg"},
           "format": "table",
           "rawSql": "SELECT b.started_at AS \"date\", m.display_name AS \"member\", r.full_name AS \"repo\", b.status AS \"state\", b.external_id AS \"build\", b.branch AS \"branch\", b.duration_seconds / 60.0 AS \"duration_min\", CASE WHEN b.status <> 'CANCELED' THEN b.duration_seconds / 60.0 * 0.008 ELSE 0 END AS \"cost_usd\" FROM builds b JOIN repos r ON r.id = b.repo_id JOIN members m ON m.github_account = b.author_account JOIN group_repos gr ON gr.repo_id = r.id JOIN group_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND b.is_failure AND NOT b.is_post_merge AND NOT b.is_deploy_event ORDER BY b.started_at DESC LIMIT 500"
+        }
+      ]
+    },
+    {
+      "title": "高延遲 PR 清單（review latency 由高到低）",
+      "description": "含未 review PR（lower bound）。latency_h 欄位點擊可開啟 GitHub PR。",
+      "type": "table",
+      "id": 9,
+      "gridPos": {"h": 16, "w": 24, "x": 0, "y": 81},
+      "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+      "fieldConfig": {
+        "defaults": {"custom": {"align": "left"}},
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "latency_h"},
+            "properties": [
+              {"id": "displayName", "value": "latency (h)"},
+              {"id": "decimals", "value": 1}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "url"},
+            "properties": [
+              {
+                "id": "links",
+                "value": [{"title": "Open PR", "url": "${__value.text}", "targetBlank": true}]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {"showHeader": true, "cellHeight": "sm"},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "postgres", "uid": "devpulse-pg"},
+          "format": "table",
+          "rawSql": "SELECT pr.pr_created_at AS created, m.display_name AS member, r.full_name AS repo, pr.number AS pr_number, pr.size_bucket AS size, ROUND(EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, pr.merged_at, pr.closed_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0, 1) AS latency_h, (pr.closed_at IS NULL AND pr.merged_at IS NULL) AS opening, 'https://github.com/' || r.full_name || '/pull/' || pr.number AS url FROM pull_requests pr JOIN repos r ON r.id = pr.repo_id JOIN members m ON m.github_account = pr.author_account JOIN group_repos gr ON gr.repo_id = r.id JOIN group_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL ORDER BY latency_h DESC LIMIT 200"
         }
       ]
     }
