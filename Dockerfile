@@ -30,8 +30,8 @@ FROM php:8.4-apache AS app
 ENV TZ=Asia/Taipei
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 
-# Runtime deps：跑時要的
-ARG RUNTIME_DEPS="libpq5 libzip4 ca-certificates tzdata"
+# Runtime deps：跑時要的（libzip4t64 是 Debian Bookworm 64-bit time_t 改名後的版本）
+ARG RUNTIME_DEPS="libpq5 libzip4t64 ca-certificates tzdata"
 
 # Build deps：編譯 ext 用，編完移除
 ARG BUILD_DEPS="libpq-dev libzip-dev pkg-config"
