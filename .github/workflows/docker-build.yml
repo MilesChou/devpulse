@@ -1,28 +1,13 @@
 name: Docker Build
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
     branches:
       - main
-    paths:
-      - 'Dockerfile'
-      - '.dockerignore'
-      - '.docker/**'
-      - 'composer.json'
-      - 'composer.lock'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/docker-build.yml'
-  pull_request:
-    paths:
-      - 'Dockerfile'
-      - '.dockerignore'
-      - '.docker/**'
-      - 'composer.json'
-      - 'composer.lock'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/docker-build.yml'
   workflow_dispatch:
 
 jobs:
@@ -30,9 +15,15 @@ jobs:
     name: Build image
     runs-on: ubuntu-latest
 
+    # workflow_run 觸發時，CI 必須成功才繼續（手動觸發則無此檢查）
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # workflow_run 預設 checkout default branch tip；改抓觸發 CI 的 commit
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
