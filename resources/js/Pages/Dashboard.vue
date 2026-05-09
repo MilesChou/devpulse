@@ -48,11 +48,17 @@ const iterOver = computed(() =>
     props.iteration.ratio > props.thresholds.iteration,
 );
 
-// 重推刻度尺：刻度 0~5，超過 5 釘到右端再以「>」標
+// 重推刻度尺：刻度 1~5，超過 5 釘到右端
+const ITER_SCALE_MIN = 1;
 const ITER_SCALE_MAX = 5;
+
+function scaleToPercent(value: number): number {
+    return ((value - ITER_SCALE_MIN) / (ITER_SCALE_MAX - ITER_SCALE_MIN)) * 100;
+}
+
 const iterPosition = computed(() => {
     if (props.iteration.ratio === null) return 0;
-    return Math.min(100, (props.iteration.ratio / ITER_SCALE_MAX) * 100);
+    return Math.min(100, scaleToPercent(props.iteration.ratio));
 });
 
 const errorThresholdPct = computed(() => props.thresholds.error_rate * 100);
@@ -101,7 +107,7 @@ function bigNumStyle(isOver: boolean) {
                             <span style="font-style: italic; font-weight: 600;">三項脈搏</span>
                         </h1>
                         <p class="mt-5 sm:mt-6 max-w-xl text-[13px] leading-relaxed" style="color: var(--color-paper-mute);">
-                            錯誤率、重推次數、PR 一次完成度。三個數字、近 {{ props.range.days }} 天觀測窗、按 Grafana <em>devpulse overview</em> 的 source of truth 計算。
+                            錯誤率、重推次數、PR 一次完成度。三個數字、近 {{ props.range.days }} 天觀測窗、直接從 VCS 與 CI 原始資料計算。
                         </p>
                     </div>
                     <div class="col-span-12 md:col-span-4 grid grid-cols-2 gap-x-4 sm:gap-x-6 gap-y-3 text-[11px] tracking-[0.2em]" style="color: var(--color-paper-dim);">
@@ -124,9 +130,9 @@ function bigNumStyle(isOver: boolean) {
                             </div>
                         </div>
                         <div>
-                            <div>口徑</div>
+                            <div>計算基準</div>
                             <div class="mt-1 tabular-nums" style="color: var(--color-paper); font-size: 13px;">
-                                Grafana 同源
+                                VCS + CI 同源
                             </div>
                         </div>
                     </div>
@@ -175,7 +181,7 @@ function bigNumStyle(isOver: boolean) {
                         class="text-[11px] tracking-[0.3em]"
                         :style="{ color: errorOver ? 'var(--color-accent-warm)' : 'var(--color-accent)' }"
                     >
-                        ► 第一章
+                        § 1
                     </div>
                     <h2
                         class="mt-3 leading-[0.95] tracking-[-0.02em] dp-section-h2"
@@ -264,7 +270,7 @@ function bigNumStyle(isOver: boolean) {
                         class="text-[11px] tracking-[0.3em]"
                         :style="{ color: iterOver ? 'var(--color-accent-warm)' : 'var(--color-accent)' }"
                     >
-                        ► 第二章
+                        § 2
                     </div>
                     <h2
                         class="mt-3 leading-[0.95] tracking-[-0.02em] dp-section-h2"
@@ -310,15 +316,15 @@ function bigNumStyle(isOver: boolean) {
                             </div>
                         </div>
 
-                        <!-- 刻度尺：0~5，超過 5 顯示為右端外 -->
+                        <!-- 刻度尺：1~5，超過 5 顯示為右端外 -->
                         <div class="mt-7 relative">
                             <div class="relative h-px" style="background: var(--color-ink-line);">
-                                <!-- 大刻度 0,1,2,3,4,5 -->
-                                <template v-for="tick in [0,1,2,3,4,5]" :key="tick">
+                                <!-- 大刻度 1,2,3,4,5 -->
+                                <template v-for="tick in [1,2,3,4,5]" :key="tick">
                                     <div
                                         class="absolute top-0 w-px"
                                         :style="{
-                                            left: `${(tick / ITER_SCALE_MAX) * 100}%`,
+                                            left: `${scaleToPercent(tick)}%`,
                                             height: tick === 1 || tick === 3 ? '14px' : '8px',
                                             transform: 'translateY(-3px)',
                                             background: tick === 3
@@ -329,23 +335,23 @@ function bigNumStyle(isOver: boolean) {
                                         }"
                                     />
                                 </template>
-                                <!-- 1 是理想 -->
+                                <!-- 1 是理想（左端） -->
                                 <div
-                                    class="absolute top-3 -translate-x-1/2 text-[9px] tracking-[0.2em]"
-                                    :style="{ left: `${(1 / ITER_SCALE_MAX) * 100}%`, color: 'var(--color-accent)' }"
+                                    class="absolute top-3 text-[9px] tracking-[0.2em]"
+                                    style="left: 0; color: var(--color-accent);"
                                 >
                                     理想 1.0
                                 </div>
-                                <!-- 3 是閾值 -->
+                                <!-- 閾值標籤 -->
                                 <div
                                     class="absolute top-3 -translate-x-1/2 text-[9px] tracking-[0.2em]"
-                                    :style="{ left: `${(props.thresholds.iteration / ITER_SCALE_MAX) * 100}%`, color: 'var(--color-accent-warm)' }"
+                                    :style="{ left: `${scaleToPercent(props.thresholds.iteration)}%`, color: 'var(--color-accent-warm)' }"
                                 >
                                     閾值 {{ props.thresholds.iteration.toFixed(1) }}
                                 </div>
-                                <!-- 0,5 標籤 -->
+                                <!-- 1,5+ 端點標籤 -->
                                 <div class="absolute -top-5 left-0 text-[9px] tracking-[0.2em]" style="color: var(--color-paper-dim);">
-                                    0
+                                    1
                                 </div>
                                 <div class="absolute -top-5 right-0 text-[9px] tracking-[0.2em]" style="color: var(--color-paper-dim);">
                                     5+
@@ -387,7 +393,7 @@ function bigNumStyle(isOver: boolean) {
             >
                 <aside class="col-span-12 md:col-span-3">
                     <div class="text-[11px] tracking-[0.3em]" style="color: var(--color-accent);">
-                        ► 第三章
+                        § 3
                     </div>
                     <h2
                         class="mt-3 leading-[0.95] tracking-[-0.02em] dp-section-h2"
@@ -478,7 +484,7 @@ function bigNumStyle(isOver: boolean) {
                     </p>
                 </div>
                 <div class="col-span-12 md:col-span-4">
-                    <div class="text-[11px] tracking-[0.3em]" style="color: var(--color-paper-dim);">計算口徑</div>
+                    <div class="text-[11px] tracking-[0.3em]" style="color: var(--color-paper-dim);">計算基準</div>
                     <p class="mt-3 text-[13px] leading-relaxed" style="color: var(--color-paper-mute);">
                         錯誤率排除 <span style="color: var(--color-paper);">is_post_merge</span> 與 <span style="color: var(--color-paper);">is_deploy_event</span>，分母不含 <span style="color: var(--color-paper);">CANCELED</span>。重推僅計 <span style="color: var(--color-paper);">is_pull_request</span> 且 <span style="color: var(--color-paper);">pr_number</span> 不為空的 build。p90 母體為 <span style="color: var(--color-paper);">pr_created_at</span> 在區間內、<span style="color: var(--color-paper);">ready_at</span> 不為空的 PR。
                     </p>

@@ -3,11 +3,7 @@ import { Link } from '@inertiajs/vue3';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 
 const now = ref(new Date());
-const session = ref(generateSession());
-
-function generateSession(): string {
-    return Math.random().toString(36).slice(2, 8).toUpperCase();
-}
+const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 function pad(n: number): string {
     return n.toString().padStart(2, '0');
@@ -15,7 +11,7 @@ function pad(n: number): string {
 
 const clock = computed(() => {
     const d = now.value;
-    return `${d.getUTCFullYear()}.${pad(d.getUTCMonth() + 1)}.${pad(d.getUTCDate())} · ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+    return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} · ${pad(d.getHours())}:${pad(d.getMinutes())} ${LOCAL_TZ}`;
 });
 
 const issueNo = computed(() => {
@@ -36,45 +32,10 @@ onUnmounted(() => {
     clearInterval(timer);
 });
 
-const tickerItems = [
-    'PR 流程・正常',
-    'CI 吞吐量・穩定',
-    '聚合排程・最近一輪 OK',
-    '資料窗・近 30 天',
-    '每日刊號・發行中',
-    '無事故回報',
-];
 </script>
 
 <template>
     <div class="relative min-h-screen flex flex-col text-paper" style="color: var(--color-paper);">
-        <!-- 頂部跑馬燈・狀態帶 -->
-        <div
-            class="relative z-10 overflow-hidden border-b text-[10px] uppercase tracking-[0.4em]"
-            style="border-color: var(--color-ink-line); background: var(--color-ink-soft);"
-        >
-            <div class="flex whitespace-nowrap py-2 dp-marquee" style="width: max-content;">
-                <span
-                    v-for="block in 2"
-                    :key="block"
-                    class="flex items-center gap-10 px-6"
-                    style="color: var(--color-paper-dim);"
-                >
-                    <span
-                        v-for="item in tickerItems"
-                        :key="`${block}-${item}`"
-                        class="flex items-center gap-3"
-                    >
-                        <span
-                            class="inline-block w-1.5 h-1.5 rounded-full"
-                            style="background: var(--color-accent);"
-                        />
-                        {{ item }}
-                    </span>
-                </span>
-            </div>
-        </div>
-
         <!-- 刊頭 -->
         <header class="relative z-10 border-b" style="border-color: var(--color-ink-line);">
             <div class="max-w-[1400px] mx-auto px-4 sm:px-8 pt-6 sm:pt-8 pb-5 sm:pb-6">
@@ -105,10 +66,6 @@ const tickerItems = [
                         <div class="px-4 py-2 border" style="border-color: var(--color-ink-line);">
                             <div style="color: var(--color-paper-dim);">刊號</div>
                             <div class="text-base mt-1" style="font-family: var(--font-display); font-weight: 600; letter-spacing: -0.02em; color: var(--color-paper);">{{ issueNo }}</div>
-                        </div>
-                        <div class="px-4 py-2 border-t border-r border-b" style="border-color: var(--color-ink-line);">
-                            <div style="color: var(--color-paper-dim);">會話</div>
-                            <div class="text-base mt-1" style="font-family: var(--font-mono); color: var(--color-accent);">{{ session }}</div>
                         </div>
                         <div class="px-4 py-2 border-t border-r border-b" style="border-color: var(--color-ink-line);">
                             <div style="color: var(--color-paper-dim);">時戳</div>
@@ -146,12 +103,6 @@ const tickerItems = [
                         <span style="color: var(--color-paper-dim);">設定 —</span>
                         <span class="hidden sm:inline" style="color: var(--color-paper-dim);">封存 —</span>
                     </nav>
-                    <div
-                        class="text-[10px] tracking-[0.3em] dp-cursor"
-                        style="color: var(--color-paper-dim);"
-                    >
-                        即時連線中
-                    </div>
                 </div>
             </div>
         </header>
@@ -166,10 +117,6 @@ const tickerItems = [
             <div class="max-w-[1400px] mx-auto px-4 sm:px-8 py-6 flex items-center justify-between gap-4 flex-wrap text-[10px] tracking-[0.3em]" style="color: var(--color-paper-dim);">
                 <div>
                     devpulse 觀測誌 ■ 內部流通 ■ 印於電報線上
-                </div>
-                <div class="flex items-center gap-6">
-                    <span>建置 {{ session.toLowerCase() }}</span>
-                    <span>第 01 版</span>
                 </div>
             </div>
         </footer>
