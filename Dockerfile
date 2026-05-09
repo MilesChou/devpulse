@@ -30,11 +30,13 @@ FROM php:8.4-apache AS app
 ENV TZ=Asia/Taipei
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 
-# Runtime deps：跑時要的（libzip4t64 是 Debian Bookworm 64-bit time_t 改名後的版本）
-ARG RUNTIME_DEPS="libpq5 libzip4t64 ca-certificates tzdata"
+# Runtime deps：跑時要的
+# libzip-dev 同時當 build 與 runtime（套件名在 Debian 各版本浮動，這樣最穩；
+# 體積影響極小，~1MB）
+ARG RUNTIME_DEPS="libpq5 libzip-dev ca-certificates tzdata"
 
 # Build deps：編譯 ext 用，編完移除
-ARG BUILD_DEPS="libpq-dev libzip-dev pkg-config"
+ARG BUILD_DEPS="libpq-dev pkg-config"
 
 RUN set -xe \
     && apt-get update \
