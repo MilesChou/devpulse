@@ -69,31 +69,42 @@ const lifecycle = computed(() => ({
 
 const dateOpenSm = computed(() => props.range.from.slice(5));
 const dateCloseSm = computed(() => props.range.to.slice(5));
+
+function bigNumStyle(isOver: boolean) {
+    return {
+        fontFamily: 'var(--font-display)',
+        fontWeight: 700,
+        fontSize: 'clamp(72px, 18vw, 220px)',
+        lineHeight: 0.85,
+        fontVariationSettings: `'opsz' 144`,
+        color: isOver ? 'var(--color-accent-warm)' : 'var(--color-paper)',
+    };
+}
 </script>
 
 <template>
     <Head title="儀表板" />
     <AppLayout>
-        <div class="space-y-20">
+        <div class="space-y-14 sm:space-y-20">
             <!-- INTRO ─────────────────────────────────────────────── -->
             <section class="dp-rise" style="animation-delay: 60ms;">
-                <div class="grid grid-cols-12 gap-8 items-end">
+                <div class="grid grid-cols-12 gap-6 sm:gap-8 items-end">
                     <div class="col-span-12 md:col-span-8">
                         <div class="text-[11px] tracking-[0.3em]" style="color: var(--color-accent);">
                             ► 三項主要觀測
                         </div>
                         <h1
                             class="mt-4 leading-[0.92] tracking-[-0.04em]"
-                            style="font-family: var(--font-display); font-weight: 300; font-size: clamp(48px, 7.5vw, 108px); font-variation-settings: 'opsz' 144, 'SOFT' 30;"
+                            style="font-family: var(--font-display); font-weight: 300; font-size: clamp(40px, 7.5vw, 108px); font-variation-settings: 'opsz' 144, 'SOFT' 30;"
                         >
                             研發效能的
                             <span style="font-style: italic; font-weight: 600;">三項脈搏</span>
                         </h1>
-                        <p class="mt-6 max-w-xl text-[13px] leading-relaxed" style="color: var(--color-paper-mute);">
+                        <p class="mt-5 sm:mt-6 max-w-xl text-[13px] leading-relaxed" style="color: var(--color-paper-mute);">
                             錯誤率、重推次數、PR 一次完成度。三個數字、近 {{ props.range.days }} 天觀測窗、按 Grafana <em>devpulse overview</em> 的 source of truth 計算。
                         </p>
                     </div>
-                    <div class="col-span-12 md:col-span-4 grid grid-cols-2 gap-x-6 gap-y-3 text-[11px] tracking-[0.2em]" style="color: var(--color-paper-dim);">
+                    <div class="col-span-12 md:col-span-4 grid grid-cols-2 gap-x-4 sm:gap-x-6 gap-y-3 text-[11px] tracking-[0.2em]" style="color: var(--color-paper-dim);">
                         <div>
                             <div>觀測窗</div>
                             <div class="mt-1 tabular-nums" style="color: var(--color-paper); font-size: 13px;">
@@ -123,38 +134,40 @@ const dateCloseSm = computed(() => props.range.to.slice(5));
 
                 <!-- 可調參數列 -->
                 <div
-                    class="mt-8 flex items-center gap-6 flex-wrap text-[11px] tracking-[0.2em] py-3 px-4"
+                    class="mt-6 sm:mt-8 text-[10px] sm:text-[11px] tracking-[0.2em] py-3 px-4"
                     style="background: var(--color-ink-soft); border: 1px solid var(--color-ink-line); color: var(--color-paper-dim);"
                 >
-                    <span class="flex items-baseline gap-1.5">
-                        <span>觀測窗</span>
-                        <span class="tabular-nums" style="color: var(--color-paper); font-size: 12px;">
-                            {{ props.range.days }}d
+                    <div class="flex items-center gap-4 flex-wrap">
+                        <span class="flex items-baseline gap-1.5">
+                            <span>觀測窗</span>
+                            <span class="tabular-nums" style="color: var(--color-paper); font-size: 12px;">
+                                {{ props.range.days }}d
+                            </span>
                         </span>
-                    </span>
-                    <span class="opacity-30">·</span>
-                    <span class="flex items-baseline gap-1.5">
-                        <span>錯誤閾值</span>
-                        <span class="tabular-nums" style="color: var(--color-paper); font-size: 12px;">
-                            {{ errorThresholdPct.toFixed(0) }}%
+                        <span class="opacity-30">·</span>
+                        <span class="flex items-baseline gap-1.5">
+                            <span>錯誤閾值</span>
+                            <span class="tabular-nums" style="color: var(--color-paper); font-size: 12px;">
+                                {{ errorThresholdPct.toFixed(0) }}%
+                            </span>
                         </span>
-                    </span>
-                    <span class="opacity-30">·</span>
-                    <span class="flex items-baseline gap-1.5">
-                        <span>重推閾值</span>
-                        <span class="tabular-nums" style="color: var(--color-paper); font-size: 12px;">
-                            {{ props.thresholds.iteration.toFixed(1) }}×
+                        <span class="opacity-30">·</span>
+                        <span class="flex items-baseline gap-1.5">
+                            <span>重推閾值</span>
+                            <span class="tabular-nums" style="color: var(--color-paper); font-size: 12px;">
+                                {{ props.thresholds.iteration.toFixed(1) }}×
+                            </span>
                         </span>
-                    </span>
-                    <span class="ml-auto" style="color: var(--color-paper-dim); font-size: 10px;">
+                    </div>
+                    <div class="mt-2 text-[9px] sm:text-[10px] break-all" style="color: var(--color-paper-dim);">
                         以 query 覆寫：<code style="color: var(--color-accent);">?days=14&amp;error_threshold=0.25&amp;iteration_threshold=2.5</code>
-                    </span>
+                    </div>
                 </div>
             </section>
 
             <!-- §1 ERROR RATE ───────────────────────────────────────── -->
             <section
-                class="relative grid grid-cols-12 gap-8 dp-rise"
+                class="relative grid grid-cols-12 gap-6 sm:gap-8 dp-rise"
                 style="animation-delay: 200ms;"
             >
                 <aside class="col-span-12 md:col-span-3">
@@ -165,8 +178,7 @@ const dateCloseSm = computed(() => props.range.to.slice(5));
                         ► 第一章
                     </div>
                     <h2
-                        class="mt-3 leading-[0.95] tracking-[-0.02em]"
-                        style="font-family: var(--font-display); font-weight: 400; font-size: 38px; font-variation-settings: 'opsz' 60;"
+                        class="mt-3 leading-[0.95] tracking-[-0.02em] dp-section-h2"
                     >
                         <span style="font-style: italic; font-weight: 600;">錯誤率，</span><br />
                         紅燈與綠燈
@@ -178,14 +190,14 @@ const dateCloseSm = computed(() => props.range.to.slice(5));
 
                 <div class="col-span-12 md:col-span-9">
                     <div
-                        class="relative p-8 pt-9"
+                        class="relative p-5 sm:p-8 pt-8 sm:pt-9"
                         :style="{
                             background: errorOver ? 'rgba(255,91,31,0.06)' : 'var(--color-ink-soft)',
                             border: '1px solid ' + (errorOver ? '#ff5b1f80' : 'var(--color-ink-line)'),
                         }"
                     >
                         <div
-                            class="absolute -top-3 left-6 px-2 py-0.5 text-[10px] tracking-[0.3em]"
+                            class="absolute -top-3 left-4 sm:left-6 px-2 py-0.5 text-[10px] tracking-[0.3em]"
                             :style="{
                                 background: 'var(--color-ink)',
                                 color: errorOver ? 'var(--color-accent-warm)' : 'var(--color-paper-dim)',
@@ -199,25 +211,18 @@ const dateCloseSm = computed(() => props.range.to.slice(5));
                         <div class="flex items-baseline gap-4 flex-wrap">
                             <div
                                 class="tabular-nums tracking-[-0.05em] flex items-baseline"
-                                :style="{
-                                    fontFamily: 'var(--font-display)',
-                                    fontWeight: 700,
-                                    fontSize: 'clamp(96px, 16vw, 220px)',
-                                    lineHeight: 0.85,
-                                    fontVariationSettings: `'opsz' 144`,
-                                    color: errorOver ? 'var(--color-accent-warm)' : 'var(--color-paper)',
-                                }"
+                                :style="bigNumStyle(errorOver)"
                             >
                                 {{ fmtPercent(props.errorRate.rate) }}
                                 <span class="ml-2" style="font-family: var(--font-mono); font-weight: 400; font-size: 0.18em; color: var(--color-paper-dim);">%</span>
                             </div>
-                            <div class="text-[11px] tracking-[0.25em] tabular-nums ml-auto" style="color: var(--color-paper-dim);">
+                            <div class="text-[10px] sm:text-[11px] tracking-[0.2em] sm:tracking-[0.25em] tabular-nums sm:ml-auto" style="color: var(--color-paper-dim);">
                                 {{ props.errorRate.fails }} 失敗 / {{ props.errorRate.denom }} 計入
                             </div>
                         </div>
 
                         <!-- progress meter -->
-                        <div class="mt-6 relative h-2.5" style="background: var(--color-ink); border: 1px solid var(--color-ink-line);">
+                        <div class="mt-8 relative h-2.5" style="background: var(--color-ink); border: 1px solid var(--color-ink-line);">
                             <!-- 閾值垂直線 -->
                             <div
                                 class="absolute top-[-6px] bottom-[-6px] w-px"
@@ -251,7 +256,7 @@ const dateCloseSm = computed(() => props.range.to.slice(5));
 
             <!-- §2 ITERATION ───────────────────────────────────────── -->
             <section
-                class="relative grid grid-cols-12 gap-8 dp-rise"
+                class="relative grid grid-cols-12 gap-6 sm:gap-8 dp-rise"
                 style="animation-delay: 320ms;"
             >
                 <aside class="col-span-12 md:col-span-3">
@@ -262,8 +267,7 @@ const dateCloseSm = computed(() => props.range.to.slice(5));
                         ► 第二章
                     </div>
                     <h2
-                        class="mt-3 leading-[0.95] tracking-[-0.02em]"
-                        style="font-family: var(--font-display); font-weight: 400; font-size: 38px; font-variation-settings: 'opsz' 60;"
+                        class="mt-3 leading-[0.95] tracking-[-0.02em] dp-section-h2"
                     >
                         <span style="font-style: italic; font-weight: 600;">重推次數，</span><br />
                         每張 PR 推幾回
@@ -275,14 +279,14 @@ const dateCloseSm = computed(() => props.range.to.slice(5));
 
                 <div class="col-span-12 md:col-span-9">
                     <div
-                        class="relative p-8 pt-9"
+                        class="relative p-5 sm:p-8 pt-8 sm:pt-9"
                         :style="{
                             background: iterOver ? 'rgba(255,91,31,0.06)' : 'var(--color-ink-soft)',
                             border: '1px solid ' + (iterOver ? '#ff5b1f80' : 'var(--color-ink-line)'),
                         }"
                     >
                         <div
-                            class="absolute -top-3 left-6 px-2 py-0.5 text-[10px] tracking-[0.3em]"
+                            class="absolute -top-3 left-4 sm:left-6 px-2 py-0.5 text-[10px] tracking-[0.3em]"
                             :style="{
                                 background: 'var(--color-ink)',
                                 color: iterOver ? 'var(--color-accent-warm)' : 'var(--color-paper-dim)',
@@ -296,19 +300,12 @@ const dateCloseSm = computed(() => props.range.to.slice(5));
                         <div class="flex items-baseline gap-4 flex-wrap">
                             <div
                                 class="tabular-nums tracking-[-0.05em] flex items-baseline"
-                                :style="{
-                                    fontFamily: 'var(--font-display)',
-                                    fontWeight: 700,
-                                    fontSize: 'clamp(96px, 16vw, 220px)',
-                                    lineHeight: 0.85,
-                                    fontVariationSettings: `'opsz' 144`,
-                                    color: iterOver ? 'var(--color-accent-warm)' : 'var(--color-paper)',
-                                }"
+                                :style="bigNumStyle(iterOver)"
                             >
                                 {{ fmtRatio(props.iteration.ratio) }}
                                 <span class="ml-2" style="font-family: var(--font-mono); font-weight: 400; font-size: 0.18em; color: var(--color-paper-dim);">×</span>
                             </div>
-                            <div class="text-[11px] tracking-[0.25em] tabular-nums ml-auto" style="color: var(--color-paper-dim);">
+                            <div class="text-[10px] sm:text-[11px] tracking-[0.2em] sm:tracking-[0.25em] tabular-nums sm:ml-auto" style="color: var(--color-paper-dim);">
                                 {{ props.iteration.builds }} builds / {{ props.iteration.prs }} PRs
                             </div>
                         </div>
@@ -385,7 +382,7 @@ const dateCloseSm = computed(() => props.range.to.slice(5));
 
             <!-- §3 LIFECYCLE p90 ──────────────────────────────────── -->
             <section
-                class="relative grid grid-cols-12 gap-8 dp-rise"
+                class="relative grid grid-cols-12 gap-6 sm:gap-8 dp-rise"
                 style="animation-delay: 440ms;"
             >
                 <aside class="col-span-12 md:col-span-3">
@@ -393,8 +390,7 @@ const dateCloseSm = computed(() => props.range.to.slice(5));
                         ► 第三章
                     </div>
                     <h2
-                        class="mt-3 leading-[0.95] tracking-[-0.02em]"
-                        style="font-family: var(--font-display); font-weight: 400; font-size: 38px; font-variation-settings: 'opsz' 60;"
+                        class="mt-3 leading-[0.95] tracking-[-0.02em] dp-section-h2"
                     >
                         PR 一次完成度，
                         <br />
@@ -409,21 +405,20 @@ const dateCloseSm = computed(() => props.range.to.slice(5));
 
                 <div class="col-span-12 md:col-span-9">
                     <div
-                        class="relative grid grid-cols-1 md:grid-cols-3"
+                        class="relative grid grid-cols-1 sm:grid-cols-3"
                         style="background: var(--color-ink-soft); border: 1px solid var(--color-ink-line);"
                     >
-                        <div class="absolute -top-3 left-6 px-2 py-0.5 text-[10px] tracking-[0.3em]"
+                        <div class="absolute -top-3 left-4 sm:left-6 px-2 py-0.5 text-[10px] tracking-[0.3em]"
                              style="background: var(--color-ink); color: var(--color-paper-dim); border: 1px solid var(--color-ink-line);">
                             指標三・p90 lifecycle
                         </div>
 
-                        <div class="p-8 pt-12 md:border-r" style="border-color: var(--color-ink-line);">
+                        <div class="p-5 sm:p-8 pt-10 sm:pt-12 sm:border-r border-b sm:border-b-0" style="border-color: var(--color-ink-line);">
                             <div class="text-[10px] tracking-[0.3em] flex items-center gap-2" style="color: var(--color-paper-dim);">
                                 <span class="w-1.5 h-1.5 rotate-45" style="background: var(--color-accent);"></span>
                                 Pickup
                             </div>
-                            <div class="mt-4 tabular-nums tracking-[-0.04em] flex items-baseline gap-2"
-                                 style="font-family: var(--font-display); font-weight: 700; font-size: 84px; line-height: 0.9; font-variation-settings: 'opsz' 144;">
+                            <div class="mt-4 tabular-nums tracking-[-0.04em] flex items-baseline gap-2 dp-stat-num-lg">
                                 {{ lifecycle.pickup.value }}
                                 <span class="text-[14px] tracking-[0.2em]" style="font-family: var(--font-mono); font-weight: 400; color: var(--color-paper-dim);">
                                     {{ lifecycle.pickup.unit }}
@@ -434,13 +429,12 @@ const dateCloseSm = computed(() => props.range.to.slice(5));
                             </div>
                         </div>
 
-                        <div class="p-8 pt-12 md:border-r" style="border-color: var(--color-ink-line); border-top: 1px solid var(--color-ink-line);">
+                        <div class="p-5 sm:p-8 sm:pt-12 sm:border-r border-b sm:border-b-0" style="border-color: var(--color-ink-line);">
                             <div class="text-[10px] tracking-[0.3em] flex items-center gap-2" style="color: var(--color-paper-dim);">
                                 <span class="w-1.5 h-1.5 rotate-45" style="background: var(--color-accent-warm);"></span>
                                 Approval
                             </div>
-                            <div class="mt-4 tabular-nums tracking-[-0.04em] flex items-baseline gap-2"
-                                 style="font-family: var(--font-display); font-weight: 700; font-size: 84px; line-height: 0.9; font-variation-settings: 'opsz' 144;">
+                            <div class="mt-4 tabular-nums tracking-[-0.04em] flex items-baseline gap-2 dp-stat-num-lg">
                                 {{ lifecycle.approval.value }}
                                 <span class="text-[14px] tracking-[0.2em]" style="font-family: var(--font-mono); font-weight: 400; color: var(--color-paper-dim);">
                                     {{ lifecycle.approval.unit }}
@@ -451,13 +445,12 @@ const dateCloseSm = computed(() => props.range.to.slice(5));
                             </div>
                         </div>
 
-                        <div class="p-8 pt-12" style="border-top: 1px solid var(--color-ink-line);">
+                        <div class="p-5 sm:p-8 sm:pt-12" style="border-color: var(--color-ink-line);">
                             <div class="text-[10px] tracking-[0.3em] flex items-center gap-2" style="color: var(--color-paper-dim);">
                                 <span class="w-1.5 h-1.5 rotate-45" style="background: var(--color-accent-cool);"></span>
                                 Merge
                             </div>
-                            <div class="mt-4 tabular-nums tracking-[-0.04em] flex items-baseline gap-2"
-                                 style="font-family: var(--font-display); font-weight: 700; font-size: 84px; line-height: 0.9; font-variation-settings: 'opsz' 144;">
+                            <div class="mt-4 tabular-nums tracking-[-0.04em] flex items-baseline gap-2 dp-stat-num-lg">
                                 {{ lifecycle.merge.value }}
                                 <span class="text-[14px] tracking-[0.2em]" style="font-family: var(--font-mono); font-weight: 400; color: var(--color-paper-dim);">
                                     {{ lifecycle.merge.unit }}
@@ -473,7 +466,7 @@ const dateCloseSm = computed(() => props.range.to.slice(5));
 
             <!-- COLOPHON ─────────────────────────────────────────── -->
             <section
-                class="border-t pt-10 grid grid-cols-12 gap-6 dp-rise"
+                class="border-t pt-8 sm:pt-10 grid grid-cols-12 gap-6 dp-rise"
                 style="border-color: var(--color-ink-line); animation-delay: 560ms;"
             >
                 <div class="col-span-12 md:col-span-4">

@@ -77,30 +77,29 @@ const tickerItems = [
 
         <!-- 刊頭 -->
         <header class="relative z-10 border-b" style="border-color: var(--color-ink-line);">
-            <div class="max-w-[1400px] mx-auto px-8 pt-8 pb-6">
-                <div class="flex items-end justify-between gap-8 flex-wrap">
+            <div class="max-w-[1400px] mx-auto px-4 sm:px-8 pt-6 sm:pt-8 pb-5 sm:pb-6">
+                <div class="flex items-end justify-between gap-4 flex-wrap">
                     <div class="flex flex-col gap-1">
                         <Link
                             href="/dashboard"
                             class="leading-none tracking-[-0.04em] inline-flex items-baseline gap-2 hover:opacity-90"
-                            style="font-family: var(--font-display); font-weight: 800; font-size: clamp(48px, 8vw, 96px); font-variation-settings: 'opsz' 144, 'SOFT' 0, 'WONK' 1;"
+                            style="font-family: var(--font-display); font-weight: 800; font-size: clamp(36px, 10vw, 96px); font-variation-settings: 'opsz' 144, 'SOFT' 0, 'WONK' 1;"
                         >
                             <span class="dp-glitch">devpulse</span>
                             <span
-                                class="text-[10px] uppercase tracking-[0.4em] translate-y-[-1.4em] inline-block"
+                                class="text-[9px] sm:text-[10px] uppercase tracking-[0.4em] translate-y-[-1.4em] inline-block"
                                 style="font-family: var(--font-mono); color: var(--color-accent);"
                             >※ 觀測誌</span>
                         </Link>
                         <p
-                            class="text-[11px] tracking-[0.2em] mt-2"
+                            class="text-[10px] sm:text-[11px] tracking-[0.2em] mt-1 sm:mt-2"
                             style="color: var(--color-paper-dim);"
                         >
                             一份內部研發效能年鑑 ─ 概念驗證版
                         </p>
                     </div>
 
-                    <!-- 系統資訊塊 -->
-                    <div class="flex items-stretch text-[10px] uppercase tracking-[0.3em]"
+                    <div class="hidden sm:flex items-stretch text-[10px] uppercase tracking-[0.3em]"
                          style="color: var(--color-paper-mute);"
                     >
                         <div class="px-4 py-2 border" style="border-color: var(--color-ink-line);">
@@ -116,11 +115,18 @@ const tickerItems = [
                             <div class="text-base mt-1 tabular-nums">{{ clock }}</div>
                         </div>
                     </div>
+                    <div class="flex sm:hidden items-center gap-3 text-[9px] tracking-[0.15em]"
+                         style="color: var(--color-paper-dim);"
+                    >
+                        <span style="font-family: var(--font-display); font-weight: 600; color: var(--color-paper);">{{ issueNo }}</span>
+                        <span class="opacity-30">·</span>
+                        <span class="tabular-nums">{{ clock }}</span>
+                    </div>
                 </div>
 
                 <!-- 副欄・分隔線 + 導覽 -->
-                <div class="mt-7 flex items-center justify-between gap-4 flex-wrap">
-                    <nav class="flex items-center gap-8 text-[11px] tracking-[0.2em]">
+                <div class="mt-5 sm:mt-7 flex items-center justify-between gap-4 flex-wrap">
+                    <nav class="flex items-center gap-5 sm:gap-8 text-[10px] sm:text-[11px] tracking-[0.2em]">
                         <Link
                             href="/dashboard"
                             class="relative pb-2 inline-flex items-center gap-2"
@@ -138,7 +144,7 @@ const tickerItems = [
                         </Link>
                         <span style="color: var(--color-paper-dim);">報表 —</span>
                         <span style="color: var(--color-paper-dim);">設定 —</span>
-                        <span style="color: var(--color-paper-dim);">封存 —</span>
+                        <span class="hidden sm:inline" style="color: var(--color-paper-dim);">封存 —</span>
                     </nav>
                     <div
                         class="text-[10px] tracking-[0.3em] dp-cursor"
@@ -151,13 +157,13 @@ const tickerItems = [
         </header>
 
         <!-- 主內容 -->
-        <main class="relative z-10 flex-1 max-w-[1400px] w-full mx-auto px-8 py-14">
+        <main class="relative z-10 flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-8 py-10 sm:py-14">
             <slot />
         </main>
 
         <!-- 頁尾 -->
         <footer class="relative z-10 border-t mt-10" style="border-color: var(--color-ink-line);">
-            <div class="max-w-[1400px] mx-auto px-8 py-6 flex items-center justify-between gap-4 flex-wrap text-[10px] tracking-[0.3em]" style="color: var(--color-paper-dim);">
+            <div class="max-w-[1400px] mx-auto px-4 sm:px-8 py-6 flex items-center justify-between gap-4 flex-wrap text-[10px] tracking-[0.3em]" style="color: var(--color-paper-dim);">
                 <div>
                     devpulse 觀測誌 ■ 內部流通 ■ 印於電報線上
                 </div>

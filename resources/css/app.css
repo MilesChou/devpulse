@@ -99,3 +99,18 @@
 .dp-glitch {
     animation: dp-glitch 7s ease-in-out infinite;
 }
+
+.dp-section-h2 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: clamp(28px, 6vw, 38px);
+    font-variation-settings: 'opsz' 60;
+}
+
+.dp-stat-num-lg {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(56px, 14vw, 84px);
+    line-height: 0.9;
+    font-variation-settings: 'opsz' 144;
+}
