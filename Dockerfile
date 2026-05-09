@@ -16,6 +16,7 @@ FROM php:8.3-fpm-alpine AS app
 RUN apk add --no-cache \
         nginx \
         curl \
+        curl-dev \
         postgresql-dev \
     && docker-php-ext-install pdo pdo_pgsql opcache curl
 
