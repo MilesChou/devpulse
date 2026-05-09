@@ -11,7 +11,7 @@ COPY resources ./resources
 RUN npm run build
 
 # ── Stage 2: PHP 應用 ────────────────────────────────────────────
-FROM php:8.3-fpm-alpine AS app
+FROM php:8.4-fpm-alpine AS app
 
 RUN apk add --no-cache \
         nginx \
