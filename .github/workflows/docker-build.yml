@@ -10,6 +10,10 @@ on:
       - main
   workflow_dispatch:
 
+env:
+  # 強制 JS actions 走 Node 24（Node 20 deprecation warning 修補）
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     name: Build image

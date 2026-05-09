@@ -30,16 +30,10 @@ FROM php:8.4-fpm-alpine AS app
 ENV TZ=Asia/Taipei
 
 # Runtime deps：跑時要的
-ENV RUNTIME_DEPS \
-    nginx \
-    curl \
-    libpq \
-    tzdata
+ARG RUNTIME_DEPS="nginx curl libpq tzdata"
 
 # Build deps：編譯 ext 用，編完即拆
-ENV BUILD_DEPS \
-    curl-dev \
-    postgresql-dev
+ARG BUILD_DEPS="curl-dev postgresql-dev"
 
 RUN set -xe \
     && apk add --no-cache $RUNTIME_DEPS \
