@@ -51,4 +51,5 @@ Homestead.yaml
 
 # AI
 .claude/settings.local.json
+.claude/worktrees/
 .mcp.json

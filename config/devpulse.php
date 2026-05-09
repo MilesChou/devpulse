@@ -53,4 +53,35 @@ return [
         'XL' => null,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Dashboard 觀測窗
+    |--------------------------------------------------------------------------
+    |
+    | dashboard 預設往回看幾天（含當天）。使用者可透過 query string
+    | `?days=14` 覆寫。
+    |
+    */
+
+    'dashboard_days' => env('DEVPULSE_DASHBOARD_DAYS', 30),
+
+    /*
+    |--------------------------------------------------------------------------
+    | 預警閾值 fallback
+    |--------------------------------------------------------------------------
+    |
+    | 觀測指標的預警閾值 fallback。將來會在 group 層加上 `thresholds` 欄位、
+    | 由特定 group 的設定覆寫；此處的值作為 fallback 使用。使用者亦可透過
+    | query string 在執行時暫時覆寫，例：/dashboard?error_threshold=0.25。
+    |
+    */
+
+    'thresholds' => [
+        // 錯誤率超過此值視為警示（0.0–1.0）
+        'error_rate' => env('DEVPULSE_ERROR_THRESHOLD', 0.30),
+
+        // 重推（builds/PRs）超過此值視為警示
+        'iteration' => env('DEVPULSE_ITERATION_THRESHOLD', 3.0),
+    ],
+
 ];

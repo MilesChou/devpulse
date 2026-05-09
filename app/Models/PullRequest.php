@@ -72,6 +72,7 @@ class PullRequest extends Model
             'pr_created_at' => 'immutable_datetime',
             'ready_at' => 'immutable_datetime',
             'first_review_at' => 'immutable_datetime',
+            'first_approved_at' => 'immutable_datetime',
             'merged_at' => 'immutable_datetime',
             'closed_at' => 'immutable_datetime',
         ];

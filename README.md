@@ -105,6 +105,26 @@ make stan       # 只跑 phpstan
 make test       # 只跑 phpunit
 ```
 
+## Web UI（PoC）
+
+以 Laravel + Inertia.js + Vue 3 + ECharts 內建一個最小 Web UI，提供 PR Lifecycle p90 儀表板。
+
+```bash
+npm install         # 安裝前端依賴
+npm run dev         # 啟動 Vite dev server
+php artisan serve   # 另一個 terminal，啟動 Laravel
+```
+
+開瀏覽器訪問 <http://127.0.0.1:8000/dashboard>。
+
+production build：
+
+```bash
+npm run build
+```
+
+技術棧：Vue 3 + `<script setup>` + TypeScript、Tailwind CSS v4、Apache ECharts；無 SSR。詳見 [openspec/changes/build-web-ui-poc/](openspec/changes/build-web-ui-poc/)。
+
 ## 文件
 
 - [docs/group-setup.md](docs/group-setup.md) — group / member / repo / human signals 設定
@@ -117,6 +137,7 @@ make test       # 只跑 phpunit
 - Laravel 13（PHP 8.3+）
 - PostgreSQL（開發階段可用 SQLite）
 - Saloon（HTTP client）、Carbon（datetime）
+- Web UI：Inertia.js + Vue 3 + ECharts + Tailwind v4
 - 對照來源：Python prototype `ci_analysis`（保留為 golden output）
 
 ## License
