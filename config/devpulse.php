@@ -84,4 +84,23 @@ return [
         'iteration' => env('DEVPULSE_ITERATION_THRESHOLD', 3.0),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | human_signals 建議分類
+    |--------------------------------------------------------------------------
+    |
+    | repo 的 human_signals.category 並無強制 enum 限制（VO 接受任何非空字串），
+    | 此處列出後台下拉預設的常見分類，方便輸入；自訂值也能存進 DB。
+    |
+    */
+
+    'human_signal_categories' => [
+        'lint',
+        'test',
+        'build',
+        'format',
+        'syntax',
+        'other',
+    ],
+
 ];

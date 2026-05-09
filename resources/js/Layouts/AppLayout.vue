@@ -100,7 +100,13 @@ onUnmounted(() => {
                             />
                         </Link>
                         <span style="color: var(--color-paper-dim);">報表 —</span>
-                        <span style="color: var(--color-paper-dim);">設定 —</span>
+                        <Link
+                            href="/admin"
+                            class="relative pb-2 inline-flex items-center gap-2"
+                            style="color: var(--color-paper-dim);"
+                        >
+                            設定
+                        </Link>
                         <span class="hidden sm:inline" style="color: var(--color-paper-dim);">封存 —</span>
                     </nav>
                 </div>

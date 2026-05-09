@@ -13,15 +13,13 @@ use Illuminate\Console\Command;
 #[Description('建立一個 group（觀測群體）')]
 class GroupCreateCommand extends Command
 {
-    private const string SLUG_PATTERN = '/^[a-z0-9-]+$/';
-
     public function handle(): int
     {
         $slug = (string)$this->argument('slug');
         $description = $this->option('description');
         $description = is_string($description) ? $description : null;
 
-        if (preg_match(self::SLUG_PATTERN, $slug) !== 1) {
+        if (preg_match(Group::SLUG_PATTERN, $slug) !== 1) {
             $this->error("slug 格式錯誤：只允許小寫英數與 dash（例如 my-team）");
 
             return self::FAILURE;

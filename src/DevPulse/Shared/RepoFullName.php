@@ -22,6 +22,17 @@ final class RepoFullName implements Stringable
         $this->name = $parts[1];
     }
 
+    public static function isValid(string $value): bool
+    {
+        try {
+            new self($value);
+
+            return true;
+        } catch (InvalidArgumentException) {
+            return false;
+        }
+    }
+
     public function __toString(): string
     {
         return "{$this->owner}/{$this->name}";

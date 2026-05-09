@@ -9,9 +9,16 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Collection;
 
+/**
+ * @property int $id
+ * @property string $slug
+ * @property string|null $description
+ */
 #[Fillable(['slug', 'description'])]
 class Group extends Model
 {
+    public const string SLUG_PATTERN = '/^[a-z0-9-]+$/';
+
     /**
      * @return BelongsToMany<Repo, $this>
      */
