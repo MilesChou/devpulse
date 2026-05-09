@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="devpulse">
+  <!-- devpulse · industrial editorial palette -->
+  <!-- ink #0b0b0c · paper #f4ede4 · accent lime #c4f000 · siren #ff5b1f -->
+
+  <defs>
+    <!-- squircle clip -->
+    <clipPath id="dp-frame">
+      <rect x="32" y="32" width="448" height="448" rx="112"/>
+    </clipPath>
+
+    <!-- depth gradient: brighter at center, dark at edges -->
+    <radialGradient id="dp-bg" cx="50%" cy="42%" r="68%">
+      <stop offset="0%"  stop-color="#1a1a1f"/>
+      <stop offset="55%" stop-color="#0f0f12"/>
+      <stop offset="100%" stop-color="#070708"/>
+    </radialGradient>
+
+    <!-- top gloss -->
+    <linearGradient id="dp-top-gloss" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%"  stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="35%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- soft halos behind dots -->
+    <radialGradient id="dp-halo-lime" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"  stop-color="#c4f000" stop-opacity="0.35"/>
+      <stop offset="60%" stop-color="#c4f000" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#c4f000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="dp-halo-siren" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"  stop-color="#ff5b1f" stop-opacity="0.45"/>
+      <stop offset="60%" stop-color="#ff5b1f" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#ff5b1f" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- glow filter -->
+    <filter id="dp-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- squircle body -->
+  <rect x="32" y="32" width="448" height="448" rx="112" fill="url(#dp-bg)"/>
+
+  <g clip-path="url(#dp-frame)">
+    <!-- ambient halos -->
+    <circle cx="136" cy="256" r="150" fill="url(#dp-halo-lime)"/>
+    <circle cx="256" cy="256" r="170" fill="url(#dp-halo-siren)"/>
+    <circle cx="376" cy="256" r="150" fill="url(#dp-halo-lime)"/>
+
+    <!-- trunk line (the timeline / main branch) -->
+    <line x1="100" y1="256" x2="412" y2="256"
+          stroke="#3a3a42" stroke-width="6" stroke-linecap="round"/>
+
+    <!-- three commits: green → red → green (improvement narrative) -->
+    <g filter="url(#dp-glow)">
+      <!-- left: healthy state -->
+      <circle cx="136" cy="256" r="40" fill="#c4f000"/>
+      <!-- middle: incident / regression -->
+      <circle cx="256" cy="256" r="40" fill="#ff5b1f"/>
+      <!-- right: recovered / improved -->
+      <circle cx="376" cy="256" r="40" fill="#c4f000"/>
+    </g>
+
+    <!-- pulse ring on the incident commit (the alert) -->
+    <circle cx="256" cy="256" r="40" fill="none" stroke="#ff5b1f" stroke-width="4" opacity="0.6">
+      <animate attributeName="r"       values="40;72;40"  dur="2.4s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;0;0.6" dur="2.4s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- top gloss -->
+    <rect x="32" y="32" width="448" height="448" fill="url(#dp-top-gloss)"/>
+  </g>
+
+  <!-- inner stroke -->
+  <rect x="32" y="32" width="448" height="448" rx="112" fill="none" stroke="#f4ede4" stroke-width="2" opacity="0.10"/>
+</svg>
