@@ -1,0 +1,16 @@
+node_modules
+vendor
+.env
+.env.*
+public/build
+.docker/grafana
+docker-compose.yml
+.git
+.github
+.claude
+openspec
+tests
+phpcs.xml
+phpstan.neon
+phpunit.xml
+README.md
