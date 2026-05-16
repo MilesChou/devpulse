@@ -21,6 +21,8 @@ use Illuminate\Database\Eloquent\Model;
 #[Fillable(['repo_id', 'dataset', 'month', 'status', 'fetched_at'])]
 class MonthFetch extends Model
 {
+    protected $table = 'dp_month_fetches';
+
     /**
      * @return array<string, string>
      */

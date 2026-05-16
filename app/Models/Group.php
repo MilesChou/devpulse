@@ -19,12 +19,14 @@ class Group extends Model
 {
     public const string SLUG_PATTERN = '/^[a-z0-9-]+$/';
 
+    protected $table = 'dp_groups';
+
     /**
      * @return BelongsToMany<Repo, $this>
      */
     public function repos(): BelongsToMany
     {
-        return $this->belongsToMany(Repo::class, 'group_repos');
+        return $this->belongsToMany(Repo::class, 'dp_groups_repos');
     }
 
     /**
@@ -32,7 +34,7 @@ class Group extends Model
      */
     public function members(): BelongsToMany
     {
-        return $this->belongsToMany(Member::class, 'group_members');
+        return $this->belongsToMany(Member::class, 'dp_groups_members');
     }
 
     /**
@@ -40,6 +42,6 @@ class Group extends Model
      */
     public function repoIds(): Collection
     {
-        return $this->repos()->pluck('repos.id');
+        return $this->repos()->pluck('dp_repos.id');
     }
 }

@@ -28,11 +28,11 @@ final class BuildEventFilter
     public function apply(Builder $query): Builder
     {
         if (! $this->includePostMerge) {
-            $query->where('builds.is_post_merge', false);
+            $query->where('dp_builds.is_post_merge', false);
         }
 
         if (! $this->includeDeployEvents) {
-            $query->where('builds.is_deploy_event', false);
+            $query->where('dp_builds.is_deploy_event', false);
         }
 
         return $query;

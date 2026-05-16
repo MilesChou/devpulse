@@ -16,12 +16,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 #[Fillable(['full_name', 'human_signals'])]
 class Repo extends Model
 {
+    protected $table = 'dp_repos';
+
     /**
      * @return BelongsToMany<Group, $this>
      */
     public function groups(): BelongsToMany
     {
-        return $this->belongsToMany(Group::class, 'group_repos');
+        return $this->belongsToMany(Group::class, 'dp_groups_repos');
     }
 
     /**

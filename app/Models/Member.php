@@ -16,11 +16,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 #[Fillable(['display_name', 'github_account'])]
 class Member extends Model
 {
+    protected $table = 'dp_members';
+
     /**
      * @return BelongsToMany<Group, $this>
      */
     public function groups(): BelongsToMany
     {
-        return $this->belongsToMany(Group::class, 'group_members');
+        return $this->belongsToMany(Group::class, 'dp_groups_members');
     }
 }

@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Schema;
 return new class () extends Migration {
     public function up(): void
     {
-        Schema::create('members', function (Blueprint $table): void {
+        Schema::create('dp_members', function (Blueprint $table): void {
             $table->id();
             $table->string('display_name', 64);
             $table->string('github_account', 64)->unique();
@@ -19,6 +19,6 @@ return new class () extends Migration {
 
     public function down(): void
     {
-        Schema::dropIfExists('members');
+        Schema::dropIfExists('dp_members');
     }
 };

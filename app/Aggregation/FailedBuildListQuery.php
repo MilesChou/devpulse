@@ -30,26 +30,26 @@ class FailedBuildListQuery
     public function run(Group $group, MonthRange $month): Collection
     {
         $query = Build::query()
-            ->join('repos', 'repos.id', '=', 'builds.repo_id')
-            ->whereIn('builds.repo_id', $group->repoIds())
-            ->where('builds.started_at', '>=', $month->start)
-            ->where('builds.started_at', '<', $month->end)
-            ->where('builds.is_failure', true);
+            ->join('dp_repos', 'dp_repos.id', '=', 'dp_builds.repo_id')
+            ->whereIn('dp_builds.repo_id', $group->repoIds())
+            ->where('dp_builds.started_at', '>=', $month->start)
+            ->where('dp_builds.started_at', '<', $month->end)
+            ->where('dp_builds.is_failure', true);
 
         $this->filter->apply($query);
 
         /** @var \Illuminate\Support\Collection<int, object{repo_full_name: string, external_id: string, commit_sha: string, author_account: string|null, pr_number: int|null, status: string, started_at: string}> $rows */
         $rows = $query
             ->select([
-                'repos.full_name as repo_full_name',
-                'builds.external_id',
-                'builds.commit_sha',
-                'builds.author_account',
-                'builds.pr_number',
-                'builds.status',
-                'builds.started_at',
+                'dp_repos.full_name as repo_full_name',
+                'dp_builds.external_id',
+                'dp_builds.commit_sha',
+                'dp_builds.author_account',
+                'dp_builds.pr_number',
+                'dp_builds.status',
+                'dp_builds.started_at',
             ])
-            ->orderBy('builds.started_at')
+            ->orderBy('dp_builds.started_at')
             ->get();
 
         return $rows->map(fn ($row) => new FailedBuildItem(

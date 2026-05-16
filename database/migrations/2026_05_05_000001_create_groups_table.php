@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Schema;
 return new class () extends Migration {
     public function up(): void
     {
-        Schema::create('groups', function (Blueprint $table): void {
+        Schema::create('dp_groups', function (Blueprint $table): void {
             $table->id();
             $table->string('slug', 64)->unique();
             $table->string('description', 255)->nullable();
@@ -19,6 +19,6 @@ return new class () extends Migration {
 
     public function down(): void
     {
-        Schema::dropIfExists('groups');
+        Schema::dropIfExists('dp_groups');
     }
 };

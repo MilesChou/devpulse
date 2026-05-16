@@ -52,6 +52,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class PullRequest extends Model
 {
+    protected $table = 'dp_pull_requests';
+
     /**
      * @return BelongsTo<Repo, $this>
      */

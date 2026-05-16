@@ -15,9 +15,9 @@ use Illuminate\Support\Facades\Schema;
 return new class () extends Migration {
     public function up(): void
     {
-        Schema::create('month_fetches', function (Blueprint $table): void {
+        Schema::create('dp_month_fetches', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('repo_id')->constrained('repos')->cascadeOnDelete();
+            $table->foreignId('repo_id')->constrained('dp_repos')->cascadeOnDelete();
             $table->string('dataset', 32);
             $table->string('month', 7);
             $table->string('status', 16);
@@ -30,6 +30,6 @@ return new class () extends Migration {
 
     public function down(): void
     {
-        Schema::dropIfExists('month_fetches');
+        Schema::dropIfExists('dp_month_fetches');
     }
 };

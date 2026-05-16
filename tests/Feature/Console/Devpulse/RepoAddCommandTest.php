@@ -33,7 +33,7 @@ class RepoAddCommandTest extends TestCase
             'full_name' => 'your-org/your-repo',
         ])->assertFailed();
 
-        $this->assertDatabaseCount('repos', 0);
+        $this->assertDatabaseCount('dp_repos', 0);
     }
 
     public function testFailsWhenFullNameMissingSlash(): void
@@ -45,7 +45,7 @@ class RepoAddCommandTest extends TestCase
             'full_name' => 'invalid',
         ])->assertFailed();
 
-        $this->assertDatabaseCount('repos', 0);
+        $this->assertDatabaseCount('dp_repos', 0);
     }
 
     public function testIsIdempotentWhenSameRepoAddedAgain(): void

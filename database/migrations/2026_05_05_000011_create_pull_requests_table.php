@@ -9,11 +9,11 @@ use Illuminate\Support\Facades\Schema;
 return new class () extends Migration {
     public function up(): void
     {
-        Schema::create('pull_requests', function (Blueprint $table): void {
+        Schema::create('dp_pull_requests', function (Blueprint $table): void {
             $table->id();
             $table->ulid('ulid')->nullable()->unique();
             $table->string('platform', 16)->nullable();
-            $table->foreignId('repo_id')->constrained('repos')->cascadeOnDelete();
+            $table->foreignId('repo_id')->constrained('dp_repos')->cascadeOnDelete();
             $table->integer('number');
             $table->string('author_account', 64);
             $table->string('status', 16);
@@ -43,6 +43,6 @@ return new class () extends Migration {
 
     public function down(): void
     {
-        Schema::dropIfExists('pull_requests');
+        Schema::dropIfExists('dp_pull_requests');
     }
 };

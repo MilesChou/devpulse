@@ -32,31 +32,31 @@ class BuildFailureRateQuery
         ?array $authorAccounts = null,
     ): Collection {
         $query = Build::query()
-            ->join('repos', 'repos.id', '=', 'builds.repo_id')
-            ->whereIn('builds.repo_id', $group->repoIds())
-            ->where('builds.started_at', '>=', $month->start)
-            ->where('builds.started_at', '<', $month->end)
-            ->whereNotNull('builds.author_account');
+            ->join('dp_repos', 'dp_repos.id', '=', 'dp_builds.repo_id')
+            ->whereIn('dp_builds.repo_id', $group->repoIds())
+            ->where('dp_builds.started_at', '>=', $month->start)
+            ->where('dp_builds.started_at', '<', $month->end)
+            ->whereNotNull('dp_builds.author_account');
 
         $this->filter->apply($query);
 
         if ($repoFullNames !== null) {
-            $query->whereIn('repos.full_name', $repoFullNames);
+            $query->whereIn('dp_repos.full_name', $repoFullNames);
         }
 
         if ($authorAccounts !== null) {
-            $query->whereIn('builds.author_account', $authorAccounts);
+            $query->whereIn('dp_builds.author_account', $authorAccounts);
         }
 
         /** @var \Illuminate\Support\Collection<int, object{repo_full_name: string, author_account: string, total: int, failures: int}> $rows */
         $rows = $query
             ->select([
-                'repos.full_name as repo_full_name',
-                'builds.author_account',
+                'dp_repos.full_name as repo_full_name',
+                'dp_builds.author_account',
                 DB::raw('COUNT(*) as total'),
-                DB::raw('SUM(CASE WHEN builds.is_failure THEN 1 ELSE 0 END) as failures'),
+                DB::raw('SUM(CASE WHEN dp_builds.is_failure THEN 1 ELSE 0 END) as failures'),
             ])
-            ->groupBy('repos.full_name', 'builds.author_account')
+            ->groupBy('dp_repos.full_name', 'dp_builds.author_account')
             ->get();
 
         return $rows->map(fn ($row) => FailureRateResult::from(

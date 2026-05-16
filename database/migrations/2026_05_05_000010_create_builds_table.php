@@ -9,9 +9,9 @@ use Illuminate\Support\Facades\Schema;
 return new class () extends Migration {
     public function up(): void
     {
-        Schema::create('builds', function (Blueprint $table): void {
+        Schema::create('dp_builds', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('repo_id')->constrained('repos')->cascadeOnDelete();
+            $table->foreignId('repo_id')->constrained('dp_repos')->cascadeOnDelete();
             $table->string('external_id', 64);
             $table->string('commit_sha', 64);
             $table->string('author_account', 64)->nullable();
@@ -43,6 +43,6 @@ return new class () extends Migration {
 
     public function down(): void
     {
-        Schema::dropIfExists('builds');
+        Schema::dropIfExists('dp_builds');
     }
 };

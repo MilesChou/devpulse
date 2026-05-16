@@ -59,7 +59,7 @@ class MemberAddCommandTest extends TestCase
             'display_name' => 'Alice',
         ])->assertFailed();
 
-        $this->assertDatabaseCount('members', 0);
+        $this->assertDatabaseCount('dp_members', 0);
     }
 
     public function testIsIdempotentWhenSameMemberAddedAgain(): void
