@@ -7,12 +7,12 @@ return new class extends Migration
 {
     public function up(): void
     {
-        DB::statement('DROP VIEW IF EXISTS v_reviews');
-        DB::statement('DROP VIEW IF EXISTS v_pull_requests');
-        DB::statement('DROP VIEW IF EXISTS v_builds');
+        DB::statement('DROP VIEW IF EXISTS dpv_reviews');
+        DB::statement('DROP VIEW IF EXISTS dpv_pull_requests');
+        DB::statement('DROP VIEW IF EXISTS dpv_builds');
 
         DB::statement('
-            CREATE VIEW v_builds AS
+            CREATE VIEW dpv_builds AS
             SELECT
                 g.slug           AS group_slug,
                 m.display_name   AS member,
@@ -38,7 +38,7 @@ return new class extends Migration
         ');
 
         DB::statement('
-            CREATE VIEW v_pull_requests AS
+            CREATE VIEW dpv_pull_requests AS
             SELECT
                 g.slug           AS group_slug,
                 m.display_name   AS member,
@@ -63,7 +63,7 @@ return new class extends Migration
         ');
 
         DB::statement('
-            CREATE VIEW v_reviews AS
+            CREATE VIEW dpv_reviews AS
             SELECT
                 g.slug                  AS group_slug,
                 reviewer_m.display_name AS reviewer,
@@ -87,8 +87,8 @@ return new class extends Migration
 
     public function down(): void
     {
-        DB::statement('DROP VIEW IF EXISTS v_reviews');
-        DB::statement('DROP VIEW IF EXISTS v_pull_requests');
-        DB::statement('DROP VIEW IF EXISTS v_builds');
+        DB::statement('DROP VIEW IF EXISTS dpv_reviews');
+        DB::statement('DROP VIEW IF EXISTS dpv_pull_requests');
+        DB::statement('DROP VIEW IF EXISTS dpv_builds');
     }
 };
