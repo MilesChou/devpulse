@@ -17,8 +17,10 @@ return new class () extends Migration {
             $table->timestamp('submitted_at');
             $table->timestamps();
 
-            $table->unique(['pull_request_id', 'reviewer_account', 'submitted_at']);
-            $table->index(['pull_request_id', 'state']);
+            // Explicit names to stay within MySQL's 64-char identifier limit
+            // (Laravel's auto-generated names would be ~76 chars for the unique).
+            $table->unique(['pull_request_id', 'reviewer_account', 'submitted_at'], 'dp_pull_request_reviews_pr_reviewer_submitted_unique');
+            $table->index(['pull_request_id', 'state'], 'dp_pull_request_reviews_pr_state_index');
         });
     }
 

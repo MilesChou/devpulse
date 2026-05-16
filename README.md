@@ -6,7 +6,7 @@
 
 ## 定位
 
-- **是什麼**：本機自用的 CLI 工具 + PostgreSQL 資料層
+- **是什麼**：本機自用的 CLI 工具 + MySQL 資料層
 - **不是什麼**：SaaS、多租戶、即時 webhook 服務、Web Dashboard（dashboard 規劃由 Stage 2 改用 Grafana 直連 DB）
 - **量級**：單機、單一使用者、單月單 repo 約 100~1000 筆 build 的小資料量
 
@@ -16,7 +16,7 @@
 
 - PHP **8.3+**
 - Composer
-- PostgreSQL（開發階段也可先用 SQLite）
+- MySQL 8.4+（開發階段也可先用 SQLite）
 - GitHub personal access token、Travis CI token
 
 ### 步驟
@@ -33,11 +33,11 @@ php artisan key:generate
 
 ### 1. 設定資料庫
 
-預設使用 SQLite，無需額外服務。要切 PostgreSQL，編輯 `.env`：
+預設使用 SQLite，無需額外服務。要切 MySQL，編輯 `.env`：
 
 ```env
-DB_CONNECTION=pgsql
-DB_URL=postgresql://user:password@host:5432/dbname
+DB_CONNECTION=mysql
+DB_URL=mysql://user:password@host:3306/dbname
 ```
 
 或拆開設定 `DB_HOST` / `DB_PORT` / `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD`。
@@ -129,13 +129,13 @@ npm run build
 
 - [docs/group-setup.md](docs/group-setup.md) — group / member / repo / human signals 設定
 - [docs/migration-from-prototype.md](docs/migration-from-prototype.md) — 什麼時候可以 retire Python prototype
-- [grafana/README.md](grafana/README.md) — 本機 Grafana dashboard（接 PostgreSQL）
+- [grafana/README.md](grafana/README.md) — 本機 Grafana dashboard（接 MySQL）
 - [openspec/changes/propose-devpulse/](openspec/changes/propose-devpulse/) — 完整 spec、design decisions、tasks
 
 ## 技術棧
 
 - Laravel 13（PHP 8.3+）
-- PostgreSQL（開發階段可用 SQLite）
+- MySQL 8.4+（開發階段可用 SQLite）
 - Saloon（HTTP client）、Carbon（datetime）
 - Web UI：Inertia.js + Vue 3 + ECharts + Tailwind v4
 - 對照來源：Python prototype `ci_analysis`（保留為 golden output）
