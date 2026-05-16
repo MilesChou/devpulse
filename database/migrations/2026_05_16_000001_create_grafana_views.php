@@ -1,18 +1,13 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Support\Facades\DB;
+use Staudenmeir\LaravelMigrationViews\Facades\Schema;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        DB::statement('DROP VIEW IF EXISTS dpv_reviews');
-        DB::statement('DROP VIEW IF EXISTS dpv_pull_requests');
-        DB::statement('DROP VIEW IF EXISTS dpv_builds');
-
-        DB::statement('
-            CREATE VIEW dpv_builds AS
+        Schema::createOrReplaceView('dpv_builds', '
             SELECT
                 g.slug           AS group_slug,
                 m.display_name   AS member,
@@ -37,8 +32,7 @@ return new class extends Migration
             JOIN dp_groups g          ON g.id = gr.group_id
         ');
 
-        DB::statement('
-            CREATE VIEW dpv_pull_requests AS
+        Schema::createOrReplaceView('dpv_pull_requests', '
             SELECT
                 g.slug           AS group_slug,
                 m.display_name   AS member,
@@ -62,8 +56,7 @@ return new class extends Migration
             JOIN dp_groups g          ON g.id = gr.group_id
         ');
 
-        DB::statement('
-            CREATE VIEW dpv_reviews AS
+        Schema::createOrReplaceView('dpv_reviews', '
             SELECT
                 g.slug                  AS group_slug,
                 reviewer_m.display_name AS reviewer,
@@ -87,8 +80,8 @@ return new class extends Migration
 
     public function down(): void
     {
-        DB::statement('DROP VIEW IF EXISTS dpv_reviews');
-        DB::statement('DROP VIEW IF EXISTS dpv_pull_requests');
-        DB::statement('DROP VIEW IF EXISTS dpv_builds');
+        Schema::dropViewIfExists('dpv_reviews');
+        Schema::dropViewIfExists('dpv_pull_requests');
+        Schema::dropViewIfExists('dpv_builds');
     }
 };
