@@ -34,8 +34,8 @@
         "y": 0
       },
       "datasource": {
-        "type": "postgres",
-        "uid": "devpulse-pg"
+        "type": "mysql",
+        "uid": "devpulse"
       },
       "fieldConfig": {
         "defaults": {
@@ -53,11 +53,11 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "postgres",
-            "uid": "devpulse-pg"
+            "type": "mysql",
+            "uid": "devpulse"
           },
           "format": "table",
-          "rawSql": "WITH base AS (SELECT m.display_name AS member, r.full_name AS repo, b.status, b.is_failure FROM dp_builds b JOIN dp_repos r ON r.id = b.repo_id JOIN dp_members m ON m.github_account = b.author_account JOIN dp_groups_repos gr ON gr.repo_id = r.id JOIN dp_groups_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN dp_groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND m.display_name ~ ('^(' || '${member:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND NOT b.is_post_merge AND NOT b.is_deploy_event), agg AS (SELECT member, repo, COUNT(*) FILTER (WHERE status <> 'CANCELED') AS denom, COUNT(*) FILTER (WHERE is_failure AND status <> 'CANCELED') AS fails FROM base GROUP BY member, repo), overall AS (SELECT member, 'Overall' AS repo, SUM(denom) AS denom, SUM(fails) AS fails FROM agg GROUP BY member) SELECT member, repo, CASE WHEN denom > 0 THEN fails || '/' || denom || ' (' || ROUND(fails::numeric * 100 / denom, 1) || '%)' ELSE '-' END AS rate FROM (SELECT member, repo, denom, fails, 0 AS ord FROM agg UNION ALL SELECT member, repo, denom, fails, 1 AS ord FROM overall) combined ORDER BY member, ord, repo"
+          "rawSql": "WITH agg AS (SELECT member, repo, SUM(CASE WHEN status <> 'CANCELED' THEN 1 ELSE 0 END) AS denom, SUM(CASE WHEN is_failure AND status <> 'CANCELED' THEN 1 ELSE 0 END) AS fails FROM dpv_builds WHERE group_slug IN (${group:singlequote}) AND member IN (${member:singlequote}) AND started_at >= $__timeFrom() AND started_at < $__timeTo() AND NOT is_post_merge AND NOT is_deploy_event GROUP BY member, repo), overall AS (SELECT member, 'Overall' AS repo, SUM(denom) AS denom, SUM(fails) AS fails FROM agg GROUP BY member) SELECT member, repo, CASE WHEN denom > 0 THEN CONCAT(fails, '/', denom, ' (', ROUND(fails * 100.0 / denom, 1), '%)') ELSE '-' END AS rate FROM (SELECT member, repo, denom, fails, 0 AS ord FROM agg UNION ALL SELECT member, repo, denom, fails, 1 AS ord FROM overall) combined ORDER BY member, ord, repo"
         }
       ],
       "transformations": [
@@ -84,8 +84,8 @@
         "y": 9
       },
       "datasource": {
-        "type": "postgres",
-        "uid": "devpulse-pg"
+        "type": "mysql",
+        "uid": "devpulse"
       },
       "fieldConfig": {
         "defaults": {
@@ -103,11 +103,11 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "postgres",
-            "uid": "devpulse-pg"
+            "type": "mysql",
+            "uid": "devpulse"
           },
           "format": "table",
-          "rawSql": "WITH base AS (SELECT m.display_name AS member, r.full_name AS repo, COALESCE(SUM(b.duration_seconds) FILTER (WHERE b.is_failure AND b.status <> 'CANCELED'), 0) / 60.0 * 0.008 AS cost FROM dp_builds b JOIN dp_repos r ON r.id = b.repo_id JOIN dp_members m ON m.github_account = b.author_account JOIN dp_groups_repos gr ON gr.repo_id = r.id JOIN dp_groups_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN dp_groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND m.display_name ~ ('^(' || '${member:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND NOT b.is_post_merge AND NOT b.is_deploy_event GROUP BY m.display_name, r.full_name) SELECT member, repo, CASE WHEN cost > 0 THEN '$' || to_char(cost, 'FM999990.00') ELSE '-' END AS cost FROM base ORDER BY member, repo"
+          "rawSql": "SELECT member, repo, CASE WHEN SUM(CASE WHEN is_failure AND status <> 'CANCELED' THEN duration_seconds ELSE 0 END) > 0 THEN CONCAT('$', ROUND(SUM(CASE WHEN is_failure AND status <> 'CANCELED' THEN duration_seconds ELSE 0 END) / 60.0 * 0.008, 2)) ELSE '-' END AS cost FROM dpv_builds WHERE group_slug IN (${group:singlequote}) AND member IN (${member:singlequote}) AND started_at >= $__timeFrom() AND started_at < $__timeTo() AND NOT is_post_merge AND NOT is_deploy_event GROUP BY member, repo ORDER BY member, repo"
         }
       ],
       "transformations": [
@@ -134,8 +134,8 @@
         "y": 18
       },
       "datasource": {
-        "type": "postgres",
-        "uid": "devpulse-pg"
+        "type": "mysql",
+        "uid": "devpulse"
       },
       "fieldConfig": {
         "defaults": {
@@ -153,11 +153,11 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "postgres",
-            "uid": "devpulse-pg"
+            "type": "mysql",
+            "uid": "devpulse"
           },
           "format": "table",
-          "rawSql": "WITH pr_builds AS (SELECT m.display_name AS member, r.full_name AS repo, b.pr_number, COUNT(*) AS build_count FROM dp_builds b JOIN dp_repos r ON r.id = b.repo_id JOIN dp_members m ON m.github_account = b.author_account JOIN dp_groups_repos gr ON gr.repo_id = r.id JOIN dp_groups_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN dp_groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND m.display_name ~ ('^(' || '${member:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND b.is_pull_request AND b.pr_number IS NOT NULL GROUP BY m.display_name, r.full_name, b.pr_number), agg AS (SELECT member, repo, SUM(build_count)::int AS builds, COUNT(*)::int AS prs FROM pr_builds GROUP BY member, repo) SELECT member, repo, CASE WHEN prs > 0 THEN builds || '/' || prs || ' (' || to_char(builds::float / prs, 'FM990.0') || ')' ELSE '-' END AS iteration FROM agg ORDER BY member, repo"
+          "rawSql": "WITH pr_builds AS (SELECT member, repo, pr_number, COUNT(*) AS build_count FROM dpv_builds WHERE group_slug IN (${group:singlequote}) AND member IN (${member:singlequote}) AND started_at >= $__timeFrom() AND started_at < $__timeTo() AND is_pull_request AND pr_number IS NOT NULL GROUP BY member, repo, pr_number), agg AS (SELECT member, repo, SUM(build_count) AS builds, COUNT(*) AS prs FROM pr_builds GROUP BY member, repo) SELECT member, repo, CASE WHEN prs > 0 THEN CONCAT(builds, '/', prs, ' (', ROUND(builds * 1.0 / prs, 1), ')') ELSE '-' END AS iteration FROM agg ORDER BY member, repo"
         }
       ],
       "transformations": [
@@ -184,8 +184,8 @@
         "y": 27
       },
       "datasource": {
-        "type": "postgres",
-        "uid": "devpulse-pg"
+        "type": "mysql",
+        "uid": "devpulse"
       },
       "fieldConfig": {
         "defaults": {
@@ -203,11 +203,11 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "postgres",
-            "uid": "devpulse-pg"
+            "type": "mysql",
+            "uid": "devpulse"
           },
           "format": "table",
-          "rawSql": "WITH base AS (SELECT pr.size_bucket, EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, pr.merged_at, pr.closed_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0 AS lat_h, (pr.first_review_at IS NULL) AS unreviewed FROM dp_pull_requests pr JOIN dp_repos r ON r.id = pr.repo_id JOIN dp_groups_repos gr ON gr.repo_id = r.id JOIN dp_groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL), per_bucket AS (SELECT size_bucket AS bucket, to_char(percentile_cont(0.5) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h' AS median, to_char(percentile_cont(0.9) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h' AS p90, to_char(MAX(lat_h), 'FM9990.0') || 'h' AS p100, COUNT(*)::text AS n, NULLIF(COUNT(*) FILTER (WHERE unreviewed)::text, '0') AS unreviewed FROM base GROUP BY size_bucket), overall AS (SELECT 'Overall' AS bucket, to_char(percentile_cont(0.5) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h' AS median, to_char(percentile_cont(0.9) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h' AS p90, to_char(MAX(lat_h), 'FM9990.0') || 'h' AS p100, COUNT(*)::text AS n, NULLIF(COUNT(*) FILTER (WHERE unreviewed)::text, '0') AS unreviewed FROM base), combined AS (SELECT * FROM per_bucket UNION ALL SELECT * FROM overall) SELECT bucket, median, p90, p100, n, unreviewed FROM combined ORDER BY CASE bucket WHEN 'XS' THEN 1 WHEN 'S' THEN 2 WHEN 'M' THEN 3 WHEN 'L' THEN 4 WHEN 'XL' THEN 5 WHEN 'Overall' THEN 6 ELSE 99 END"
+          "rawSql": "WITH ranked AS (SELECT size_bucket, lat_h, unreviewed, PERCENT_RANK() OVER (PARTITION BY size_bucket ORDER BY lat_h) AS pr_b, PERCENT_RANK() OVER (ORDER BY lat_h) AS pr_a FROM dpv_pr_latency WHERE group_slug IN (${group:singlequote}) AND pr_created_at >= $__timeFrom() AND pr_created_at < $__timeTo()), per_bucket AS (SELECT size_bucket AS bucket, CONCAT(ROUND(MIN(CASE WHEN pr_b >= 0.5 THEN lat_h END), 1), 'h') AS median, CONCAT(ROUND(MIN(CASE WHEN pr_b >= 0.9 THEN lat_h END), 1), 'h') AS p90, CONCAT(ROUND(MAX(lat_h), 1), 'h') AS p100, CONCAT('', COUNT(*)) AS n, NULLIF(CONCAT('', SUM(CASE WHEN unreviewed THEN 1 ELSE 0 END)), '0') AS unreviewed FROM ranked GROUP BY size_bucket), overall AS (SELECT 'Overall' AS bucket, CONCAT(ROUND(MIN(CASE WHEN pr_a >= 0.5 THEN lat_h END), 1), 'h') AS median, CONCAT(ROUND(MIN(CASE WHEN pr_a >= 0.9 THEN lat_h END), 1), 'h') AS p90, CONCAT(ROUND(MAX(lat_h), 1), 'h') AS p100, CONCAT('', COUNT(*)) AS n, NULLIF(CONCAT('', SUM(CASE WHEN unreviewed THEN 1 ELSE 0 END)), '0') AS unreviewed FROM ranked) SELECT * FROM per_bucket UNION ALL SELECT * FROM overall ORDER BY CASE bucket WHEN 'XS' THEN 1 WHEN 'S' THEN 2 WHEN 'M' THEN 3 WHEN 'L' THEN 4 WHEN 'XL' THEN 5 WHEN 'Overall' THEN 6 ELSE 99 END"
         }
       ]
     },
@@ -222,8 +222,8 @@
         "y": 36
       },
       "datasource": {
-        "type": "postgres",
-        "uid": "devpulse-pg"
+        "type": "mysql",
+        "uid": "devpulse"
       },
       "fieldConfig": {
         "defaults": {
@@ -240,10 +240,10 @@
       "targets": [
         {
           "datasource": {
-            "type": "postgres",
-            "uid": "devpulse-pg"
+            "type": "mysql",
+            "uid": "devpulse"
           },
-          "rawSql": "WITH base AS (SELECT pr.size_bucket, EXTRACT(EPOCH FROM (pr.first_review_at - pr.ready_at)) / 3600.0 AS pickup_h, pr.time_to_approval::float / 3600.0 AS approval_h, pr.time_to_merge::float / 3600.0 AS merge_h FROM dp_pull_requests pr JOIN dp_repos r ON r.id = pr.repo_id JOIN dp_groups_repos gr ON gr.repo_id = r.id JOIN dp_groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL), per_bucket AS (SELECT size_bucket AS bucket, percentile_cont(0.9) WITHIN GROUP (ORDER BY pickup_h) AS pickup_p90_raw, percentile_cont(0.9) WITHIN GROUP (ORDER BY approval_h) AS approval_p90_raw, percentile_cont(0.9) WITHIN GROUP (ORDER BY merge_h) AS merge_p90_raw, COUNT(*)::text AS n FROM base GROUP BY size_bucket), overall AS (SELECT 'Overall' AS bucket, percentile_cont(0.9) WITHIN GROUP (ORDER BY pickup_h) AS pickup_p90_raw, percentile_cont(0.9) WITHIN GROUP (ORDER BY approval_h) AS approval_p90_raw, percentile_cont(0.9) WITHIN GROUP (ORDER BY merge_h) AS merge_p90_raw, COUNT(*)::text AS n FROM base), combined AS (SELECT * FROM per_bucket UNION ALL SELECT * FROM overall) SELECT bucket, CASE WHEN pickup_p90_raw < 24 THEN to_char(pickup_p90_raw, 'FM9990.0') || 'h' ELSE to_char(pickup_p90_raw / 24.0, 'FM9990.0') || 'd' END AS pickup_p90, CASE WHEN approval_p90_raw < 24 THEN to_char(approval_p90_raw, 'FM9990.0') || 'h' ELSE to_char(approval_p90_raw / 24.0, 'FM9990.0') || 'd' END AS approval_p90, CASE WHEN merge_p90_raw < 24 THEN to_char(merge_p90_raw, 'FM9990.0') || 'h' ELSE to_char(merge_p90_raw / 24.0, 'FM9990.0') || 'd' END AS merge_p90, n FROM combined ORDER BY CASE bucket WHEN 'XS' THEN 1 WHEN 'S' THEN 2 WHEN 'M' THEN 3 WHEN 'L' THEN 4 WHEN 'XL' THEN 5 WHEN 'Overall' THEN 6 ELSE 99 END",
+          "rawSql": "SELECT pr_created_at AS created, member, repo, number AS pr_number, size_bucket AS size, ROUND(lat_h, 1) AS latency_h, CASE WHEN closed_at IS NULL AND merged_at IS NULL THEN 1 ELSE 0 END AS opening, CONCAT('https://github.com/', repo, '/pull/', number) AS url FROM dpv_pr_latency WHERE group_slug IN (${group:singlequote}) AND member IN (${member:singlequote}) AND pr_created_at >= $__timeFrom() AND pr_created_at < $__timeTo() ORDER BY latency_h DESC LIMIT 200",
           "format": "table",
           "refId": "A"
         }
@@ -262,8 +262,8 @@
         "y": 45
       },
       "datasource": {
-        "type": "postgres",
-        "uid": "devpulse-pg"
+        "type": "mysql",
+        "uid": "devpulse"
       },
       "fieldConfig": {
         "defaults": {
@@ -281,11 +281,11 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "postgres",
-            "uid": "devpulse-pg"
+            "type": "mysql",
+            "uid": "devpulse"
           },
           "format": "table",
-          "rawSql": "WITH base AS (SELECT m.display_name AS member, pr.size_bucket, EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, pr.merged_at, pr.closed_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0 AS lat_h FROM dp_pull_requests pr JOIN dp_repos r ON r.id = pr.repo_id JOIN dp_members m ON m.github_account = pr.author_account JOIN dp_groups_repos gr ON gr.repo_id = r.id JOIN dp_groups_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN dp_groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND m.display_name ~ ('^(' || '${member:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL) SELECT member, size_bucket, to_char(percentile_cont(0.5) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h/' || to_char(percentile_cont(0.9) WITHIN GROUP (ORDER BY lat_h), 'FM9990.0') || 'h (n=' || COUNT(*) || ')' AS cell FROM base GROUP BY member, size_bucket ORDER BY member, CASE size_bucket WHEN 'XS' THEN 1 WHEN 'S' THEN 2 WHEN 'M' THEN 3 WHEN 'L' THEN 4 WHEN 'XL' THEN 5 ELSE 99 END"
+          "rawSql": "WITH base AS (SELECT size_bucket, pickup_h, approval_h, merge_h FROM dpv_pr_latency WHERE group_slug IN (${group:singlequote}) AND pr_created_at >= $__timeFrom() AND pr_created_at < $__timeTo()), pu_p90 AS (SELECT size_bucket, MIN(CASE WHEN rn = CEIL(cnt * 0.9) THEN pickup_h END) AS val FROM (SELECT size_bucket, pickup_h, ROW_NUMBER() OVER (PARTITION BY size_bucket ORDER BY pickup_h) AS rn, COUNT(*) OVER (PARTITION BY size_bucket) AS cnt FROM base WHERE pickup_h IS NOT NULL) t GROUP BY size_bucket), ap_p90 AS (SELECT size_bucket, MIN(CASE WHEN rn = CEIL(cnt * 0.9) THEN approval_h END) AS val FROM (SELECT size_bucket, approval_h, ROW_NUMBER() OVER (PARTITION BY size_bucket ORDER BY approval_h) AS rn, COUNT(*) OVER (PARTITION BY size_bucket) AS cnt FROM base WHERE approval_h IS NOT NULL) t GROUP BY size_bucket), mg_p90 AS (SELECT size_bucket, MIN(CASE WHEN rn = CEIL(cnt * 0.9) THEN merge_h END) AS val FROM (SELECT size_bucket, merge_h, ROW_NUMBER() OVER (PARTITION BY size_bucket ORDER BY merge_h) AS rn, COUNT(*) OVER (PARTITION BY size_bucket) AS cnt FROM base WHERE merge_h IS NOT NULL) t GROUP BY size_bucket), pu_all AS (SELECT MIN(CASE WHEN rn = CEIL(cnt * 0.9) THEN pickup_h END) AS val FROM (SELECT pickup_h, ROW_NUMBER() OVER (ORDER BY pickup_h) AS rn, COUNT(*) OVER () AS cnt FROM base WHERE pickup_h IS NOT NULL) t), ap_all AS (SELECT MIN(CASE WHEN rn = CEIL(cnt * 0.9) THEN approval_h END) AS val FROM (SELECT approval_h, ROW_NUMBER() OVER (ORDER BY approval_h) AS rn, COUNT(*) OVER () AS cnt FROM base WHERE approval_h IS NOT NULL) t), mg_all AS (SELECT MIN(CASE WHEN rn = CEIL(cnt * 0.9) THEN merge_h END) AS val FROM (SELECT merge_h, ROW_NUMBER() OVER (ORDER BY merge_h) AS rn, COUNT(*) OVER () AS cnt FROM base WHERE merge_h IS NOT NULL) t), per_bucket AS (SELECT c.size_bucket AS bucket, pu.val AS pu_raw, ap.val AS ap_raw, mg.val AS mg_raw, CONCAT('', c.n) AS n FROM (SELECT size_bucket, COUNT(*) AS n FROM base GROUP BY size_bucket) c LEFT JOIN pu_p90 pu ON pu.size_bucket = c.size_bucket LEFT JOIN ap_p90 ap ON ap.size_bucket = c.size_bucket LEFT JOIN mg_p90 mg ON mg.size_bucket = c.size_bucket), overall AS (SELECT 'Overall' AS bucket, pu.val AS pu_raw, ap.val AS ap_raw, mg.val AS mg_raw, (SELECT CONCAT('', COUNT(*)) FROM base) AS n FROM pu_all pu, ap_all ap, mg_all mg), combined AS (SELECT * FROM per_bucket UNION ALL SELECT * FROM overall) SELECT bucket, CASE WHEN pu_raw IS NULL THEN '-' WHEN pu_raw < 24 THEN CONCAT(ROUND(pu_raw, 1), 'h') ELSE CONCAT(ROUND(pu_raw / 24.0, 1), 'd') END AS pickup_p90, CASE WHEN ap_raw IS NULL THEN '-' WHEN ap_raw < 24 THEN CONCAT(ROUND(ap_raw, 1), 'h') ELSE CONCAT(ROUND(ap_raw / 24.0, 1), 'd') END AS approval_p90, CASE WHEN mg_raw IS NULL THEN '-' WHEN mg_raw < 24 THEN CONCAT(ROUND(mg_raw, 1), 'h') ELSE CONCAT(ROUND(mg_raw / 24.0, 1), 'd') END AS merge_p90, n FROM combined ORDER BY CASE bucket WHEN 'XS' THEN 1 WHEN 'S' THEN 2 WHEN 'M' THEN 3 WHEN 'L' THEN 4 WHEN 'XL' THEN 5 WHEN 'Overall' THEN 6 ELSE 99 END"
         }
       ],
       "transformations": [
@@ -312,8 +312,8 @@
         "y": 54
       },
       "datasource": {
-        "type": "postgres",
-        "uid": "devpulse-pg"
+        "type": "mysql",
+        "uid": "devpulse"
       },
       "fieldConfig": {
         "defaults": {
@@ -346,11 +346,11 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "postgres",
-            "uid": "devpulse-pg"
+            "type": "mysql",
+            "uid": "devpulse"
           },
           "format": "time_series",
-          "rawSql": "SELECT date_trunc('week', pr.pr_created_at) AS time, pr.size_bucket AS metric, percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, pr.merged_at, pr.closed_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0) AS value FROM dp_pull_requests pr JOIN dp_repos r ON r.id = pr.repo_id JOIN dp_groups_repos gr ON gr.repo_id = r.id JOIN dp_groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL AND pr.size_bucket IS NOT NULL AND (pr.first_review_at IS NOT NULL OR pr.merged_at IS NOT NULL OR pr.closed_at IS NOT NULL) GROUP BY 1, 2 ORDER BY 1"
+          "rawSql": "SELECT day AS time, repo AS metric, median_min AS value FROM dpv_build_duration_daily WHERE group_slug IN (${group:singlequote}) AND day >= $__timeFrom() AND day < $__timeTo() ORDER BY time"
         }
       ]
     },
@@ -366,8 +366,8 @@
         "y": 64
       },
       "datasource": {
-        "type": "postgres",
-        "uid": "devpulse-pg"
+        "type": "mysql",
+        "uid": "devpulse"
       },
       "fieldConfig": {
         "defaults": {
@@ -401,11 +401,11 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "postgres",
-            "uid": "devpulse-pg"
+            "type": "mysql",
+            "uid": "devpulse"
           },
           "format": "time_series",
-          "rawSql": "SELECT date_trunc('day', b.started_at) AS time, r.full_name AS metric, percentile_cont(0.5) WITHIN GROUP (ORDER BY b.duration_seconds) / 60.0 AS value FROM dp_builds b JOIN dp_repos r ON r.id = b.repo_id JOIN dp_groups_repos gr ON gr.repo_id = r.id JOIN dp_groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND b.status = 'PASSED' AND b.duration_seconds IS NOT NULL AND NOT b.is_post_merge AND NOT b.is_deploy_event GROUP BY 1, 2 ORDER BY 1"
+          "rawSql": "WITH ranked AS (SELECT member, size_bucket, lat_h, PERCENT_RANK() OVER (PARTITION BY member, size_bucket ORDER BY lat_h) AS pr FROM dpv_pr_latency WHERE group_slug IN (${group:singlequote}) AND member IN (${member:singlequote}) AND pr_created_at >= $__timeFrom() AND pr_created_at < $__timeTo()) SELECT member, size_bucket, CONCAT(ROUND(MIN(CASE WHEN pr >= 0.5 THEN lat_h END), 1), 'h/', ROUND(MIN(CASE WHEN pr >= 0.9 THEN lat_h END), 1), 'h (n=', COUNT(*), ')') AS cell FROM ranked GROUP BY member, size_bucket ORDER BY member, CASE size_bucket WHEN 'XS' THEN 1 WHEN 'S' THEN 2 WHEN 'M' THEN 3 WHEN 'L' THEN 4 WHEN 'XL' THEN 5 ELSE 99 END"
         }
       ]
     },
@@ -421,8 +421,8 @@
         "y": 74
       },
       "datasource": {
-        "type": "postgres",
-        "uid": "devpulse-pg"
+        "type": "mysql",
+        "uid": "devpulse"
       },
       "fieldConfig": {
         "defaults": {
@@ -473,11 +473,11 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "postgres",
-            "uid": "devpulse-pg"
+            "type": "mysql",
+            "uid": "devpulse"
           },
           "format": "table",
-          "rawSql": "SELECT b.started_at AS \"date\", m.display_name AS \"member\", r.full_name AS \"repo\", b.status AS \"state\", b.external_id AS \"build\", b.branch AS \"branch\", b.duration_seconds / 60.0 AS \"duration_min\", CASE WHEN b.status <> 'CANCELED' THEN b.duration_seconds / 60.0 * 0.008 ELSE 0 END AS \"cost_usd\" FROM dp_builds b JOIN dp_repos r ON r.id = b.repo_id JOIN dp_members m ON m.github_account = b.author_account JOIN dp_groups_repos gr ON gr.repo_id = r.id JOIN dp_groups_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN dp_groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND m.display_name ~ ('^(' || '${member:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND b.is_failure AND NOT b.is_post_merge AND NOT b.is_deploy_event ORDER BY b.started_at DESC LIMIT 500"
+          "rawSql": "SELECT week AS time, size_bucket AS metric, median_h AS value FROM dpv_pr_latency_weekly WHERE group_slug IN (${group:singlequote}) AND week >= $__timeFrom() AND week < $__timeTo() ORDER BY time"
         }
       ]
     },
@@ -493,8 +493,8 @@
         "y": 106
       },
       "datasource": {
-        "type": "postgres",
-        "uid": "devpulse-pg"
+        "type": "mysql",
+        "uid": "devpulse"
       },
       "fieldConfig": {
         "defaults": {
@@ -512,11 +512,11 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "postgres",
-            "uid": "devpulse-pg"
+            "type": "mysql",
+            "uid": "devpulse"
           },
           "format": "table",
-          "rawSql": "WITH agg AS (SELECT prr.reviewer_account, pr.author_account, COUNT(DISTINCT pr.id) AS approved_prs FROM dp_pull_request_reviews prr JOIN dp_pull_requests pr ON pr.id = prr.pull_request_id JOIN dp_repos r ON r.id = pr.repo_id JOIN dp_groups_repos gr ON gr.repo_id = r.id JOIN dp_groups g ON g.id = gr.group_id JOIN dp_members reviewer_m ON reviewer_m.github_account = prr.reviewer_account JOIN dp_groups_members reviewer_gm ON reviewer_gm.member_id = reviewer_m.id AND reviewer_gm.group_id = gr.group_id JOIN dp_members author_m ON author_m.github_account = pr.author_account JOIN dp_groups_members author_gm ON author_gm.member_id = author_m.id AND author_gm.group_id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND prr.state = 'approved' GROUP BY prr.reviewer_account, pr.author_account) SELECT reviewer_m.display_name AS reviewer, author_m.display_name AS author, agg.approved_prs FROM agg JOIN dp_members reviewer_m ON reviewer_m.github_account = agg.reviewer_account JOIN dp_members author_m ON author_m.github_account = agg.author_account ORDER BY 1, 2"
+          "rawSql": "SELECT reviewer, author, COUNT(DISTINCT pr_id) AS approved_prs FROM dpv_reviews WHERE group_slug IN (${group:singlequote}) AND pr_created_at >= $__timeFrom() AND pr_created_at < $__timeTo() AND state = 'approved' GROUP BY reviewer, author ORDER BY reviewer, author"
         }
       ],
       "transformations": [
@@ -543,8 +543,8 @@
         "y": 115
       },
       "datasource": {
-        "type": "postgres",
-        "uid": "devpulse-pg"
+        "type": "mysql",
+        "uid": "devpulse"
       },
       "fieldConfig": {
         "defaults": {
@@ -562,11 +562,11 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "postgres",
-            "uid": "devpulse-pg"
+            "type": "mysql",
+            "uid": "devpulse"
           },
           "format": "table",
-          "rawSql": "SELECT m.display_name AS reviewer, COUNT(*) AS comments FROM dp_pull_request_reviews prr JOIN dp_pull_requests pr ON pr.id = prr.pull_request_id JOIN dp_repos r ON r.id = pr.repo_id JOIN dp_groups_repos gr ON gr.repo_id = r.id JOIN dp_groups g ON g.id = gr.group_id JOIN dp_members m ON m.github_account = prr.reviewer_account JOIN dp_groups_members gm ON gm.member_id = m.id AND gm.group_id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND prr.state = 'commented' AND prr.reviewer_account NOT LIKE '%[bot]%' AND prr.reviewer_account <> pr.author_account GROUP BY m.display_name ORDER BY comments DESC"
+          "rawSql": "SELECT reviewer, COUNT(*) AS comments FROM dpv_reviews WHERE group_slug IN (${group:singlequote}) AND pr_created_at >= $__timeFrom() AND pr_created_at < $__timeTo() AND state = 'commented' AND reviewer_account NOT LIKE '%[bot]%' AND reviewer_account <> author_account GROUP BY reviewer ORDER BY comments DESC"
         }
       ]
     },
@@ -582,8 +582,8 @@
         "y": 90
       },
       "datasource": {
-        "type": "postgres",
-        "uid": "devpulse-pg"
+        "type": "mysql",
+        "uid": "devpulse"
       },
       "fieldConfig": {
         "defaults": {
@@ -636,11 +636,11 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "postgres",
-            "uid": "devpulse-pg"
+            "type": "mysql",
+            "uid": "devpulse"
           },
           "format": "table",
-          "rawSql": "SELECT pr.pr_created_at AS created, m.display_name AS member, r.full_name AS repo, pr.number AS pr_number, pr.size_bucket AS size, ROUND(EXTRACT(EPOCH FROM (COALESCE(pr.first_review_at, pr.merged_at, pr.closed_at, LEAST($__timeTo()::timestamp, NOW())) - pr.ready_at)) / 3600.0, 1) AS latency_h, (pr.closed_at IS NULL AND pr.merged_at IS NULL) AS opening, 'https://github.com/' || r.full_name || '/pull/' || pr.number AS url FROM dp_pull_requests pr JOIN dp_repos r ON r.id = pr.repo_id JOIN dp_members m ON m.github_account = pr.author_account JOIN dp_groups_repos gr ON gr.repo_id = r.id JOIN dp_groups_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN dp_groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND m.display_name ~ ('^(' || '${member:pipe}' || ')$') AND pr.pr_created_at >= $__timeFrom() AND pr.pr_created_at < $__timeTo() AND pr.ready_at IS NOT NULL ORDER BY latency_h DESC LIMIT 200"
+          "rawSql": "SELECT started_at AS \"date\", member, repo, status AS \"state\", external_id AS \"build\", branch, duration_seconds / 60.0 AS \"duration_min\", CASE WHEN status <> 'CANCELED' THEN duration_seconds / 60.0 * 0.008 ELSE 0 END AS \"cost_usd\" FROM dpv_builds WHERE group_slug IN (${group:singlequote}) AND member IN (${member:singlequote}) AND started_at >= $__timeFrom() AND started_at < $__timeTo() AND is_failure AND NOT is_post_merge AND NOT is_deploy_event ORDER BY started_at DESC LIMIT 500"
         }
       ]
     },
@@ -656,8 +656,8 @@
         "y": 124
       },
       "datasource": {
-        "type": "postgres",
-        "uid": "devpulse-pg"
+        "type": "mysql",
+        "uid": "devpulse"
       },
       "fieldConfig": {
         "defaults": {
@@ -691,11 +691,11 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "postgres",
-            "uid": "devpulse-pg"
+            "type": "mysql",
+            "uid": "devpulse"
           },
           "format": "time_series",
-          "rawSql": "WITH base AS (SELECT date_trunc('week', b.started_at) AS week, m.display_name AS metric, COUNT(*) FILTER (WHERE b.status <> 'CANCELED') AS denom, COUNT(*) FILTER (WHERE b.is_failure AND b.status <> 'CANCELED') AS fails FROM dp_builds b JOIN dp_repos r ON r.id = b.repo_id JOIN dp_members m ON m.github_account = b.author_account JOIN dp_groups_repos gr ON gr.repo_id = r.id JOIN dp_groups_members gm ON gm.group_id = gr.group_id AND gm.member_id = m.id JOIN dp_groups g ON g.id = gr.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') AND m.display_name ~ ('^(' || '${member:pipe}' || ')$') AND b.started_at >= $__timeFrom() AND b.started_at < $__timeTo() AND NOT b.is_post_merge AND NOT b.is_deploy_event GROUP BY 1, 2) SELECT week AS time, metric, CASE WHEN denom > 0 THEN ROUND(fails::numeric * 100 / denom, 1) ELSE NULL END AS value FROM base ORDER BY 1, 2"
+          "rawSql": "SELECT week AS time, member AS metric, CASE WHEN denom > 0 THEN ROUND(fails * 100.0 / denom, 1) ELSE NULL END AS value FROM dpv_failure_rate_weekly WHERE group_slug IN (${group:singlequote}) AND member IN (${member:singlequote}) AND week >= $__timeFrom() AND week < $__timeTo() ORDER BY time, metric"
         }
       ]
     }
@@ -712,8 +712,8 @@
         "label": "Group",
         "type": "query",
         "datasource": {
-          "type": "postgres",
-          "uid": "devpulse-pg"
+          "type": "mysql",
+          "uid": "devpulse"
         },
         "definition": "SELECT slug FROM dp_groups ORDER BY slug",
         "query": "SELECT slug FROM dp_groups ORDER BY slug",
@@ -728,8 +728,8 @@
         "label": "Member",
         "type": "query",
         "datasource": {
-          "type": "postgres",
-          "uid": "devpulse-pg"
+          "type": "mysql",
+          "uid": "devpulse"
         },
         "definition": "SELECT DISTINCT display_name FROM dp_members m JOIN dp_groups_members gm ON gm.member_id = m.id JOIN dp_groups g ON g.id = gm.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') ORDER BY 1",
         "query": "SELECT DISTINCT display_name FROM dp_members m JOIN dp_groups_members gm ON gm.member_id = m.id JOIN dp_groups g ON g.id = gm.group_id WHERE g.slug ~ ('^(' || '${group:pipe}' || ')$') ORDER BY 1",

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Query\Expression;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
@@ -14,7 +15,8 @@ return new class () extends Migration {
             $table->string('full_name', 255)->unique();
             // human_signals 用於 classifier：每筆 { "category": "lint", "pattern": "PHPCS:" }
             // classifier 對失敗 build 的 log 做字串比對，把 build 歸類為 human / infra。
-            $table->json('human_signals')->default(json_encode([]));
+            // MySQL 8 要求 JSON column 的預設值必須用 expression default (parenthesized)。
+            $table->json('human_signals')->default(new Expression("('[]')"));
             $table->timestamps();
         });
     }

@@ -2,19 +2,17 @@ apiVersion: 1
 
 datasources:
   - name: devpulse
-    type: postgres
+    type: mysql
     access: proxy
-    uid: devpulse-pg
+    uid: devpulse
     url: ${DEVPULSE_DB_HOST}:${DEVPULSE_DB_PORT}
     user: ${DEVPULSE_DB_USER}
     database: ${DEVPULSE_DB_NAME}
     isDefault: true
     jsonData:
-      sslmode: ${DEVPULSE_DB_SSLMODE}
-      postgresVersion: 1500
-      timescaledb: false
-      database: ${DEVPULSE_DB_NAME}
+      maxOpenConns: 10
+      maxIdleConns: 5
+      connMaxLifetime: 14400
     secureJsonData:
       password: ${DEVPULSE_DB_PASSWORD}
     editable: true
-
