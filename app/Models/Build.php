@@ -47,6 +47,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class Build extends Model
 {
+    protected $table = 'dp_builds';
+
     /**
      * @return BelongsTo<Repo, $this>
      */

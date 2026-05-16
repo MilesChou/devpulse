@@ -37,7 +37,7 @@ class GroupCreateCommandTest extends TestCase
         $this->artisan('devpulse:group:create', ['slug' => 'Bad Slug!'])
             ->assertFailed();
 
-        $this->assertDatabaseCount('groups', 0);
+        $this->assertDatabaseCount('dp_groups', 0);
     }
 
     public function testRejectsUppercaseSlug(): void
@@ -45,7 +45,7 @@ class GroupCreateCommandTest extends TestCase
         $this->artisan('devpulse:group:create', ['slug' => 'MyTeam'])
             ->assertFailed();
 
-        $this->assertDatabaseCount('groups', 0);
+        $this->assertDatabaseCount('dp_groups', 0);
     }
 
     public function testRejectsDuplicateSlug(): void

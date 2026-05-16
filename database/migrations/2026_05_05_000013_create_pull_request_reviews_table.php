@@ -9,9 +9,9 @@ use Illuminate\Support\Facades\Schema;
 return new class () extends Migration {
     public function up(): void
     {
-        Schema::create('pull_request_reviews', function (Blueprint $table): void {
+        Schema::create('dp_pull_request_reviews', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('pull_request_id')->constrained('pull_requests')->cascadeOnDelete();
+            $table->foreignId('pull_request_id')->constrained('dp_pull_requests')->cascadeOnDelete();
             $table->string('reviewer_account', 64);
             $table->string('state', 32);
             $table->timestamp('submitted_at');
@@ -24,6 +24,6 @@ return new class () extends Migration {
 
     public function down(): void
     {
-        Schema::dropIfExists('pull_request_reviews');
+        Schema::dropIfExists('dp_pull_request_reviews');
     }
 };

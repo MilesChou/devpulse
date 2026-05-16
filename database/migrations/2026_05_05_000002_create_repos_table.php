@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Schema;
 return new class () extends Migration {
     public function up(): void
     {
-        Schema::create('repos', function (Blueprint $table): void {
+        Schema::create('dp_repos', function (Blueprint $table): void {
             $table->id();
             $table->string('full_name', 255)->unique();
             // human_signals 用於 classifier：每筆 { "category": "lint", "pattern": "PHPCS:" }
@@ -21,6 +21,6 @@ return new class () extends Migration {
 
     public function down(): void
     {
-        Schema::dropIfExists('repos');
+        Schema::dropIfExists('dp_repos');
     }
 };

@@ -25,6 +25,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class PullRequestReview extends Model
 {
+    protected $table = 'dp_pull_request_reviews';
+
     /**
      * @return BelongsTo<PullRequest, $this>
      */
