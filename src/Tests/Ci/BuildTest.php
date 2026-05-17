@@ -10,7 +10,7 @@ use DevPulse\Ci\BuildTrigger;
 use DevPulse\Shared\CommitSha;
 use DevPulse\Shared\RepoFullName;
 use DevPulse\Vcs\PullRequestNumber;
-use Carbon\CarbonImmutable;
+use DateTimeImmutable;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
@@ -96,7 +96,7 @@ class BuildTest extends TestCase
         BuildStatus $status = BuildStatus::PASSED,
         BuildTrigger $trigger = BuildTrigger::PULL_REQUEST,
         ?string $branch = 'feature/foo',
-        ?CarbonImmutable $startedAt = null,
+        ?DateTimeImmutable $startedAt = null,
         ?int $durationSeconds = 120,
     ): Build {
         return new Build(
@@ -108,7 +108,7 @@ class BuildTest extends TestCase
             status: $status,
             trigger: $trigger,
             branch: $branch,
-            startedAt: $startedAt ?? CarbonImmutable::parse('2026-04-15T10:00:00Z'),
+            startedAt: $startedAt ?? new DateTimeImmutable('2026-04-15T10:00:00Z'),
             durationSeconds: $durationSeconds,
         );
     }

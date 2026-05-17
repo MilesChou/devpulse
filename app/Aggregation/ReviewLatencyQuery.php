@@ -31,7 +31,7 @@ class ReviewLatencyQuery
     public function run(Group $group, MonthRange $month): Collection
     {
         $now = $this->clock ?? CarbonImmutable::now('UTC');
-        $cutoff = $month->end->isBefore($now) ? $month->end : $now;
+        $cutoff = $month->end < $now ? $month->end : $now;
 
         $prs = PullRequest::query()
             ->whereIn('repo_id', $group->repoIds())

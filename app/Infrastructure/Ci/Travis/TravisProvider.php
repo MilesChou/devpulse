@@ -56,11 +56,11 @@ class TravisProvider implements CiProvider
                     continue;
                 }
 
-                if ($build->startedAt->greaterThanOrEqualTo($month->end)) {
+                if ($build->startedAt >= $month->end) {
                     $consecutiveBelow = 0;
                     continue;
                 }
-                if ($build->startedAt->lessThan($month->start)) {
+                if ($build->startedAt < $month->start) {
                     $consecutiveBelow++;
                     if ($consecutiveBelow >= 50) {
                         $stop = true;

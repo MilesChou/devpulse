@@ -43,10 +43,10 @@ class GitHubProvider
                 $id = new PullRequestId((string)new Ulid());
                 $pr = GitHubPullRequestFactory::fromGitHubRaw($rawPull, repoId: $repoId, id: $id);
 
-                if ($pr->createdAt->greaterThanOrEqualTo($month->end)) {
+                if ($pr->createdAt >= $month->end) {
                     continue;
                 }
-                if ($pr->createdAt->lessThan($month->start)) {
+                if ($pr->createdAt < $month->start) {
                     $reachedOlderThanRange = true;
                     continue;
                 }

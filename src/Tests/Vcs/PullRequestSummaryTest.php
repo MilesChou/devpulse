@@ -13,7 +13,7 @@ use DevPulse\Vcs\PullRequest;
 use DevPulse\Vcs\PullRequestId;
 use DevPulse\Vcs\PullRequestNumber;
 use DevPulse\Vcs\PullRequestStatus;
-use Carbon\CarbonImmutable;
+use DateTimeImmutable;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
@@ -68,9 +68,9 @@ class PullRequestSummaryTest extends TestCase
         $this->assertFalse($this->build()->isDraft());
     }
 
-    private function buildWithReadyAtOverride(?CarbonImmutable $readyAt): PullRequest
+    private function buildWithReadyAtOverride(?DateTimeImmutable $readyAt): PullRequest
     {
-        $createdAt = CarbonImmutable::parse('2026-04-15T10:00:00Z');
+        $createdAt = new DateTimeImmutable('2026-04-15T10:00:00Z');
 
         return new PullRequest(
             id: new PullRequestId('01JTEST000000000000000000A'),
@@ -143,11 +143,11 @@ class PullRequestSummaryTest extends TestCase
         PullRequestStatus $status = PullRequestStatus::Open,
         int $additions = 10,
         int $deletions = 5,
-        ?CarbonImmutable $createdAt = null,
-        ?CarbonImmutable $readyAt = null,
-        ?CarbonImmutable $closedAt = null,
+        ?DateTimeImmutable $createdAt = null,
+        ?DateTimeImmutable $readyAt = null,
+        ?DateTimeImmutable $closedAt = null,
     ): PullRequest {
-        $createdAt ??= CarbonImmutable::parse('2026-04-15T10:00:00Z');
+        $createdAt ??= new DateTimeImmutable('2026-04-15T10:00:00Z');
 
         return new PullRequest(
             id: new PullRequestId('01JTEST000000000000000000B'),
