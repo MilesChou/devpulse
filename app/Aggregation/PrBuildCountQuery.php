@@ -38,7 +38,7 @@ class PrBuildCountQuery
             ->get();
 
         return $rows->map(fn (Build $row) => new PrBuildCountResult(
-            repoFullName: new RepoFullName($row->repo->full_name),
+            repoFullName: new RepoFullName($row->repo->name),
             prNumber: new PullRequestNumber((int)$row->pr_number),
             buildCount: (int)$row->build_count, // @phpstan-ignore property.notFound, cast.int
         ));

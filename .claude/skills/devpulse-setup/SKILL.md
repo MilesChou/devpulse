@@ -3,7 +3,7 @@ name: devpulse-setup
 description: >
   初始化 DevPulse 觀測群體，包含建立 group、新增 member、新增 repo，透過 Laravel artisan 指令批次執行。
   當使用者提供截圖、表格或資料，要新增 group、member、repo 時，一律使用此 skill。
-  觸發情境：「新增 group」、「新增 member」、「新增 repo」、「建立觀測群體」、「初始化 DevPulse」、「加入成員」、「加入 repo」、提供含有 slug/github_account/full_name 欄位的截圖或資料。
+  觸發情境：「新增 group」、「新增 member」、「新增 repo」、「建立觀測群體」、「初始化 DevPulse」、「加入成員」、「加入 repo」、提供含有 slug/github_account/name 欄位的截圖或資料。
 ---
 
 # DevPulse Setup Skill
@@ -38,13 +38,16 @@ php artisan devpulse:member:add {group} {github_account} {display_name}
 ### 3. 新增 Repo
 
 ```bash
-php artisan devpulse:repo:add {group} {full_name}
+php artisan devpulse:repo:add {group} {name} [--type=github] [--slug=...] [--url=...]
 ```
 
 | 參數 | 說明 | 格式 |
 |------|------|------|
 | `group` | group slug（必須已存在） | — |
-| `full_name` | 完整 repo 名稱 | `owner/name`，例如 `104corp/ac-api-php` |
+| `name` | 完整 repo 名稱 | `owner/name`，例如 `104corp/ac-api-php` |
+| `--type` | 平台類型 | `github`（預設）或 `gitlab` |
+| `--slug` | 短代號（選填） | 預設由 name 推導（`owner/repo` → `owner-repo`） |
+| `--url` | git clone URL（選填） | 預設 `git@github.com:{name}.git` 或 `git@gitlab.com:{name}.git` |
 
 ## 執行流程
 
@@ -53,7 +56,7 @@ php artisan devpulse:repo:add {group} {full_name}
 1. **判斷資料類型**：從截圖欄位名稱辨識是哪種資料
    - 含 `slug` → 建立 group
    - 含 `github_account` / `display_name` → 新增 member
-   - 含 `full_name` → 新增 repo
+   - 含 `name`（owner/name 格式） → 新增 repo
 
 2. **詢問 group slug**（若不明確）：新增 member 和 repo 都需要指定 group，若使用者未說明，先確認。
 

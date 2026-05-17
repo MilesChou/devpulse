@@ -10,8 +10,8 @@ return new class () extends Migration {
     public function up(): void
     {
         Schema::create('dp_builds', function (Blueprint $table): void {
-            $table->id();
-            $table->foreignId('repo_id')->constrained('dp_repos')->cascadeOnDelete();
+            $table->ulid('id')->primary();
+            $table->ulid('repo_id');
             $table->string('external_id', 64);
             $table->string('commit_sha', 64);
             $table->string('author_account', 64)->nullable();

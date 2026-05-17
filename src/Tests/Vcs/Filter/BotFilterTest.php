@@ -58,7 +58,7 @@ class BotFilterTest extends TestCase
         return new PullRequest(
             id: new PullRequestId('01JTEST000000000000000000C'),
             platform: Platform::GitHub,
-            repoId: new RepoId(1),
+            repoId: new RepoId('01JTESTREP00000000000000A1'),
             number: new PullRequestNumber(1),
             author: new Author($author),
             status: PullRequestStatus::Open,

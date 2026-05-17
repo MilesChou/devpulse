@@ -22,7 +22,7 @@ class PullRequestSummaryTest extends TestCase
     public function testBuildsValidInstance(): void
     {
         $pr = $this->build();
-        $this->assertSame(7, $pr->repoId->toInt());
+        $this->assertSame('01JTESTREP00000000000000A7', $pr->repoId->toString());
         $this->assertSame(42, $pr->number->toInt());
         $this->assertSame(PullRequestStatus::Open, $pr->status());
     }
@@ -75,7 +75,7 @@ class PullRequestSummaryTest extends TestCase
         return new PullRequest(
             id: new PullRequestId('01JTEST000000000000000000A'),
             platform: Platform::GitHub,
-            repoId: new RepoId(7),
+            repoId: new RepoId('01JTESTREP00000000000000A7'),
             number: new PullRequestNumber(42),
             author: new Author('alice'),
             status: PullRequestStatus::Open,
@@ -93,7 +93,7 @@ class PullRequestSummaryTest extends TestCase
 
     public function testFromGitHubRawTranslatesOpenPr(): void
     {
-        $pr = GitHubPullRequestFactory::fromGitHubRaw($this->payload(), repoId: 7, id: new PullRequestId('01JTEST000000000000000000F'));
+        $pr = GitHubPullRequestFactory::fromGitHubRaw($this->payload(), repoId: '01JTESTREP00000000000000A7', id: new PullRequestId('01JTEST000000000000000000F'));
         $this->assertSame(PullRequestStatus::Open, $pr->status());
         $this->assertFalse($pr->isDraft());
         $this->assertNull($pr->closedAt());
@@ -105,14 +105,14 @@ class PullRequestSummaryTest extends TestCase
             'state' => 'closed',
             'merged_at' => '2026-04-15T11:00:00Z',
             'closed_at' => '2026-04-15T11:00:00Z',
-        ]), repoId: 7, id: new PullRequestId('01JTEST000000000000000000G'));
+        ]), repoId: '01JTESTREP00000000000000A7', id: new PullRequestId('01JTEST000000000000000000G'));
         $this->assertSame(PullRequestStatus::Merged, $pr->status());
         $this->assertNotNull($pr->closedAt());
     }
 
     public function testFromGitHubRawTranslatesDraftPr(): void
     {
-        $pr = GitHubPullRequestFactory::fromGitHubRaw($this->payload(['draft' => true]), repoId: 7, id: new PullRequestId('01JTEST000000000000000000H'));
+        $pr = GitHubPullRequestFactory::fromGitHubRaw($this->payload(['draft' => true]), repoId: '01JTESTREP00000000000000A7', id: new PullRequestId('01JTEST000000000000000000H'));
         $this->assertTrue($pr->isDraft());
         $this->assertNull($pr->readyAt());
     }
@@ -124,14 +124,14 @@ class PullRequestSummaryTest extends TestCase
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('number');
-        GitHubPullRequestFactory::fromGitHubRaw($payload, repoId: 7, id: new PullRequestId('01JTEST000000000000000000I'));
+        GitHubPullRequestFactory::fromGitHubRaw($payload, repoId: '01JTESTREP00000000000000A7', id: new PullRequestId('01JTEST000000000000000000I'));
     }
 
     public function testFromGitHubRawParsesTimesAsUtc(): void
     {
         $pr = GitHubPullRequestFactory::fromGitHubRaw($this->payload([
             'created_at' => '2026-04-15T10:00:00Z',
-        ]), repoId: 7, id: new PullRequestId('01JTEST000000000000000000J'));
+        ]), repoId: '01JTESTREP00000000000000A7', id: new PullRequestId('01JTEST000000000000000000J'));
 
         $this->assertSame('UTC', $pr->createdAt->getTimezone()->getName());
         $this->assertSame('2026-04-15 10:00:00', $pr->createdAt->format('Y-m-d H:i:s'));
@@ -152,7 +152,7 @@ class PullRequestSummaryTest extends TestCase
         return new PullRequest(
             id: new PullRequestId('01JTEST000000000000000000B'),
             platform: Platform::GitHub,
-            repoId: new RepoId(7),
+            repoId: new RepoId('01JTESTREP00000000000000A7'),
             number: new PullRequestNumber($number),
             author: new Author($authorAccount),
             status: $status,

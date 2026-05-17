@@ -19,10 +19,10 @@ class RepoAddCommandTest extends TestCase
 
         $this->artisan('devpulse:repo:add', [
             'group' => 'my-team',
-            'full_name' => 'your-org/your-repo',
+            'name' => 'your-org/your-repo',
         ])->assertSuccessful();
 
-        $repo = Repo::query()->where('full_name', 'your-org/your-repo')->first();
+        $repo = Repo::query()->where('name', 'your-org/your-repo')->first();
         $this->assertNotNull($repo);
     }
 
@@ -30,7 +30,7 @@ class RepoAddCommandTest extends TestCase
     {
         $this->artisan('devpulse:repo:add', [
             'group' => 'nonexistent',
-            'full_name' => 'your-org/your-repo',
+            'name' => 'your-org/your-repo',
         ])->assertFailed();
 
         $this->assertDatabaseCount('dp_repos', 0);
@@ -42,7 +42,7 @@ class RepoAddCommandTest extends TestCase
 
         $this->artisan('devpulse:repo:add', [
             'group' => 'my-team',
-            'full_name' => 'invalid',
+            'name' => 'invalid',
         ])->assertFailed();
 
         $this->assertDatabaseCount('dp_repos', 0);
@@ -54,12 +54,12 @@ class RepoAddCommandTest extends TestCase
 
         $this->artisan('devpulse:repo:add', [
             'group' => 'my-team',
-            'full_name' => 'your-org/your-repo',
+            'name' => 'your-org/your-repo',
         ])->assertSuccessful();
 
         $this->artisan('devpulse:repo:add', [
             'group' => 'my-team',
-            'full_name' => 'your-org/your-repo',
+            'name' => 'your-org/your-repo',
         ])->assertSuccessful();
 
         $this->assertSame(1, Group::query()->where('slug', 'my-team')->first()->repos()->count());
@@ -72,15 +72,15 @@ class RepoAddCommandTest extends TestCase
 
         $this->artisan('devpulse:repo:add', [
             'group' => 'team-a',
-            'full_name' => 'your-org/your-repo',
+            'name' => 'your-org/your-repo',
         ])->assertSuccessful();
 
         $this->artisan('devpulse:repo:add', [
             'group' => 'team-b',
-            'full_name' => 'your-org/your-repo',
+            'name' => 'your-org/your-repo',
         ])->assertSuccessful();
 
-        $this->assertSame(1, Repo::query()->where('full_name', 'your-org/your-repo')->count());
+        $this->assertSame(1, Repo::query()->where('name', 'your-org/your-repo')->count());
         $this->assertCount(1, $teamA->fresh()->repos);
         $this->assertCount(1, $teamB->fresh()->repos);
     }

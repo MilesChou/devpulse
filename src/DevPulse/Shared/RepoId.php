@@ -5,17 +5,23 @@ declare(strict_types=1);
 namespace DevPulse\Shared;
 
 use InvalidArgumentException;
+use Stringable;
 
-final readonly class RepoId
+final readonly class RepoId implements Stringable
 {
-    public function __construct(public int $value)
+    public function __construct(public string $value)
     {
-        if ($value < 1) {
-            throw new InvalidArgumentException('RepoId must be >= 1');
+        if (! preg_match('/^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{26}$/', $value)) {
+            throw new InvalidArgumentException("RepoId must be a 26-char ULID (got `{$value}`)");
         }
     }
 
-    public function toInt(): int
+    public function toString(): string
+    {
+        return $this->value;
+    }
+
+    public function __toString(): string
     {
         return $this->value;
     }

@@ -10,8 +10,8 @@ return new class () extends Migration {
     public function up(): void
     {
         Schema::create('dp_groups_repos', function (Blueprint $table): void {
-            $table->foreignId('group_id')->constrained('dp_groups')->cascadeOnDelete();
-            $table->foreignId('repo_id')->constrained('dp_repos')->cascadeOnDelete();
+            $table->ulid('group_id');
+            $table->ulid('repo_id');
             $table->primary(['group_id', 'repo_id']);
         });
     }

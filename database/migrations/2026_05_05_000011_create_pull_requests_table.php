@@ -10,10 +10,9 @@ return new class () extends Migration {
     public function up(): void
     {
         Schema::create('dp_pull_requests', function (Blueprint $table): void {
-            $table->id();
-            $table->ulid('ulid')->nullable()->unique();
+            $table->ulid('id')->primary();
             $table->string('platform', 16)->nullable();
-            $table->foreignId('repo_id')->constrained('dp_repos')->cascadeOnDelete();
+            $table->ulid('repo_id');
             $table->integer('number');
             $table->string('author_account', 64);
             $table->string('status', 16);

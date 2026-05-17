@@ -59,7 +59,7 @@ class ReviewLatencyQuery
             assert($pr->size_bucket !== null);
 
             return new ReviewLatencyResult(
-                repoFullName: new RepoFullName($pr->repo->full_name),
+                repoFullName: new RepoFullName($pr->repo->name),
                 prNumber: new PullRequestNumber($pr->number),
                 authorAccount: new Author($pr->author_account),
                 sizeBucket: $pr->size_bucket,

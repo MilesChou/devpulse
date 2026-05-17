@@ -11,14 +11,15 @@ use DevPulse\Ci\BuildTrigger;
 use DevPulse\Shared\MonthRange;
 use App\Models\Build;
 use App\Models\Group;
-use App\Models\Repo;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\CreatesRepoModel;
 use Tests\TestCase;
 
 class BuildFailureRateQueryTest extends TestCase
 {
     use RefreshDatabase;
+    use CreatesRepoModel;
 
     private BuildFailureRateQuery $query;
 
@@ -124,14 +125,14 @@ class BuildFailureRateQueryTest extends TestCase
     private function setupGroupWithRepo(string $groupSlug, string $repoFullName): array
     {
         $group = Group::create(['slug' => $groupSlug, 'description' => '']);
-        $repo = Repo::create(['full_name' => $repoFullName]);
+        $repo = $this->makeRepo($repoFullName);
         $group->repos()->attach($repo->id);
 
         return [$group, $repo];
     }
 
     private function insertBuild(
-        int $repoId,
+        string $repoId,
         string $authorAccount,
         string $date,
         BuildStatus $status,

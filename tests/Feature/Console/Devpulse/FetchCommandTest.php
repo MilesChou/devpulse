@@ -14,10 +14,12 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
+use Tests\Support\CreatesRepoModel;
 use Tests\TestCase;
 
 class FetchCommandTest extends TestCase
 {
+    use CreatesRepoModel;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -183,7 +185,7 @@ class FetchCommandTest extends TestCase
     private function seedGroupWithRepo(string $groupSlug, string $repoFullName): array
     {
         $group = Group::create(['slug' => $groupSlug, 'description' => '']);
-        $repo = Repo::create(['full_name' => $repoFullName]);
+        $repo = $this->makeRepo($repoFullName);
         $group->repos()->attach($repo->id);
 
         return [$group, $repo];

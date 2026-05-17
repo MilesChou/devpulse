@@ -12,11 +12,13 @@ use App\Models\PullRequest;
 use App\Models\Repo;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\CreatesRepoModel;
 use Tests\TestCase;
 
 class ReviewLatencyQueryTest extends TestCase
 {
     use RefreshDatabase;
+    use CreatesRepoModel;
 
     private Group $group;
     private Repo $repo;
@@ -25,7 +27,7 @@ class ReviewLatencyQueryTest extends TestCase
     {
         parent::setUp();
         $this->group = Group::create(['slug' => 'team-a', 'description' => '']);
-        $this->repo = Repo::create(['full_name' => 'org/repo']);
+        $this->repo = $this->makeRepo('org/repo');
         $this->group->repos()->attach($this->repo->id);
     }
 
@@ -71,7 +73,7 @@ class ReviewLatencyQueryTest extends TestCase
     public function testExcludesPrsFromOtherGroups(): void
     {
         $otherGroup = Group::create(['slug' => 'team-b', 'description' => '']);
-        $otherRepo = Repo::create(['full_name' => 'org/other']);
+        $otherRepo = $this->makeRepo('org/other');
         $otherGroup->repos()->attach($otherRepo->id);
 
         $this->insertPrForRepo(
@@ -96,7 +98,7 @@ class ReviewLatencyQueryTest extends TestCase
     }
 
     private function insertPrForRepo(
-        int $repoId,
+        string $repoId,
         int $number,
         ?CarbonImmutable $readyAt,
         ?CarbonImmutable $firstReviewAt,

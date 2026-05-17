@@ -23,7 +23,7 @@ class EnrichPullRequestCommand extends Command
         $repoFullName = (string)$this->argument('repo');
         $prNumber = (int)$this->argument('number');
 
-        $repo = Repo::query()->where('full_name', $repoFullName)->first();
+        $repo = Repo::query()->where('name', $repoFullName)->first();
         if ($repo === null) {
             $this->error("repo `$repoFullName` 不存在");
 

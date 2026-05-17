@@ -10,7 +10,7 @@ return new class () extends Migration {
     public function up(): void
     {
         Schema::create('dp_groups', function (Blueprint $table): void {
-            $table->id();
+            $table->ulid('id')->primary();
             $table->string('slug', 64)->unique();
             $table->string('description', 255)->nullable();
             $table->timestamps();

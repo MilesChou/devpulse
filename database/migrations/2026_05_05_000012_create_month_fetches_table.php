@@ -16,8 +16,8 @@ return new class () extends Migration {
     public function up(): void
     {
         Schema::create('dp_month_fetches', function (Blueprint $table): void {
-            $table->id();
-            $table->foreignId('repo_id')->constrained('dp_repos')->cascadeOnDelete();
+            $table->ulid('id')->primary();
+            $table->ulid('repo_id');
             $table->string('dataset', 32);
             $table->string('month', 7);
             $table->string('status', 16);

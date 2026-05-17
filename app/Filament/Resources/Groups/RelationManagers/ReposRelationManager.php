@@ -28,9 +28,9 @@ class ReposRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
-            ->recordTitleAttribute('full_name')
+            ->recordTitleAttribute('name')
             ->columns([
-                TextColumn::make('full_name')
+                TextColumn::make('name')
                     ->label('Repo')
                     ->searchable()
                     ->sortable()
@@ -46,7 +46,7 @@ class ReposRelationManager extends RelationManager
                     ->badge()
                     ->tooltip('此 repo 共屬於幾個 group'),
             ])
-            ->defaultSort('full_name')
+            ->defaultSort('name')
             ->headerActions([
                 AttachAction::make()->preloadRecordSelect(),
             ])

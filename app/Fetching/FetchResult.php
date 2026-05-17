@@ -7,7 +7,7 @@ namespace App\Fetching;
 final readonly class FetchResult
 {
     /**
-     * @param array<int, RepoFetchOutcome> $repos repo 的個別結果（key 為 repo_id）
+     * @param array<string, RepoFetchOutcome> $repos repo 的個別結果（key 為 repo_id ULID）
      */
     public function __construct(
         public string $month,

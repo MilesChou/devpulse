@@ -41,7 +41,7 @@ class FailedBuildListQuery
         /** @var \Illuminate\Support\Collection<int, object{repo_full_name: string, external_id: string, commit_sha: string, author_account: string|null, pr_number: int|null, status: string, started_at: string}> $rows */
         $rows = $query
             ->select([
-                'dp_repos.full_name as repo_full_name',
+                'dp_repos.name as repo_full_name',
                 'dp_builds.external_id',
                 'dp_builds.commit_sha',
                 'dp_builds.author_account',

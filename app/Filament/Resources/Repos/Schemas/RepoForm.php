@@ -21,13 +21,33 @@ class RepoForm
 
         return $schema
             ->components([
-                TextInput::make('full_name')
+                TextInput::make('slug')
+                    ->required()
+                    ->maxLength(64)
+                    ->placeholder('devpulse')
+                    ->helperText('ULID 的人類好讀版，唯一短代號')
+                    ->unique(ignoreRecord: true)
+                    ->columnSpan(1),
+                Select::make('type')
+                    ->required()
+                    ->options([
+                        'github' => 'GitHub',
+                        'gitlab' => 'GitLab',
+                    ])
+                    ->default('github')
+                    ->columnSpan(1),
+                TextInput::make('name')
                     ->required()
                     ->maxLength(255)
                     ->placeholder('owner/name')
-                    ->rules([self::repoFullNameRule()])
+                    ->rules([self::repoNameRule()])
                     ->helperText('owner/name 格式，例如 your-org/your-repo')
-                    ->unique(ignoreRecord: true)
+                    ->columnSpanFull(),
+                TextInput::make('url')
+                    ->required()
+                    ->maxLength(500)
+                    ->placeholder('git@github.com:owner/repo.git')
+                    ->helperText('git clone URL')
                     ->columnSpanFull(),
                 Section::make('human_signals')
                     ->description('classifier 用來把失敗 build 歸類為 human / infra 的關鍵字。新增分類請改 config/devpulse.php。')
@@ -63,14 +83,15 @@ class RepoForm
                             ->defaultItems(0),
                     ])
                     ->columnSpanFull(),
-            ]);
+            ])
+            ->columns(2);
     }
 
-    private static function repoFullNameRule(): Closure
+    private static function repoNameRule(): Closure
     {
         return function (string $attribute, mixed $value, Closure $fail): void {
             if (! is_string($value) || ! RepoFullName::isValid($value)) {
-                $fail('full_name 必須是 owner/name 格式');
+                $fail('name 必須是 owner/name 格式');
             }
         };
     }

@@ -11,11 +11,13 @@ use App\Models\Group;
 use App\Models\Repo;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\CreatesRepoModel;
 use Tests\TestCase;
 
 class PrBuildCountQueryTest extends TestCase
 {
     use RefreshDatabase;
+    use CreatesRepoModel;
 
     private PrBuildCountQuery $query;
 
@@ -104,13 +106,13 @@ class PrBuildCountQueryTest extends TestCase
     private function setupGroupWithRepo(string $groupSlug, string $repoFullName): array
     {
         $group = Group::create(['slug' => $groupSlug, 'description' => '']);
-        $repo = Repo::create(['full_name' => $repoFullName]);
+        $repo = $this->makeRepo($repoFullName);
         $group->repos()->attach($repo->id);
 
         return [$group, $repo];
     }
 
-    private function insertBuild(int $repoId, ?int $prNumber, string $date): void
+    private function insertBuild(string $repoId, ?int $prNumber, string $date): void
     {
         Build::create([
             'repo_id' => $repoId,

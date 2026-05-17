@@ -14,10 +14,12 @@ use App\Models\Repo;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
+use Tests\Support\CreatesRepoModel;
 use Tests\TestCase;
 
 class ReportCommandTest extends TestCase
 {
+    use CreatesRepoModel;
     use RefreshDatabase;
 
     public function testGeneratesMarkdownReportWithAllSections(): void
@@ -98,7 +100,7 @@ class ReportCommandTest extends TestCase
     private function seedSampleData(): void
     {
         $group = Group::create(['slug' => 'team-a', 'description' => 'Team A']);
-        $repo = Repo::create(['full_name' => 'org/repo-a']);
+        $repo = $this->makeRepo('org/repo-a');
         $group->repos()->attach($repo->id);
 
         // 3 個 PR build：alice 2 次（1 失敗）、bob 1 次（成功）
@@ -127,7 +129,7 @@ class ReportCommandTest extends TestCase
     }
 
     private function insertBuild(
-        int $repoId,
+        string $repoId,
         string $author,
         string $startedAt,
         BuildStatus $status,
