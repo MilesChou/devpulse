@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Tests\Domain\Architecture;
+namespace Tests\Architecture;
 
 use PHPat\Selector\Selector;
 use PHPat\Test\Attributes\TestRule;

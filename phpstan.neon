@@ -15,10 +15,10 @@ parameters:
 
 services:
     -
-        class: Tests\Domain\Architecture\DomainProductionPurityTest
+        class: Tests\Architecture\DomainProductionPurityTest
         tags:
             - phpat.test
     -
-        class: Tests\Domain\Architecture\DomainTestPurityTest
+        class: Tests\Architecture\DomainTestPurityTest
         tags:
             - phpat.test

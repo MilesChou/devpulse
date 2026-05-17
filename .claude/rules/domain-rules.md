@@ -41,7 +41,7 @@ src/
 
 1. Other namespaces inside `src/` (`DevPulse\…`)
 2. PHP native and SPL types, e.g. `DateTimeImmutable`, `InvalidArgumentException`, `Stringable`, `Generator`
-3. `PHPUnit\Framework\TestCase` (only under `src/Tests/`); architecture tests may additionally use `PHPat\…`
+3. `PHPUnit\Framework\TestCase` (only under `src/Tests/`)
 
 **Why**: the domain must be testable without booting Laravel — and without any third-party composer package installed.
 
