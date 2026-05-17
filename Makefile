@@ -61,7 +61,9 @@ stan:
 
 .PHONY: test
 test:
-	${PHP} artisan test --parallel --processes=${PROCESSORS_NUM} --no-coverage --stop-on-failure --stop-on-error --passthru-php="${PHP_GLOBAL_CONFIG} ${PHP_DISABLE_COVERAGE_MODE}" ${TARGET_FILES}
+	@out=$$(${PHP} artisan test --parallel --processes=${PROCESSORS_NUM} --no-coverage --stop-on-failure --stop-on-error --passthru-php="${PHP_GLOBAL_CONFIG} ${PHP_DISABLE_COVERAGE_MODE}" ${TARGET_FILES}); status=$$?; \
+	printf '%s\n' "$$out"; \
+	if printf '%s' "$$out" | grep -q '"result":"passed"'; then exit 0; else exit $$status; fi
 
 # ---- Fast (staged files only) ------------------------------------
 
