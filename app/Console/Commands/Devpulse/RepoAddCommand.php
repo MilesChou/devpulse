@@ -5,37 +5,29 @@ declare(strict_types=1);
 namespace App\Console\Commands\Devpulse;
 
 use DevPulse\Shared\RepoFullName;
-use App\Models\Group;
+use DevPulse\Vcs\Platform;
 use App\Models\Repo;
 use InvalidArgumentException;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
+use ValueError;
 
 #[Signature(
     'devpulse:repo:add'
-    . ' {group : group slug}'
     . ' {name : owner/name}'
     . ' {--type=github : github 或 gitlab}'
     . ' {--slug= : 短代號（預設由 name 推導，例如 owner/repo → owner-repo）}'
     . ' {--url= : git clone URL（預設由 type + name 推導）}',
 )]
-#[Description('把 repo 加進指定 group（repo 不存在則自動建立）')]
+#[Description('新增 repo（已存在則跳過）')]
 class RepoAddCommand extends Command
 {
     public function handle(): int
     {
-        $groupSlug = (string)$this->argument('group');
         $name = (string)$this->argument('name');
-        $type = (string)$this->option('type');
-
-        $group = Group::query()->where('slug', $groupSlug)->first();
-        if ($group === null) {
-            $this->error("group `{$groupSlug}` 不存在，請先用 devpulse:group:create 建立");
-
-            return self::FAILURE;
-        }
+        $typeRaw = (string)$this->option('type');
 
         try {
             new RepoFullName($name);
@@ -45,32 +37,36 @@ class RepoAddCommand extends Command
             return self::FAILURE;
         }
 
+        try {
+            $platform = Platform::from($typeRaw);
+        } catch (ValueError) {
+            $this->error("type 不支援：{$typeRaw}（可用：github、gitlab）");
+
+            return self::FAILURE;
+        }
+
         $slug = (string)($this->option('slug') ?: Str::slug(str_replace('/', '-', $name)));
-        $url = (string)($this->option('url') ?: $this->defaultUrl($type, $name));
+        $url = (string)($this->option('url') ?: $this->defaultUrl($platform, $name));
 
         $repo = Repo::query()->firstOrCreate(
-            ['type' => $type, 'name' => $name],
+            ['type' => $platform->value, 'name' => $name],
             ['slug' => $slug, 'url' => $url],
         );
 
-        if ($group->repos()->where('repo_id', $repo->id)->exists()) {
-            $this->warn("repo `{$name}` 已在 group `{$groupSlug}` 中");
-
-            return self::SUCCESS;
+        if ($repo->wasRecentlyCreated) {
+            $this->info("已新增 repo {$repo->name}");
+        } else {
+            $this->line("repo `{$name}` 已存在");
         }
-
-        $group->repos()->attach($repo);
-
-        $this->info("已將 {$repo->name} 加進 group `{$groupSlug}`");
 
         return self::SUCCESS;
     }
 
-    private function defaultUrl(string $type, string $name): string
+    private function defaultUrl(Platform $platform, string $name): string
     {
-        return match ($type) {
-            'gitlab' => "git@gitlab.com:{$name}.git",
-            default => "git@github.com:{$name}.git",
+        return match ($platform) {
+            Platform::GitLab => "git@gitlab.com:{$name}.git",
+            Platform::GitHub => "git@github.com:{$name}.git",
         };
     }
 }

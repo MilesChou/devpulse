@@ -6,7 +6,7 @@ namespace App\Console\Commands\Devpulse;
 
 use DevPulse\Shared\MonthRange;
 use App\Fetching\FetchOrchestrator;
-use App\Models\Group;
+use App\Models\Repo;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -14,18 +14,16 @@ use InvalidArgumentException;
 
 #[Signature(
     'devpulse:fetch'
-    . ' {group : group slug}'
-    . ' {month : Y-m 格式（例如 2026-04）}'
-    . ' {--force : 即使該月已標記 complete 也重撈}',
+    . ' {repo : repo full name（例如 owner/name）}'
+    . ' {month : Y-m 格式（例如 2026-04）}',
 )]
-#[Description('撈指定 group 在指定月份的 builds + pull requests，寫入 DB')]
+#[Description('撈指定 repo 在指定月份的 builds + pull requests，寫入 DB')]
 class FetchCommand extends Command
 {
     public function handle(FetchOrchestrator $orchestrator): int
     {
-        $groupSlug = (string)$this->argument('group');
+        $repoFullName = (string)$this->argument('repo');
         $monthRaw = (string)$this->argument('month');
-        $force = (bool)$this->option('force');
 
         try {
             $month = MonthRange::fromString($monthRaw);
@@ -35,49 +33,30 @@ class FetchCommand extends Command
             return self::FAILURE;
         }
 
-        $group = Group::query()->where('slug', $groupSlug)->first();
-        if ($group === null) {
-            $this->error("group `$groupSlug` 不存在");
+        $repo = Repo::query()->where('name', $repoFullName)->first();
+        if ($repo === null) {
+            $this->error("repo `$repoFullName` 不存在，請先用 devpulse:repo:add 新增");
 
             return self::FAILURE;
         }
 
-        $repoCount = $group->repos()->count();
-        if ($repoCount === 0) {
-            $this->warn("group `$groupSlug` 沒有任何 repo，請先用 devpulse:repo:add 加 repo");
+        $this->info("撈取 $repoFullName / {$monthRaw}");
 
-            return self::SUCCESS;
+        $outcome = $orchestrator->fetch($repo, $month);
+
+        if ($outcome->error !== null) {
+            $this->error("  ✗ {$outcome->repoFullName}: {$outcome->error}");
+
+            return self::FAILURE;
         }
 
-        $this->info("撈取 $groupSlug / {$monthRaw}（{$repoCount} repos）" . ($force ? '（force mode）' : ''));
-
-        $result = $orchestrator->fetch($group, $month, $force);
-
-        $hasError = false;
-        foreach ($result->repos as $outcome) {
-            if ($outcome->error !== null) {
-                $this->error("  ✗ {$outcome->repoFullName}: {$outcome->error}");
-                $hasError = true;
-            } elseif ($outcome->skipped) {
-                $this->line("  ↳ {$outcome->repoFullName}：已 complete，跳過（用 --force 重撈）");
-            } else {
-                $this->info(sprintf(
-                    '  ✓ %s：builds=%d、prs=%d',
-                    $outcome->repoFullName,
-                    $outcome->buildsWritten,
-                    $outcome->pullRequestsWritten,
-                ));
-            }
-        }
-
-        $this->line('');
         $this->info(sprintf(
-            '總計：builds=%d、prs=%d、skipped=%d',
-            $result->totalBuildsWritten(),
-            $result->totalPullRequestsWritten(),
-            $result->totalReposSkipped(),
+            '  ✓ %s：builds=%d、prs=%d',
+            $outcome->repoFullName,
+            $outcome->buildsWritten,
+            $outcome->pullRequestsWritten,
         ));
 
-        return $hasError ? self::FAILURE : self::SUCCESS;
+        return self::SUCCESS;
     }
 }

@@ -7,7 +7,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /**
  * @property string $id
@@ -23,14 +22,6 @@ class Repo extends Model
     use HasUlids;
 
     protected $table = 'dp_repos';
-
-    /**
-     * @return BelongsToMany<Group, $this>
-     */
-    public function groups(): BelongsToMany
-    {
-        return $this->belongsToMany(Group::class, 'dp_groups_repos');
-    }
 
     /**
      * @return array<string, string>

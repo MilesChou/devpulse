@@ -8,7 +8,6 @@ final readonly class RepoFetchOutcome
 {
     public function __construct(
         public string $repoFullName,
-        public bool $skipped,
         public int $buildsWritten,
         public int $pullRequestsWritten,
         public ?string $error = null,
