@@ -93,7 +93,11 @@ class PullRequestSummaryTest extends TestCase
 
     public function testFromGitHubRawTranslatesOpenPr(): void
     {
-        $pr = GitHubPullRequestFactory::fromGitHubRaw($this->payload(), repoId: '01JTESTREP00000000000000A7', id: new PullRequestId('01JTEST000000000000000000F'));
+        $pr = $this->factory()->fromRaw(
+            $this->payload(),
+            repoId: '01JTESTREP00000000000000A7',
+            id: new PullRequestId('01JTEST000000000000000000F'),
+        );
         $this->assertSame(PullRequestStatus::Open, $pr->status());
         $this->assertFalse($pr->isDraft());
         $this->assertNull($pr->closedAt());
@@ -101,18 +105,26 @@ class PullRequestSummaryTest extends TestCase
 
     public function testFromGitHubRawTranslatesMergedPr(): void
     {
-        $pr = GitHubPullRequestFactory::fromGitHubRaw($this->payload([
-            'state' => 'closed',
-            'merged_at' => '2026-04-15T11:00:00Z',
-            'closed_at' => '2026-04-15T11:00:00Z',
-        ]), repoId: '01JTESTREP00000000000000A7', id: new PullRequestId('01JTEST000000000000000000G'));
+        $pr = $this->factory()->fromRaw(
+            $this->payload([
+                'state' => 'closed',
+                'merged_at' => '2026-04-15T11:00:00Z',
+                'closed_at' => '2026-04-15T11:00:00Z',
+            ]),
+            repoId: '01JTESTREP00000000000000A7',
+            id: new PullRequestId('01JTEST000000000000000000G'),
+        );
         $this->assertSame(PullRequestStatus::Merged, $pr->status());
         $this->assertNotNull($pr->closedAt());
     }
 
     public function testFromGitHubRawTranslatesDraftPr(): void
     {
-        $pr = GitHubPullRequestFactory::fromGitHubRaw($this->payload(['draft' => true]), repoId: '01JTESTREP00000000000000A7', id: new PullRequestId('01JTEST000000000000000000H'));
+        $pr = $this->factory()->fromRaw(
+            $this->payload(['draft' => true]),
+            repoId: '01JTESTREP00000000000000A7',
+            id: new PullRequestId('01JTEST000000000000000000H'),
+        );
         $this->assertTrue($pr->isDraft());
         $this->assertNull($pr->readyAt());
     }
@@ -124,17 +136,28 @@ class PullRequestSummaryTest extends TestCase
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('number');
-        GitHubPullRequestFactory::fromGitHubRaw($payload, repoId: '01JTESTREP00000000000000A7', id: new PullRequestId('01JTEST000000000000000000I'));
+        $this->factory()->fromRaw(
+            $payload,
+            repoId: '01JTESTREP00000000000000A7',
+            id: new PullRequestId('01JTEST000000000000000000I'),
+        );
     }
 
     public function testFromGitHubRawParsesTimesAsUtc(): void
     {
-        $pr = GitHubPullRequestFactory::fromGitHubRaw($this->payload([
-            'created_at' => '2026-04-15T10:00:00Z',
-        ]), repoId: '01JTESTREP00000000000000A7', id: new PullRequestId('01JTEST000000000000000000J'));
+        $pr = $this->factory()->fromRaw(
+            $this->payload(['created_at' => '2026-04-15T10:00:00Z']),
+            repoId: '01JTESTREP00000000000000A7',
+            id: new PullRequestId('01JTEST000000000000000000J'),
+        );
 
         $this->assertSame('UTC', $pr->createdAt->getTimezone()->getName());
         $this->assertSame('2026-04-15 10:00:00', $pr->createdAt->format('Y-m-d H:i:s'));
+    }
+
+    private function factory(): GitHubPullRequestFactory
+    {
+        return new GitHubPullRequestFactory();
     }
 
     private function build(

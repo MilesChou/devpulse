@@ -6,8 +6,8 @@ namespace App\Infrastructure\Vcs\GitHub;
 
 use DevPulse\Shared\MonthRange;
 use DevPulse\Shared\RepoFullName;
-use DevPulse\Vcs\Factory\GitHubPullRequestFactory;
 use DevPulse\Vcs\PullRequest;
+use DevPulse\Vcs\PullRequestFactory;
 use DevPulse\Vcs\PullRequestId;
 use DevPulse\Vcs\ReviewSummary;
 use App\Support\Saloon\PayloadHelpers;
@@ -22,8 +22,10 @@ class GitHubProvider
 {
     public const string RATE_LIMITER = 'github';
 
-    public function __construct(private readonly GitHubConnector $connector)
-    {
+    public function __construct(
+        private readonly GitHubConnector $connector,
+        private readonly PullRequestFactory $pullRequestFactory,
+    ) {
     }
 
     /**
@@ -76,7 +78,7 @@ class GitHubProvider
 
             foreach ($pulls as $rawPull) {
                 $id = new PullRequestId((string)new Ulid());
-                yield GitHubPullRequestFactory::fromGitHubRaw($rawPull, repoId: $repoId, id: $id);
+                yield $this->pullRequestFactory->fromRaw($rawPull, repoId: $repoId, id: $id);
             }
 
             if (count($pulls) < $perPage) {
@@ -96,7 +98,7 @@ class GitHubProvider
 
         $id = new PullRequestId((string)new Ulid());
 
-        return GitHubPullRequestFactory::fromGitHubRaw($payload, repoId: $repoId, id: $id);
+        return $this->pullRequestFactory->fromRaw($payload, repoId: $repoId, id: $id);
     }
 
     /**

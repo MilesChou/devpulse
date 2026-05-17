@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use DevPulse\Ci\CiProvider;
+use DevPulse\Vcs\Factory\GitHubPullRequestFactory;
+use DevPulse\Vcs\PullRequestFactory;
 use App\Infrastructure\Ci\Travis\TravisConnector;
 use App\Infrastructure\Ci\Travis\TravisProvider;
 use App\Infrastructure\Vcs\GitHub\GitHubConnector;
@@ -28,6 +30,8 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->bind(CiProvider::class, TravisProvider::class);
+
+        $this->app->bind(PullRequestFactory::class, GitHubPullRequestFactory::class);
 
         $this->app->singleton(GitHubConnector::class, function (): GitHubConnector {
             $token = config('devpulse.github_token');

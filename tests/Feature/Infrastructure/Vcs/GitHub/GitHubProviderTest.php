@@ -6,6 +6,7 @@ namespace Tests\Feature\Infrastructure\Vcs\GitHub;
 
 use DevPulse\Shared\MonthRange;
 use DevPulse\Shared\RepoFullName;
+use DevPulse\Vcs\Factory\GitHubPullRequestFactory;
 use DevPulse\Vcs\PullRequest;
 use DevPulse\Vcs\ReviewState;
 use App\Infrastructure\Vcs\GitHub\GitHubConnector;
@@ -28,7 +29,7 @@ class GitHubProviderTest extends TestCase
             ]),
         ]);
 
-        $provider = new GitHubProvider($this->connector($mock));
+        $provider = new GitHubProvider($this->connector($mock), new GitHubPullRequestFactory());
         $prs = iterator_to_array($provider->listPullRequestsInMonth('01JTESTREP00000000000000A1', new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
 
         $this->assertCount(3, $prs);
@@ -51,7 +52,7 @@ class GitHubProviderTest extends TestCase
             MockResponse::make($page2),
         ]);
 
-        $provider = new GitHubProvider($this->connector($mock));
+        $provider = new GitHubProvider($this->connector($mock), new GitHubPullRequestFactory());
         $prs = iterator_to_array($provider->listPullRequestsInMonth('01JTESTREP00000000000000A1', new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
 
         $this->assertCount(102, $prs);
@@ -63,7 +64,7 @@ class GitHubProviderTest extends TestCase
             MockResponse::make($this->pull(number: 42, createdAt: '2026-04-15T10:00:00Z', additions: 100, deletions: 20)),
         ]);
 
-        $provider = new GitHubProvider($this->connector($mock));
+        $provider = new GitHubProvider($this->connector($mock), new GitHubPullRequestFactory());
         $pr = $provider->getPullRequest('01JTESTREP00000000000000A1', new RepoFullName('your-org/your-repo'), 42);
 
         $this->assertSame(42, $pr->number->toInt());
@@ -78,7 +79,7 @@ class GitHubProviderTest extends TestCase
             MockResponse::make(['author' => ['login' => 'alice']]),
         ]);
 
-        $provider = new GitHubProvider($this->connector($mock));
+        $provider = new GitHubProvider($this->connector($mock), new GitHubPullRequestFactory());
         $this->assertSame('alice', $provider->getCommitAuthorAccount(new RepoFullName('your-org/your-repo'), 'abc1234'));
     }
 
@@ -88,7 +89,7 @@ class GitHubProviderTest extends TestCase
             MockResponse::make(['author' => null]),
         ]);
 
-        $provider = new GitHubProvider($this->connector($mock));
+        $provider = new GitHubProvider($this->connector($mock), new GitHubPullRequestFactory());
         $this->assertNull($provider->getCommitAuthorAccount(new RepoFullName('your-org/your-repo'), 'abc1234'));
     }
 
@@ -100,7 +101,7 @@ class GitHubProviderTest extends TestCase
             MockResponse::make(['author' => null]),
         ]);
 
-        $provider = new GitHubProvider($this->connector($mock));
+        $provider = new GitHubProvider($this->connector($mock), new GitHubPullRequestFactory());
         $accounts = $provider->getCommitAuthorAccounts(new RepoFullName('your-org/your-repo'), ['sha1', 'sha2', 'sha3']);
 
         $this->assertSame(['sha1' => 'alice', 'sha2' => 'bob', 'sha3' => null], $accounts);
@@ -133,7 +134,7 @@ class GitHubProviderTest extends TestCase
             ]),
         ]);
 
-        $provider = new GitHubProvider($this->connector($mock));
+        $provider = new GitHubProvider($this->connector($mock), new GitHubPullRequestFactory());
         $reviews = $provider->listReviews(new RepoFullName('your-org/your-repo'), 42);
 
         $this->assertCount(2, $reviews);
@@ -156,7 +157,7 @@ class GitHubProviderTest extends TestCase
             ]),
         ]);
 
-        $provider = new GitHubProvider($this->connector($mock));
+        $provider = new GitHubProvider($this->connector($mock), new GitHubPullRequestFactory());
         $this->assertSame([], $provider->listReviews(new RepoFullName('your-org/your-repo'), 42));
     }
 
@@ -167,7 +168,7 @@ class GitHubProviderTest extends TestCase
             MockResponse::make([$this->pull(number: 1, createdAt: '2026-04-15T10:00:00Z')]),
         ]);
 
-        $provider = new GitHubProvider($this->connector($mock));
+        $provider = new GitHubProvider($this->connector($mock), new GitHubPullRequestFactory());
         $prs = iterator_to_array($provider->listPullRequestsInMonth('01JTESTREP00000000000000A1', new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
 
         $this->assertCount(1, $prs);
@@ -180,7 +181,7 @@ class GitHubProviderTest extends TestCase
             MockResponse::make([$this->pull(number: 1, createdAt: '2026-04-15T10:00:00Z')]),
         ]);
 
-        $provider = new GitHubProvider($this->connector($mock));
+        $provider = new GitHubProvider($this->connector($mock), new GitHubPullRequestFactory());
         $prs = iterator_to_array($provider->listPullRequestsInMonth('01JTESTREP00000000000000A1', new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
 
         $this->assertCount(1, $prs);
@@ -192,7 +193,7 @@ class GitHubProviderTest extends TestCase
             MockResponse::make(['message' => 'unauthorized'], 401),
         ]);
 
-        $provider = new GitHubProvider($this->connector($mock));
+        $provider = new GitHubProvider($this->connector($mock), new GitHubPullRequestFactory());
 
         $this->expectException(\Saloon\Exceptions\Request\RequestException::class);
         iterator_to_array($provider->listPullRequestsInMonth('01JTESTREP00000000000000A1', new RepoFullName('your-org/your-repo'), MonthRange::fromString('2026-04')), false);
