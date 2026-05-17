@@ -6,7 +6,7 @@
     "keywords": ["laravel", "ci", "github", "travis", "metrics", "engineering-productivity"],
     "license": "MIT",
     "require": {
-        "php": "^8.3",
+        "php": "^8.4",
         "inertiajs/inertia-laravel": "^3.1",
         "laravel/framework": "^13.0",
         "laravel/tinker": "^3.0",
@@ -18,12 +18,8 @@
         "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
         "fakerphp/faker": "^1.23",
         "larastan/larastan": "^3.1",
-        "laravel/pail": "^1.2.5",
-        "laravel/pao": "^1.0.6",
-        "laravel/pint": "^1.27",
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.6",
-        "php-parallel-lint/php-parallel-lint": "^1.4",
         "phpat/phpat": "^0.12.4",
         "phpunit/phpunit": "^12.5.12",
         "slevomat/coding-standard": "^8.19",
@@ -51,10 +47,6 @@
             "@php artisan migrate --force",
             "npm install --ignore-scripts",
             "npm run build"
-        ],
-        "dev": [
-            "Composer\\Config::disableProcessTimeout",
-            "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74\" \"php artisan serve\" \"php artisan queue:listen --tries=1 --timeout=0\" \"php artisan pail --timeout=0\" \"npm run dev\" --names=server,queue,logs,vite --kill-others"
         ],
         "test": [
             "@php artisan config:clear --ansi @no_additional_args",

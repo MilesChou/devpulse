@@ -13,6 +13,9 @@
     <!-- inherit rules from: -->
     <rule ref="PSR12"/>
 
+    <!-- PHP syntax check -->
+    <rule ref="Generic.PHP.Syntax"/>
+
     <!-- 強制轉型與變數之間不空白。e.g. (int)$var -->
     <rule ref="Generic.Formatting.SpaceAfterCast">
         <properties>

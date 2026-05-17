@@ -67,9 +67,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-lint-${{ matrix.php }}-
 
-      - name: Run parallel-lint
-        run: vendor/bin/parallel-lint -j $(nproc) app database tests
-
       - name: Run PHPCS (parallel + cache)
         run: |
           mkdir -p .cache/phpcs

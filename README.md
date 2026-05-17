@@ -14,7 +14,7 @@
 
 ### 環境需求
 
-- PHP **8.3+**
+- PHP **8.4+**
 - Composer
 - MySQL 8.4+（開發階段也可先用 SQLite）
 - GitHub personal access token、Travis CI token
@@ -134,7 +134,7 @@ npm run build
 
 ## 技術棧
 
-- Laravel 13（PHP 8.3+）
+- Laravel 13（PHP 8.4+）
 - MySQL 8.4+（開發階段可用 SQLite）
 - Saloon（HTTP client）、Carbon（datetime）
 - Web UI：Inertia.js + Vue 3 + ECharts + Tailwind v4
