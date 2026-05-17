@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace DevPulse\Vcs\Factory;
 
-use DateTimeImmutable;
-use DateTimeZone;
+use DateMalformedStringException;
 use DevPulse\Shared\RepoId;
+use DevPulse\Shared\UtcTimestamp;
 use DevPulse\Vcs\Author;
 use DevPulse\Vcs\ChangeStats;
 use DevPulse\Vcs\Platform;
@@ -23,41 +23,40 @@ final class GitHubPullRequestFactory implements PullRequestFactory
      * Build a PullRequest from a GitHub REST API PR payload.
      *
      * @param array<string, mixed> $raw
+     * @throws DateMalformedStringException
      */
     public function fromRaw(array $raw, string $repoId, PullRequestId $id): PullRequest
     {
-        $repoIdVo = new RepoId($repoId);
         $number = $raw['number'] ?? null;
         if (! is_int($number)) {
             throw new InvalidArgumentException('GitHub PR payload missing number');
         }
-        $numberVo = new PullRequestNumber($number);
 
         $user = $raw['user'] ?? null;
         if (! is_array($user) || ! is_string($user['login'] ?? null)) {
             throw new InvalidArgumentException('GitHub PR payload missing user.login');
         }
-        $authorVo = new Author($user['login']);
-
-        $status = $this->resolveStatus($raw);
 
         $additions = $raw['additions'] ?? null;
         $deletions = $raw['deletions'] ?? null;
 
+        $createdAt = UtcTimestamp::required($raw, 'created_at', 'GitHub PR payload missing created_at');
+        $isDraft = ($raw['draft'] ?? false) === true;
+
         return new PullRequest(
             id: $id,
             platform: Platform::GitHub,
-            repoId: $repoIdVo,
-            number: $numberVo,
-            author: $authorVo,
-            status: $status,
+            repoId: new RepoId($repoId),
+            number: new PullRequestNumber($number),
+            author: new Author($user['login']),
+            status: $this->resolveStatus($raw),
             changes: new ChangeStats(
                 additions: is_int($additions) ? $additions : 0,
                 deletions: is_int($deletions) ? $deletions : 0,
             ),
-            createdAt: $this->parseCreatedAt($raw),
-            readyAt: $this->inferReadyAtFromDraft($raw),
-            closedAt: $this->parseClosedAt($raw),
+            createdAt: $createdAt,
+            readyAt: $isDraft ? null : $createdAt,
+            closedAt: UtcTimestamp::optional($raw, 'closed_at'),
         );
     }
 
@@ -73,52 +72,5 @@ final class GitHubPullRequestFactory implements PullRequestFactory
             is_string($state) ? $state : '',
             is_string($mergedAt) ? $mergedAt : null,
         );
-    }
-
-    /**
-     * Returns null when draft=true (PR not yet ready); otherwise falls back to created_at as the ready time.
-     * GitHub's REST API does not expose the "marked-ready" timestamp, so this is the best approximation.
-     *
-     * @param array<string, mixed> $raw
-     */
-    private function inferReadyAtFromDraft(array $raw): ?DateTimeImmutable
-    {
-        $isDraft = $raw['draft'] ?? false;
-        if ($isDraft === true) {
-            return null;
-        }
-
-        return $this->parseCreatedAt($raw);
-    }
-
-    /**
-     * GitHub timestamps are already UTC ("...Z"); setTimezone(UTC) only normalizes the
-     * timezone object's name (e.g. "Z" or "+00:00" → "UTC"), it does NOT shift the instant.
-     *
-     * @param array<string, mixed> $raw
-     */
-    private function parseCreatedAt(array $raw): DateTimeImmutable
-    {
-        $value = $raw['created_at'] ?? null;
-        if (! is_string($value) || $value === '') {
-            throw new InvalidArgumentException('GitHub PR payload missing created_at');
-        }
-
-        return (new DateTimeImmutable($value))->setTimezone(new DateTimeZone('UTC'));
-    }
-
-    /**
-     * See parseCreatedAt() for the setTimezone(UTC) rationale.
-     *
-     * @param array<string, mixed> $raw
-     */
-    private function parseClosedAt(array $raw): ?DateTimeImmutable
-    {
-        $value = $raw['closed_at'] ?? null;
-        if (! is_string($value) || $value === '') {
-            return null;
-        }
-
-        return (new DateTimeImmutable($value))->setTimezone(new DateTimeZone('UTC'));
     }
 }

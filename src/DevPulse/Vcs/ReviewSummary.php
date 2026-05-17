@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace DevPulse\Vcs;
 
 use DateTimeImmutable;
-use DateTimeZone;
 use DevPulse\Shared\RepoFullName;
+use DevPulse\Shared\UtcTimestamp;
 use InvalidArgumentException;
 
 final readonly class ReviewSummary
@@ -38,11 +38,6 @@ final readonly class ReviewSummary
             throw new InvalidArgumentException('GitHub review node missing state');
         }
 
-        $submittedAt = $node['submittedAt'] ?? null;
-        if (! is_string($submittedAt) || $submittedAt === '') {
-            throw new InvalidArgumentException('GitHub review node missing submittedAt');
-        }
-
         $author = $node['author'] ?? null;
         if (! is_array($author) || ! is_string($author['login'] ?? null)) {
             throw new InvalidArgumentException('GitHub review node missing author.login');
@@ -53,7 +48,7 @@ final readonly class ReviewSummary
             pullRequestNumber: $pullRequestNumber,
             reviewerAccount: $author['login'],
             state: ReviewState::fromGitHubGraphQL($state),
-            submittedAt: (new DateTimeImmutable($submittedAt))->setTimezone(new DateTimeZone('UTC')),
+            submittedAt: UtcTimestamp::required($node, 'submittedAt', 'GitHub review node missing submittedAt'),
         );
     }
 }
