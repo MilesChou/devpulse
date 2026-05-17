@@ -13,11 +13,14 @@ use DevPulse\Vcs\ReviewSummary;
 use App\Support\Saloon\PayloadHelpers;
 use Generator;
 use InvalidArgumentException;
+use JsonException;
+use Saloon\Exceptions\Request\FatalRequestException;
+use Saloon\Exceptions\Request\RequestException;
 use Symfony\Component\Uid\Ulid;
 
 class GitHubProvider
 {
-    public const RATE_LIMITER = 'github';
+    public const string RATE_LIMITER = 'github';
 
     public function __construct(private readonly GitHubConnector $connector)
     {
@@ -54,12 +57,16 @@ class GitHubProvider
 
     /**
      * @return Generator<int, PullRequest>
+     * @throws JsonException
+     * @throws FatalRequestException
+     * @throws RequestException
      */
-    private function paginatePullRequests(string $repoId, RepoFullName $repoFullName): Generator
-    {
-        $page = 1;
-        $perPage = 100;
-
+    private function paginatePullRequests(
+        string $repoId,
+        RepoFullName $repoFullName,
+        int $page = 1,
+        int $perPage = 100,
+    ): Generator {
         while (true) {
             $response = $this->connector->send(new ListPullRequestsRequest((string)$repoFullName, $page, $perPage));
             $pulls = PayloadHelpers::listOfArrays($response->json());
