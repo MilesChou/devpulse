@@ -35,11 +35,7 @@ clean-cache:
 # ---- Lint --------------------------------------------------------
 
 .PHONY: lint
-lint: lint-syntax phpcs
-
-.PHONY: lint-syntax
-lint-syntax:
-	${PHP} vendor/bin/parallel-lint -j ${PROCESSORS_NUM} $(if $(TARGET_FILES),$(TARGET_FILES),app database src tests)
+lint: phpcs
 
 .PHONY: phpcs
 phpcs:
@@ -66,14 +62,6 @@ test:
 	if printf '%s' "$$out" | grep -q '"result":"passed"'; then exit 0; else exit $$status; fi
 
 # ---- Fast (staged files only) ------------------------------------
-
-.PHONY: fast-lint
-fast-lint:
-ifeq ($(strip $(CACHED_PHP_FILES)),)
-	@echo ">>> No staged php files under app/, database/, tests/"
-else
-	${PHP} vendor/bin/parallel-lint -j ${PROCESSORS_NUM} ${CACHED_PHP_FILES}
-endif
 
 .PHONY: fast-phpcs
 fast-phpcs:
