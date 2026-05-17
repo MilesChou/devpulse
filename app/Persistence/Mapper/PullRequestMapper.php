@@ -18,9 +18,9 @@ final class PullRequestMapper
         ?string $sizeBucket = null,
     ): array {
         return [
-            'ulid' => (string)$vo->id,
+            'id' => (string)$vo->id,
             'platform' => $vo->platform->value,
-            'repo_id' => $vo->repoId->toInt(),
+            'repo_id' => $vo->repoId->toString(),
             'number' => $vo->number->toInt(),
             'author_account' => (string)$vo->author,
             'status' => $vo->status()->value,

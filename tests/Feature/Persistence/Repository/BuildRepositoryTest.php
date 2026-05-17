@@ -10,20 +10,21 @@ use DevPulse\Ci\BuildTrigger;
 use DevPulse\Shared\CommitSha;
 use DevPulse\Shared\RepoFullName;
 use App\Models\Build;
-use App\Models\Repo;
 use App\Persistence\Mapper\BuildMapper;
 use App\Persistence\Repository\BuildRepository;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\CreatesRepoModel;
 use Tests\TestCase;
 
 class BuildRepositoryTest extends TestCase
 {
     use RefreshDatabase;
+    use CreatesRepoModel;
 
     public function testInsertsNewBuilds(): void
     {
-        $repo = Repo::create(['full_name' => 'your-org/your-repo']);
+        $repo = $this->makeRepo();
         $repository = new BuildRepository(new BuildMapper());
 
         $count = $repository->upsertMany($repo->id, [
@@ -37,7 +38,7 @@ class BuildRepositoryTest extends TestCase
 
     public function testIsIdempotentOnSameExternalId(): void
     {
-        $repo = Repo::create(['full_name' => 'your-org/your-repo']);
+        $repo = $this->makeRepo();
         $repository = new BuildRepository(new BuildMapper());
 
         $repository->upsertMany($repo->id, [$this->build('1', '2026-04-15T10:00:00Z')]);
@@ -48,7 +49,7 @@ class BuildRepositoryTest extends TestCase
 
     public function testUpdatesExistingBuildOnRefetch(): void
     {
-        $repo = Repo::create(['full_name' => 'your-org/your-repo']);
+        $repo = $this->makeRepo();
         $repository = new BuildRepository(new BuildMapper());
 
         $repository->upsertMany($repo->id, [$this->build('1', '2026-04-15T10:00:00Z', BuildStatus::IN_PROGRESS)]);
@@ -61,7 +62,7 @@ class BuildRepositoryTest extends TestCase
 
     public function testStoresRawPayload(): void
     {
-        $repo = Repo::create(['full_name' => 'your-org/your-repo']);
+        $repo = $this->makeRepo();
         $repository = new BuildRepository(new BuildMapper());
 
         $repository->upsertMany(

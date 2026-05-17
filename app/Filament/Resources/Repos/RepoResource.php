@@ -23,7 +23,7 @@ class RepoResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedCodeBracket;
 
-    protected static ?string $recordTitleAttribute = 'full_name';
+    protected static ?string $recordTitleAttribute = 'name';
 
     public static function form(Schema $schema): Schema
     {

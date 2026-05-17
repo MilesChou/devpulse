@@ -41,7 +41,7 @@ class BuildFailureRateQuery
         $this->filter->apply($query);
 
         if ($repoFullNames !== null) {
-            $query->whereIn('dp_repos.full_name', $repoFullNames);
+            $query->whereIn('dp_repos.name', $repoFullNames);
         }
 
         if ($authorAccounts !== null) {
@@ -51,12 +51,12 @@ class BuildFailureRateQuery
         /** @var \Illuminate\Support\Collection<int, object{repo_full_name: string, author_account: string, total: int, failures: int}> $rows */
         $rows = $query
             ->select([
-                'dp_repos.full_name as repo_full_name',
+                'dp_repos.name as repo_full_name',
                 'dp_builds.author_account',
                 DB::raw('COUNT(*) as total'),
                 DB::raw('SUM(CASE WHEN dp_builds.is_failure THEN 1 ELSE 0 END) as failures'),
             ])
-            ->groupBy('dp_repos.full_name', 'dp_builds.author_account')
+            ->groupBy('dp_repos.name', 'dp_builds.author_account')
             ->get();
 
         return $rows->map(fn ($row) => FailureRateResult::from(

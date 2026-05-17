@@ -24,7 +24,7 @@ final class MonthFetchCache
     {
     }
 
-    public function shouldFetch(int $repoId, Dataset $dataset, string $month): bool
+    public function shouldFetch(string $repoId, Dataset $dataset, string $month): bool
     {
         if ($this->isCurrentMonth($month)) {
             return true;
@@ -43,17 +43,17 @@ final class MonthFetchCache
         return $record->status !== MonthFetchStatus::Complete;
     }
 
-    public function markComplete(int $repoId, Dataset $dataset, string $month): void
+    public function markComplete(string $repoId, Dataset $dataset, string $month): void
     {
         $this->markStatus($repoId, $dataset, $month, MonthFetchStatus::Complete);
     }
 
-    public function markPartial(int $repoId, Dataset $dataset, string $month): void
+    public function markPartial(string $repoId, Dataset $dataset, string $month): void
     {
         $this->markStatus($repoId, $dataset, $month, MonthFetchStatus::Partial);
     }
 
-    private function markStatus(int $repoId, Dataset $dataset, string $month, MonthFetchStatus $status): void
+    private function markStatus(string $repoId, Dataset $dataset, string $month, MonthFetchStatus $status): void
     {
         MonthFetch::query()->updateOrCreate(
             ['repo_id' => $repoId, 'dataset' => $dataset->value, 'month' => $month],

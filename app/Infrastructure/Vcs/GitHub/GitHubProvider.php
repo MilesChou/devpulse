@@ -26,7 +26,7 @@ class GitHubProvider
      *
      * @return Generator<int, PullRequest>
      */
-    public function listPullRequestsInMonth(int $repoId, RepoFullName $repoFullName, MonthRange $month): Generator
+    public function listPullRequestsInMonth(string $repoId, RepoFullName $repoFullName, MonthRange $month): Generator
     {
         $page = 1;
         $perPage = 100;
@@ -67,7 +67,7 @@ class GitHubProvider
     /**
      * 取得單一 PR 的細節（含精確的 additions / deletions —— list endpoint 不回這兩個欄位）。
      */
-    public function getPullRequest(int $repoId, RepoFullName $repoFullName, int $pullNumber): PullRequest
+    public function getPullRequest(string $repoId, RepoFullName $repoFullName, int $pullNumber): PullRequest
     {
         $response = $this->connector->send(new GetPullRequestRequest((string)$repoFullName, $pullNumber));
         $payload = PayloadHelpers::stringKeyedArray($response->json());

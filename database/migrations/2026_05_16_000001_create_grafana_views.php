@@ -11,7 +11,7 @@ return new class extends Migration
             SELECT
                 g.slug           AS group_slug,
                 m.display_name   AS member,
-                r.full_name      AS repo,
+                r.name           AS repo,
                 b.id,
                 b.external_id,
                 b.author_account,
@@ -36,7 +36,7 @@ return new class extends Migration
             SELECT
                 g.slug           AS group_slug,
                 m.display_name   AS member,
-                r.full_name      AS repo,
+                r.name           AS repo,
                 pr.id,
                 pr.number,
                 pr.author_account,

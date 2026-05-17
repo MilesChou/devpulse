@@ -8,11 +8,12 @@ use App\Persistence\Enum\Dataset;
 use App\Persistence\Enum\MonthFetchStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * @property int $id
- * @property int $repo_id
+ * @property string $id
+ * @property string $repo_id
  * @property Dataset $dataset
  * @property string $month
  * @property MonthFetchStatus $status
@@ -21,6 +22,8 @@ use Illuminate\Database\Eloquent\Model;
 #[Fillable(['repo_id', 'dataset', 'month', 'status', 'fetched_at'])]
 class MonthFetch extends Model
 {
+    use HasUlids;
+
     protected $table = 'dp_month_fetches';
 
     /**

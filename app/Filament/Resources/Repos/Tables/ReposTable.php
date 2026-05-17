@@ -19,8 +19,14 @@ class ReposTable
         return $table
             ->modifyQueryUsing(fn (Builder $query): Builder => $query->with('groups:id,slug'))
             ->columns([
-                TextColumn::make('full_name')
+                TextColumn::make('slug')
                     ->searchable()
+                    ->sortable(),
+                TextColumn::make('name')
+                    ->searchable()
+                    ->sortable(),
+                TextColumn::make('type')
+                    ->badge()
                     ->sortable(),
                 TextColumn::make('human_signals')
                     ->label('Signals')
@@ -37,7 +43,7 @@ class ReposTable
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
-            ->defaultSort('full_name')
+            ->defaultSort('name')
             ->recordActions([
                 EditAction::make(),
             ])

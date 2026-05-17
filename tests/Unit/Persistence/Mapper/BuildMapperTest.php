@@ -30,9 +30,9 @@ class BuildMapperTest extends TestCase
             durationSeconds: 120,
         );
 
-        $attributes = new BuildMapper()->toAttributes($vo, repoId: 7, rawPayload: ['raw' => 'data']);
+        $attributes = new BuildMapper()->toAttributes($vo, repoId: '01JTESTREP00000000000000A7', rawPayload: ['raw' => 'data']);
 
-        $this->assertSame(7, $attributes['repo_id']);
+        $this->assertSame('01JTESTREP00000000000000A7', $attributes['repo_id']);
         $this->assertSame('12345', $attributes['external_id']);
         $this->assertSame(BuildStatus::FAILED->name, $attributes['status']);
         $this->assertTrue($attributes['is_post_merge']);

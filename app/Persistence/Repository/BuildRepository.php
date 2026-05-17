@@ -25,7 +25,7 @@ final class BuildRepository
      * @param iterable<Build> $builds
      * @param array<string, array<string, mixed>> $rawPayloads externalId => raw payload
      */
-    public function upsertMany(int $repoId, iterable $builds, array $rawPayloads = []): int
+    public function upsertMany(string $repoId, iterable $builds, array $rawPayloads = []): int
     {
         $count = 0;
         foreach ($builds as $vo) {

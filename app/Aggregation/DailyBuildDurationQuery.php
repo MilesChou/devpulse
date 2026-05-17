@@ -30,8 +30,8 @@ class DailyBuildDurationQuery
             ->where('status', BuildStatus::PASSED->name)
             ->whereNotNull('duration_seconds')
             ->join('dp_repos', 'dp_repos.id', '=', 'dp_builds.repo_id')
-            ->select(['dp_repos.full_name as repo_full_name', 'dp_builds.duration_seconds', 'dp_builds.started_at'])
-            ->orderBy('dp_repos.full_name')
+            ->select(['dp_repos.name as repo_full_name', 'dp_builds.duration_seconds', 'dp_builds.started_at'])
+            ->orderBy('dp_repos.name')
             ->orderBy('dp_builds.started_at')
             ->get();
 

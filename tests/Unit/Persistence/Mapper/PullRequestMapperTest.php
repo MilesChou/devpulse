@@ -24,7 +24,7 @@ class PullRequestMapperTest extends TestCase
         $vo = new PullRequest(
             id: new PullRequestId('01JTEST000000000000000000D'),
             platform: Platform::GitHub,
-            repoId: new RepoId(7),
+            repoId: new RepoId('01JTESTREP00000000000000A7'),
             number: new PullRequestNumber(42),
             author: new Author('alice'),
             status: PullRequestStatus::Open,
@@ -36,7 +36,7 @@ class PullRequestMapperTest extends TestCase
 
         $attributes = new PullRequestMapper()->toAttributes($vo);
 
-        $this->assertSame(7, $attributes['repo_id']);
+        $this->assertSame('01JTESTREP00000000000000A7', $attributes['repo_id']);
         $this->assertSame(42, $attributes['number']);
         $this->assertSame('open', $attributes['status']);
         $this->assertSame(150, $attributes['total_changed_lines']);
@@ -48,7 +48,7 @@ class PullRequestMapperTest extends TestCase
         $vo = new PullRequest(
             id: new PullRequestId('01JTEST000000000000000000E'),
             platform: Platform::GitHub,
-            repoId: new RepoId(1),
+            repoId: new RepoId('01JTESTREP00000000000000A1'),
             number: new PullRequestNumber(42),
             author: new Author('alice'),
             status: PullRequestStatus::Open,

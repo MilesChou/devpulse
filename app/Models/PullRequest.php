@@ -8,13 +8,14 @@ use DevPulse\Vcs\Platform;
 use DevPulse\Vcs\PullRequestStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * @property string $ulid
+ * @property string $id
  * @property Platform $platform
- * @property int $repo_id
+ * @property string $repo_id
  * @property int $number PR 編號
  * @property string $author_account 作者帳號
  * @property PullRequestStatus $status
@@ -33,7 +34,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property CarbonImmutable|null $closed_at 關閉時間
  */
 #[Fillable([
-    'ulid',
+    'id',
     'platform',
     'repo_id',
     'number',
@@ -52,6 +53,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class PullRequest extends Model
 {
+    use HasUlids;
+
     protected $table = 'dp_pull_requests';
 
     /**

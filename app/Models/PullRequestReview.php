@@ -7,12 +7,13 @@ namespace App\Models;
 use DevPulse\Vcs\ReviewState;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * @property int $id
- * @property int $pull_request_id
+ * @property string $id
+ * @property string $pull_request_id
  * @property string $reviewer_account
  * @property ReviewState $state
  * @property CarbonImmutable $submitted_at
@@ -25,6 +26,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class PullRequestReview extends Model
 {
+    use HasUlids;
+
     protected $table = 'dp_pull_request_reviews';
 
     /**

@@ -14,7 +14,7 @@ final class BuildMapper
      * @param array<string, mixed> $rawPayload Provider 原始 JSON（持久化用）
      * @return array<string, mixed>
      */
-    public function toAttributes(Build $vo, int $repoId, array $rawPayload): array
+    public function toAttributes(Build $vo, string $repoId, array $rawPayload): array
     {
         return [
             'repo_id' => $repoId,

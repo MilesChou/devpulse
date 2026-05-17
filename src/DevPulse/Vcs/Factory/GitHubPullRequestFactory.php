@@ -22,7 +22,7 @@ final class GitHubPullRequestFactory
      *
      * @param array<string, mixed> $raw
      */
-    public static function fromGitHubRaw(array $raw, int $repoId, PullRequestId $id): PullRequest
+    public static function fromGitHubRaw(array $raw, string $repoId, PullRequestId $id): PullRequest
     {
         $repoIdVo = new RepoId($repoId);
         $number = $raw['number'] ?? null;

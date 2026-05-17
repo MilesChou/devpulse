@@ -22,7 +22,7 @@ final class PullRequestRepository
         $count = 0;
         foreach ($pulls as $vo) {
             PullRequestModel::updateOrCreate(
-                ['repo_id' => $vo->repoId->toInt(), 'number' => $vo->number->toInt()],
+                ['repo_id' => $vo->repoId->toString(), 'number' => $vo->number->toInt()],
                 $this->mapper->toAttributes($vo),
             );
             $count++;

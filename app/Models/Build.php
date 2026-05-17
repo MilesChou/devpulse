@@ -6,12 +6,13 @@ namespace App\Models;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * @property int $id
- * @property int $repo_id
+ * @property string $id
+ * @property string $repo_id
  * @property string $external_id
  * @property string $commit_sha
  * @property string|null $author_account
@@ -47,6 +48,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class Build extends Model
 {
+    use HasUlids;
+
     protected $table = 'dp_builds';
 
     /**

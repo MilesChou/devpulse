@@ -54,7 +54,7 @@ final class FetchOrchestrator
 
     private function fetchRepo(Repo $repo, MonthRange $month, string $monthLabel, bool $force): RepoFetchOutcome
     {
-        $repoFullName = new RepoFullName($repo->full_name);
+        $repoFullName = new RepoFullName($repo->name);
 
         $shouldFetchBuilds = $force || $this->cache->shouldFetch($repo->id, Dataset::Builds, $monthLabel);
         $shouldFetchPrs = $force || $this->cache->shouldFetch($repo->id, Dataset::PullRequests, $monthLabel);
@@ -177,7 +177,7 @@ final class FetchOrchestrator
             return false;
         }
 
-        $repoFullName = new RepoFullName($repo->full_name);
+        $repoFullName = new RepoFullName($repo->name);
         $this->enrichOnePullRequest($pr, $repoFullName);
 
         return true;
