@@ -22,7 +22,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $additions 新增行數
  * @property int $deletions 刪除行數
  * @property int $total_changed_lines 總變更行數（去正規化，Source of truth 在 VO）
- * @property string|null $size_bucket 大小分桶（去正規化，供 Grafana / SQL view 使用）
  * @property bool $is_draft 是否為草稿（去正規化，供 Grafana / SQL view 使用）
  * @property CarbonImmutable $pr_created_at PR 建立時間
  * @property CarbonImmutable|null $ready_at 轉為 ready for review 的時間
@@ -43,7 +42,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'additions',
     'deletions',
     'total_changed_lines',
-    'size_bucket',
     'is_draft',
     'pr_created_at',
     'ready_at',

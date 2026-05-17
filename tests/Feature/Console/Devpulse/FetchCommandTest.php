@@ -5,11 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Console\Devpulse;
 
 use App\Models\Build;
-use App\Models\Group;
 use App\Models\PullRequest;
-use App\Models\Repo;
-use App\Persistence\Enum\Dataset;
-use App\Persistence\MonthFetchCache;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Saloon\Http\Faking\MockClient;
@@ -25,7 +21,6 @@ class FetchCommandTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // 鎖定「現在」為 2026-05，這樣 2026-04 才會被當作「已過月份」走 cache 邏輯
         CarbonImmutable::setTestNow('2026-05-15T00:00:00Z');
     }
 
@@ -36,9 +31,9 @@ class FetchCommandTest extends TestCase
         parent::tearDown();
     }
 
-    public function testFetchesBuildsAndPullRequestsForGroup(): void
+    public function testFetchesBuildsAndPullRequestsForRepo(): void
     {
-        $this->seedGroupWithRepo('team-a', 'org/repo-a');
+        $this->makeRepo('org/repo-a');
 
         MockClient::global([
             // Travis: list builds
@@ -62,7 +57,7 @@ class FetchCommandTest extends TestCase
         ]);
 
         $this->artisan('devpulse:fetch', [
-            'group' => 'team-a',
+            'repo' => 'org/repo-a',
             'month' => '2026-04',
         ])
             ->assertSuccessful()
@@ -71,124 +66,23 @@ class FetchCommandTest extends TestCase
         $this->assertSame(1, Build::query()->count());
         $this->assertSame(1, PullRequest::query()->count());
         $this->assertSame('alice', Build::query()->first()->author_account);
-        // size_bucket 應由 enrichment 寫入（30 + 10 = 40 → XS）
-        $this->assertSame('XS', PullRequest::query()->first()->size_bucket);
     }
 
-    public function testSkipsRepoWhenAlreadyComplete(): void
-    {
-        [, $repo] = $this->seedGroupWithRepo('team-a', 'org/repo-a');
-        $cache = new MonthFetchCache();
-        $cache->markComplete($repo->id, Dataset::Builds, '2026-04');
-        $cache->markComplete($repo->id, Dataset::PullRequests, '2026-04');
-
-        // 不設 mock：如果 fetch 真的打 API，Saloon 會 throw（沒有 mock response）
-        MockClient::global([]);
-
-        $this->artisan('devpulse:fetch', [
-            'group' => 'team-a',
-            'month' => '2026-04',
-        ])
-            ->assertSuccessful()
-            ->expectsOutputToContain('已 complete，跳過');
-
-        $this->assertSame(0, Build::query()->count());
-    }
-
-    public function testForceFlagBypassesCache(): void
-    {
-        [, $repo] = $this->seedGroupWithRepo('team-a', 'org/repo-a');
-        $cache = new MonthFetchCache();
-        $cache->markComplete($repo->id, Dataset::Builds, '2026-04');
-        $cache->markComplete($repo->id, Dataset::PullRequests, '2026-04');
-
-        MockClient::global([
-            MockResponse::make(['builds' => [$this->travisBuild(id: 1, startedAt: '2026-04-15T10:00:00Z')]]),
-            MockResponse::make([
-                'data' => ['repository' => ['c0' => ['author' => ['user' => ['login' => 'alice']]]]],
-            ]),
-            MockResponse::make([$this->githubPr(number: 99, createdAt: '2026-04-10T10:00:00Z')]),
-            MockResponse::make($this->githubPr(number: 99, createdAt: '2026-04-10T10:00:00Z')),
-            MockResponse::make([
-                'data' => ['repository' => ['pullRequest' => ['reviews' => ['nodes' => []]]]],
-            ]),
-        ]);
-
-        $this->artisan('devpulse:fetch', [
-            'group' => 'team-a',
-            'month' => '2026-04',
-            '--force' => true,
-        ])
-            ->assertSuccessful()
-            ->expectsOutputToContain('builds=1');
-
-        $this->assertSame(1, Build::query()->count());
-    }
-
-    public function testMarksCompleteAfterSuccessfulFetch(): void
-    {
-        [, $repo] = $this->seedGroupWithRepo('team-a', 'org/repo-a');
-
-        MockClient::global([
-            MockResponse::make(['builds' => []]),
-            MockResponse::make([]),
-        ]);
-
-        $this->artisan('devpulse:fetch', [
-            'group' => 'team-a',
-            'month' => '2026-04',
-        ])->assertSuccessful();
-
-        $cache = new MonthFetchCache();
-        $this->assertFalse(
-            $cache->shouldFetch($repo->id, Dataset::Builds, '2026-04'),
-            'cache 應已標記 builds 為 complete',
-        );
-        $this->assertFalse(
-            $cache->shouldFetch($repo->id, Dataset::PullRequests, '2026-04'),
-            'cache 應已標記 PRs 為 complete',
-        );
-    }
-
-    public function testFailsWhenGroupDoesNotExist(): void
+    public function testFailsWhenRepoDoesNotExist(): void
     {
         $this->artisan('devpulse:fetch', [
-            'group' => 'nonexistent',
+            'repo' => 'nonexistent/repo',
             'month' => '2026-04',
         ])->assertFailed();
     }
 
     public function testFailsWhenMonthFormatInvalid(): void
     {
-        Group::create(['slug' => 'team-a']);
+        $this->makeRepo('org/repo-a');
         $this->artisan('devpulse:fetch', [
-            'group' => 'team-a',
+            'repo' => 'org/repo-a',
             'month' => 'invalid',
         ])->assertFailed();
-    }
-
-    public function testWarnsWhenGroupHasNoRepos(): void
-    {
-        Group::create(['slug' => 'empty-team']);
-
-        $this->artisan('devpulse:fetch', [
-            'group' => 'empty-team',
-            'month' => '2026-04',
-        ])
-            ->assertSuccessful()
-            ->expectsOutputToContain('沒有任何 repo');
-    }
-
-    /**
-     * @return array{Group, Repo}
-     */
-    private function seedGroupWithRepo(string $groupSlug, string $repoFullName): array
-    {
-        $group = Group::create(['slug' => $groupSlug, 'description' => '']);
-        $repo = $this->makeRepo($repoFullName);
-        $group->repos()->attach($repo->id);
-
-        return [$group, $repo];
     }
 
     /**

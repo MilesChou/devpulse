@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
-use App\Aggregation\PrSizeBucket;
 use DevPulse\Ci\CiProvider;
-use DevPulse\Vcs\Filter\BotFilter;
 use App\Infrastructure\Ci\Travis\TravisConnector;
 use App\Infrastructure\Ci\Travis\TravisProvider;
 use App\Infrastructure\Vcs\GitHub\GitHubConnector;
@@ -36,14 +34,6 @@ class AppServiceProvider extends ServiceProvider
 
             return new GitHubConnector($token);
         });
-
-        $this->app->singleton(BotFilter::class, function (): BotFilter {
-            $excluded = config('devpulse.excluded_bots');
-
-            return new BotFilter(is_array($excluded) ? array_values(array_filter($excluded, 'is_string')) : []);
-        });
-
-        $this->app->singleton(PrSizeBucket::class, fn (): PrSizeBucket => PrSizeBucket::fromConfig());
     }
 
     public function boot(): void
