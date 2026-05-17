@@ -2,4 +2,4 @@
 
 ## Language
 
-Use English for all PR titles, descriptions, commit messages, code comments, variable names, and any other content within the codebase or pull requests.
+- Use English in PRs and all code internals (comments, variable names, commit messages, etc.).
