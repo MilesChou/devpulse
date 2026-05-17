@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace DevPulse\Vcs\Factory;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use DevPulse\Shared\RepoId;
 use DevPulse\Vcs\Author;
 use DevPulse\Vcs\ChangeStats;
@@ -12,7 +14,6 @@ use DevPulse\Vcs\PullRequest;
 use DevPulse\Vcs\PullRequestId;
 use DevPulse\Vcs\PullRequestNumber;
 use DevPulse\Vcs\PullRequestStatus;
-use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
 final class GitHubPullRequestFactory
@@ -79,7 +80,7 @@ final class GitHubPullRequestFactory
      *
      * @param array<string, mixed> $raw
      */
-    private static function inferReadyAtFromDraft(array $raw): ?CarbonImmutable
+    private static function inferReadyAtFromDraft(array $raw): ?DateTimeImmutable
     {
         $isDraft = $raw['draft'] ?? false;
         if ($isDraft === true) {
@@ -92,26 +93,26 @@ final class GitHubPullRequestFactory
     /**
      * @param array<string, mixed> $raw
      */
-    private static function parseTimeRequired(array $raw, string $key): CarbonImmutable
+    private static function parseTimeRequired(array $raw, string $key): DateTimeImmutable
     {
         $value = $raw[$key] ?? null;
         if (! is_string($value) || $value === '') {
             throw new InvalidArgumentException("GitHub PR payload missing {$key}");
         }
 
-        return CarbonImmutable::parse($value)->utc();
+        return (new DateTimeImmutable($value))->setTimezone(new DateTimeZone('UTC'));
     }
 
     /**
      * @param array<string, mixed> $raw
      */
-    private static function parseTimeOptional(array $raw, string $key): ?CarbonImmutable
+    private static function parseTimeOptional(array $raw, string $key): ?DateTimeImmutable
     {
         $value = $raw[$key] ?? null;
         if (! is_string($value) || $value === '') {
             return null;
         }
 
-        return CarbonImmutable::parse($value)->utc();
+        return (new DateTimeImmutable($value))->setTimezone(new DateTimeZone('UTC'));
     }
 }

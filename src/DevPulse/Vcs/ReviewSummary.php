@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace DevPulse\Vcs;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use DevPulse\Shared\RepoFullName;
-use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
 final readonly class ReviewSummary
@@ -15,7 +16,7 @@ final readonly class ReviewSummary
         public int $pullRequestNumber,
         public string $reviewerAccount,
         public ReviewState $state,
-        public CarbonImmutable $submittedAt,
+        public DateTimeImmutable $submittedAt,
     ) {
         if ($pullRequestNumber < 1) {
             throw new InvalidArgumentException('pullRequestNumber must be >= 1');
@@ -52,7 +53,7 @@ final readonly class ReviewSummary
             pullRequestNumber: $pullRequestNumber,
             reviewerAccount: $author['login'],
             state: ReviewState::fromGitHubGraphQL($state),
-            submittedAt: CarbonImmutable::parse($submittedAt)->utc(),
+            submittedAt: (new DateTimeImmutable($submittedAt))->setTimezone(new DateTimeZone('UTC')),
         );
     }
 }

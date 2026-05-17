@@ -211,7 +211,7 @@ final class FetchOrchestrator
             }
 
             // draft 期間的 review 不計入（ready_at 之後才算）
-            if ($pr->ready_at !== null && $review->submittedAt->isBefore($pr->ready_at)) {
+            if ($pr->ready_at !== null && $review->submittedAt < $pr->ready_at) {
                 continue;
             }
 
@@ -224,23 +224,23 @@ final class FetchOrchestrator
                 ['state' => $review->state->value],
             );
 
-            if ($firstReviewAt === null || $review->submittedAt->isBefore($firstReviewAt)) {
+            if ($firstReviewAt === null || $review->submittedAt < $firstReviewAt) {
                 $firstReviewAt = $review->submittedAt;
             }
 
             if ($review->state === \DevPulse\Vcs\ReviewState::Approved) {
-                if ($firstApprovedAt === null || $review->submittedAt->isBefore($firstApprovedAt)) {
+                if ($firstApprovedAt === null || $review->submittedAt < $firstApprovedAt) {
                     $firstApprovedAt = $review->submittedAt;
                 }
             }
         }
 
         $timeToApproval = ($pr->ready_at !== null && $firstApprovedAt !== null)
-            ? $pr->ready_at->diffInSeconds($firstApprovedAt)
+            ? $firstApprovedAt->getTimestamp() - $pr->ready_at->getTimestamp()
             : null;
 
         $timeToMerge = ($firstApprovedAt !== null && $pr->merged_at !== null)
-            ? $firstApprovedAt->diffInSeconds($pr->merged_at)
+            ? $pr->merged_at->getTimestamp() - $firstApprovedAt->getTimestamp()
             : null;
 
         $totalLines = $detail->changes()->total();

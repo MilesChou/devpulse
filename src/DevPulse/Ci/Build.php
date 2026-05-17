@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace DevPulse\Ci;
 
+use DateTimeImmutable;
 use DevPulse\Shared\CommitSha;
 use DevPulse\Shared\RepoFullName;
 use DevPulse\Vcs\PullRequestNumber;
-use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
 final readonly class Build
@@ -21,7 +21,7 @@ final readonly class Build
         public BuildStatus $status,
         public BuildTrigger $trigger,
         public ?string $branch,
-        public CarbonImmutable $startedAt,
+        public DateTimeImmutable $startedAt,
         public ?int $durationSeconds,
     ) {
         if ($externalId === '') {

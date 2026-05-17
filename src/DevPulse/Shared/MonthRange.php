@@ -4,34 +4,35 @@ declare(strict_types=1);
 
 namespace DevPulse\Shared;
 
-use Carbon\CarbonImmutable;
+use DateTimeImmutable;
+use DateTimeZone;
 use InvalidArgumentException;
 
 final class MonthRange
 {
-    public readonly CarbonImmutable $start;
-    public readonly CarbonImmutable $end;
-
-    private function __construct(CarbonImmutable $start, CarbonImmutable $end)
-    {
-        $this->start = $start;
-        $this->end = $end;
+    public function __construct(
+        public readonly DateTimeImmutable $start,
+        public readonly DateTimeImmutable $end,
+    ) {
     }
 
     public static function fromString(string $month): self
     {
-        $parsed = CarbonImmutable::createFromFormat('Y-m', $month, 'UTC');
-        if (! $parsed instanceof CarbonImmutable) {
+        if (! preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
             throw new InvalidArgumentException("month must be YYYY-MM format (got `{$month}`)");
         }
-        $start = $parsed->startOfMonth();
 
-        return new self($start, $start->addMonth());
+        $start = DateTimeImmutable::createFromFormat('!Y-m', $month, new DateTimeZone('UTC'));
+        if ($start === false) {
+            throw new InvalidArgumentException("month must be YYYY-MM format (got `{$month}`)");
+        }
+
+        return new self($start, $start->modify('+1 month'));
     }
 
     /** 半開區間 [start, end) */
-    public function contains(CarbonImmutable $dt): bool
+    public function contains(DateTimeImmutable $dt): bool
     {
-        return $dt->greaterThanOrEqualTo($this->start) && $dt->lessThan($this->end);
+        return $dt >= $this->start && $dt < $this->end;
     }
 }

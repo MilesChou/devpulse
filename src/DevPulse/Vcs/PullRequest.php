@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace DevPulse\Vcs;
 
+use DateTimeImmutable;
 use DevPulse\Shared\RepoId;
-use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
 /**
@@ -15,8 +15,8 @@ final class PullRequest
 {
     private PullRequestStatus $status;
     private ChangeStats $changes;
-    private ?CarbonImmutable $readyAt;
-    private ?CarbonImmutable $closedAt;
+    private ?DateTimeImmutable $readyAt;
+    private ?DateTimeImmutable $closedAt;
 
     public function __construct(
         public readonly PullRequestId $id,
@@ -26,9 +26,9 @@ final class PullRequest
         public readonly Author $author,
         PullRequestStatus $status,
         ChangeStats $changes,
-        public readonly CarbonImmutable $createdAt,
-        ?CarbonImmutable $readyAt,
-        ?CarbonImmutable $closedAt,
+        public readonly DateTimeImmutable $createdAt,
+        ?DateTimeImmutable $readyAt,
+        ?DateTimeImmutable $closedAt,
     ) {
         if (! $status->isOpen() && $closedAt === null) {
             throw new InvalidArgumentException('closedAt must be set when status is closed or merged');
@@ -50,23 +50,23 @@ final class PullRequest
         return $this->changes;
     }
 
-    public function readyAt(): ?CarbonImmutable
+    public function readyAt(): ?DateTimeImmutable
     {
         return $this->readyAt;
     }
 
-    public function closedAt(): ?CarbonImmutable
+    public function closedAt(): ?DateTimeImmutable
     {
         return $this->closedAt;
     }
 
-    public function merge(CarbonImmutable $closedAt): void
+    public function merge(DateTimeImmutable $closedAt): void
     {
         $this->status = PullRequestStatus::Merged;
         $this->closedAt = $closedAt;
     }
 
-    public function close(CarbonImmutable $closedAt): void
+    public function close(DateTimeImmutable $closedAt): void
     {
         $this->status = PullRequestStatus::Closed;
         $this->closedAt = $closedAt;

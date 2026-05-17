@@ -1,6 +1,7 @@
 # See https://github.com/larastan/larastan
 includes:
     - vendor/larastan/larastan/extension.neon
+    - vendor/phpat/phpat/extension.neon
 
 parameters:
     tmpDir: .phpstan.result.cache
@@ -8,3 +9,16 @@ parameters:
     paths:
         - app/
         - src/
+    phpat:
+        ignore_built_in_classes: true
+        show_rule_names: true
+
+services:
+    -
+        class: Tests\Architecture\DomainProductionPurityTest
+        tags:
+            - phpat.test
+    -
+        class: Tests\Architecture\DomainTestPurityTest
+        tags:
+            - phpat.test

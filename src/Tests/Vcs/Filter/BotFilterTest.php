@@ -16,7 +16,7 @@ use DevPulse\Vcs\PullRequestNumber;
 use DevPulse\Vcs\PullRequestStatus;
 use DevPulse\Vcs\ReviewState;
 use DevPulse\Vcs\ReviewSummary;
-use Carbon\CarbonImmutable;
+use DateTimeImmutable;
 use PHPUnit\Framework\TestCase;
 
 class BotFilterTest extends TestCase
@@ -53,7 +53,7 @@ class BotFilterTest extends TestCase
 
     private function pr(string $author): PullRequest
     {
-        $createdAt = CarbonImmutable::parse('2026-04-15T10:00:00Z');
+        $createdAt = new DateTimeImmutable('2026-04-15T10:00:00Z');
 
         return new PullRequest(
             id: new PullRequestId('01JTEST000000000000000000C'),
@@ -76,7 +76,7 @@ class BotFilterTest extends TestCase
             pullRequestNumber: 1,
             reviewerAccount: $reviewer,
             state: ReviewState::Commented,
-            submittedAt: CarbonImmutable::parse('2026-04-15T11:00:00Z'),
+            submittedAt: new DateTimeImmutable('2026-04-15T11:00:00Z'),
         );
     }
 }
