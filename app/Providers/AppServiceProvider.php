@@ -8,6 +8,8 @@ use DevPulse\Ci\CiProvider;
 use App\Infrastructure\Ci\Travis\TravisConnector;
 use App\Infrastructure\Ci\Travis\TravisProvider;
 use App\Infrastructure\Vcs\GitHub\GitHubConnector;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use RuntimeException;
 
@@ -38,6 +40,6 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        //
+        RateLimiter::for('github', fn () => Limit::perMinute(40));
     }
 }

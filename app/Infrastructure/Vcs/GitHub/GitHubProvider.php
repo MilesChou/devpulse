@@ -22,6 +22,35 @@ class GitHubProvider
     }
 
     /**
+     * 列出指定 repo 所有歷史 PR（state=all，從最新一路翻到最舊；不做時間截斷）。
+     *
+     * @return Generator<int, PullRequest>
+     */
+    public function listAllPullRequests(string $repoId, RepoFullName $repoFullName): Generator
+    {
+        $page = 1;
+        $perPage = 100;
+
+        while (true) {
+            $response = $this->connector->send(new ListPullRequestsRequest((string)$repoFullName, $page, $perPage));
+            $pulls = PayloadHelpers::listOfArrays($response->json());
+            if ($pulls === []) {
+                break;
+            }
+
+            foreach ($pulls as $rawPull) {
+                $id = new PullRequestId((string)new Ulid());
+                yield GitHubPullRequestFactory::fromGitHubRaw($rawPull, repoId: $repoId, id: $id);
+            }
+
+            if (count($pulls) < $perPage) {
+                break;
+            }
+            $page++;
+        }
+    }
+
+    /**
      * 列出指定 repo 在指定月份內建立的所有 PR（已合併、已關閉、被 reject、仍在 draft 都包含）。
      *
      * @return Generator<int, PullRequest>

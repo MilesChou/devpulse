@@ -106,6 +106,34 @@ final class FetchOrchestrator
         return $written;
     }
 
+    /**
+     * 抽取 repo 全部歷史 PR（state=all、不分月），僅 upsert 清單，不做 enrichment。
+     *
+     * Enrichment 由 EnrichPullRequestJob 個別處理。
+     */
+    public function fetchAllPullRequests(Repo $repo): RepoFetchOutcome
+    {
+        $repoFullName = new RepoFullName($repo->name);
+
+        try {
+            $pulls = $this->vcsProvider->listAllPullRequests($repo->id, $repoFullName);
+            $written = $this->pullRequestRepository->upsertMany($pulls);
+        } catch (Throwable $e) {
+            return new RepoFetchOutcome(
+                repoFullName: (string)$repoFullName,
+                buildsWritten: 0,
+                pullRequestsWritten: 0,
+                error: $e->getMessage(),
+            );
+        }
+
+        return new RepoFetchOutcome(
+            repoFullName: (string)$repoFullName,
+            buildsWritten: 0,
+            pullRequestsWritten: $written,
+        );
+    }
+
     public function enrichOnePullRequestByNumber(Repo $repo, int $prNumber): bool
     {
         $pr = PullRequest::query()
