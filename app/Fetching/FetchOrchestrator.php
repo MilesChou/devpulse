@@ -28,7 +28,7 @@ final class FetchOrchestrator
     }
 
     /**
-     * upsert 重跑同月安全。
+     * Safe to re-run for the same month; upsert handles duplicates.
      */
     public function fetch(Repo $repo, MonthRange $month): RepoFetchOutcome
     {
@@ -63,9 +63,9 @@ final class FetchOrchestrator
     }
 
     /**
-     * 把該月剛寫進 DB 的 builds 的 author_account 用 GitHub commit author bulk query 補齊。
+     * Back-fill author_account for builds written this month using a bulk GitHub commit-author query.
      *
-     * Travis payload 不含 GitHub login，必須二次撈才能對應到 author。
+     * Travis payloads do not include a GitHub login, so a second lookup is required.
      */
     private function enrichBuildAuthors(Repo $repo, RepoFullName $repoFullName, MonthRange $month): void
     {
@@ -104,6 +104,17 @@ final class FetchOrchestrator
         $this->enrichPullRequestReviews($repo, $repoFullName, $month);
 
         return $written;
+    }
+
+    /**
+     * Fetch all historical PRs for the given repo (state=all, no month filter) and upsert the list.
+     * Returns the number of rows written.
+     */
+    public function fetchAllPullRequests(Repo $repo): int
+    {
+        $pulls = $this->vcsProvider->listAllPullRequests($repo->id, new RepoFullName($repo->name));
+
+        return $this->pullRequestRepository->upsertMany($pulls);
     }
 
     public function enrichOnePullRequestByNumber(Repo $repo, int $prNumber): bool
@@ -145,7 +156,7 @@ final class FetchOrchestrator
         $firstApprovedAt = null;
 
         foreach ($reviews as $review) {
-            // draft 期間的 review 不計入（ready_at 之後才算）
+            // Ignore reviews submitted before ready_at; draft-period reviews do not count.
             if ($pr->ready_at !== null && $review->submittedAt < $pr->ready_at) {
                 continue;
             }
