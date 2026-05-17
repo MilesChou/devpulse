@@ -52,4 +52,5 @@ Homestead.yaml
 # AI
 .claude/settings.local.json
 .claude/worktrees/
+.claude/scheduled_tasks.lock
 .mcp.json
