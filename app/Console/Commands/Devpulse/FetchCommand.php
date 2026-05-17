@@ -12,9 +12,9 @@ use Illuminate\Console\Command;
 
 #[Signature(
     'devpulse:fetch'
-    . ' {repo : repo full name（例如 owner/name）}',
+    . ' {repo : repo full name (e.g. owner/name)}',
 )]
-#[Description('Dispatch Job 抽取指定 repo 全部歷史 PR（state=all），完成後逐筆 dispatch enrichment')]
+#[Description('Dispatch a job to fetch all historical PRs for the given repo (state=all), then dispatch one enrichment job per PR')]
 class FetchCommand extends Command
 {
     public function handle(): int
@@ -23,14 +23,14 @@ class FetchCommand extends Command
 
         $repo = Repo::query()->where('name', $repoFullName)->first();
         if ($repo === null) {
-            $this->error("repo `$repoFullName` 不存在，請先用 devpulse:repo:add 新增");
+            $this->error("Repo `$repoFullName` not found. Add it first with devpulse:repo:add");
 
             return self::FAILURE;
         }
 
         FetchAllPullRequestsJob::dispatch($repo->id);
 
-        $this->info("已 dispatch FetchAllPullRequestsJob：$repoFullName");
+        $this->info("Fetch job dispatched for: $repoFullName");
 
         return self::SUCCESS;
     }

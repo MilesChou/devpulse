@@ -17,16 +17,45 @@ use Symfony\Component\Uid\Ulid;
 
 class GitHubProvider
 {
+    public const RATE_LIMITER = 'github';
+
     public function __construct(private readonly GitHubConnector $connector)
     {
     }
 
     /**
-     * 列出指定 repo 所有歷史 PR（state=all，從最新一路翻到最舊；不做時間截斷）。
+     * List all historical PRs for the given repo (state=all, newest first, no time cutoff).
      *
      * @return Generator<int, PullRequest>
      */
     public function listAllPullRequests(string $repoId, RepoFullName $repoFullName): Generator
+    {
+        yield from $this->paginatePullRequests($repoId, $repoFullName);
+    }
+
+    /**
+     * List all PRs created within the given month (merged, closed, rejected, and draft all included).
+     *
+     * @return Generator<int, PullRequest>
+     */
+    public function listPullRequestsInMonth(string $repoId, RepoFullName $repoFullName, MonthRange $month): Generator
+    {
+        foreach ($this->paginatePullRequests($repoId, $repoFullName) as $pr) {
+            if ($pr->createdAt >= $month->end) {
+                continue;
+            }
+            if ($pr->createdAt < $month->start) {
+                return;
+            }
+
+            yield $pr;
+        }
+    }
+
+    /**
+     * @return Generator<int, PullRequest>
+     */
+    private function paginatePullRequests(string $repoId, RepoFullName $repoFullName): Generator
     {
         $page = 1;
         $perPage = 100;
@@ -35,7 +64,7 @@ class GitHubProvider
             $response = $this->connector->send(new ListPullRequestsRequest((string)$repoFullName, $page, $perPage));
             $pulls = PayloadHelpers::listOfArrays($response->json());
             if ($pulls === []) {
-                break;
+                return;
             }
 
             foreach ($pulls as $rawPull) {
@@ -44,57 +73,14 @@ class GitHubProvider
             }
 
             if (count($pulls) < $perPage) {
-                break;
+                return;
             }
             $page++;
         }
     }
 
     /**
-     * 列出指定 repo 在指定月份內建立的所有 PR（已合併、已關閉、被 reject、仍在 draft 都包含）。
-     *
-     * @return Generator<int, PullRequest>
-     */
-    public function listPullRequestsInMonth(string $repoId, RepoFullName $repoFullName, MonthRange $month): Generator
-    {
-        $page = 1;
-        $perPage = 100;
-
-        while (true) {
-            $response = $this->connector->send(new ListPullRequestsRequest((string)$repoFullName, $page, $perPage));
-            $pulls = PayloadHelpers::listOfArrays($response->json());
-            if ($pulls === []) {
-                break;
-            }
-
-            $reachedOlderThanRange = false;
-            foreach ($pulls as $rawPull) {
-                $id = new PullRequestId((string)new Ulid());
-                $pr = GitHubPullRequestFactory::fromGitHubRaw($rawPull, repoId: $repoId, id: $id);
-
-                if ($pr->createdAt >= $month->end) {
-                    continue;
-                }
-                if ($pr->createdAt < $month->start) {
-                    $reachedOlderThanRange = true;
-                    continue;
-                }
-
-                yield $pr;
-            }
-
-            if ($reachedOlderThanRange) {
-                break;
-            }
-            if (count($pulls) < $perPage) {
-                break;
-            }
-            $page++;
-        }
-    }
-
-    /**
-     * 取得單一 PR 的細節（含精確的 additions / deletions —— list endpoint 不回這兩個欄位）。
+     * Get details for a single PR (including accurate additions/deletions, which the list endpoint omits).
      */
     public function getPullRequest(string $repoId, RepoFullName $repoFullName, int $pullNumber): PullRequest
     {
@@ -107,7 +93,7 @@ class GitHubProvider
     }
 
     /**
-     * 取得 commit 對應的 author GitHub login（找不到則回 null）。
+     * Get the GitHub login of a commit's author. Returns null if not found.
      */
     public function getCommitAuthorAccount(RepoFullName $repoFullName, string $sha): ?string
     {
@@ -125,9 +111,9 @@ class GitHubProvider
     }
 
     /**
-     * 一次處理一批 commit、回傳 [sha => author_login | null] 的對照表。
+     * Process a batch of commits and return a [sha => author_login|null] map.
      *
-     * 用 REST 一筆一打，量大時應改用 getCommitAuthorAccountsBulk。
+     * Uses one REST call per commit; prefer getCommitAuthorAccountsBulk for large batches.
      *
      * @param list<string> $shas
      * @return array<string, string|null>
@@ -143,10 +129,10 @@ class GitHubProvider
     }
 
     /**
-     * 用 GraphQL alias 一次撈最多 80 筆 commit author（仿 Python prototype）。
+     * Fetch up to 80 commit authors in one GraphQL request using aliases.
      *
-     * 自動分批：sha 數量超過 80 時切成多次 GraphQL request。
-     * 比 REST 一筆一打快約 80 倍。找不到對應 user.login 的 sha 對應 null。
+     * Automatically batches when sha count exceeds 80.
+     * ~80x faster than individual REST calls. Shas with no matching user.login map to null.
      *
      * @param list<string> $shas
      * @return array<string, string|null>
@@ -175,7 +161,7 @@ class GitHubProvider
     }
 
     /**
-     * 取得指定 PR 的所有 review（含 ready_at 用的精確時間戳，需要 GraphQL）。
+     * Get all reviews for the given PR. Uses GraphQL for accurate timestamps (needed for ready_at).
      *
      * @return list<ReviewSummary>
      */
@@ -195,8 +181,8 @@ class GitHubProvider
             try {
                 $result[] = ReviewSummary::fromGitHubGraphQL($node, $repoFullName, $pullNumber);
             } catch (InvalidArgumentException) {
-                // PENDING review 的 submittedAt 為 null、ghost 帳號的 author.login 為 null
-                // 這些是合法但不可用於 latency 計算的 node，跳過即可
+                // PENDING reviews have a null submittedAt; ghost accounts have a null author.login.
+                // Both are valid but unusable for latency calculations — skip them.
                 continue;
             }
         }
