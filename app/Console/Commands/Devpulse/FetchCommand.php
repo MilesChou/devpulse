@@ -14,7 +14,10 @@ use Illuminate\Console\Command;
     'devpulse:fetch'
     . ' {repo : repo full name (e.g. owner/name)}',
 )]
-#[Description('Dispatch a job to fetch all historical PRs for the given repo (state=all), then dispatch one enrichment job per PR')]
+#[Description(
+    'Dispatch a job to fetch all historical PRs for the given repo (state=all),'
+    . ' then dispatch one enrichment job per PR',
+)]
 class FetchCommand extends Command
 {
     public function handle(): int

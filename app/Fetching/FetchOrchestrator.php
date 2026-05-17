@@ -107,7 +107,8 @@ final class FetchOrchestrator
     }
 
     /**
-     * Fetch all historical PRs for the given repo (state=all, no month filter) and upsert the list. Returns the number of rows written.
+     * Fetch all historical PRs for the given repo (state=all, no month filter) and upsert the list.
+     * Returns the number of rows written.
      */
     public function fetchAllPullRequests(Repo $repo): int
     {
