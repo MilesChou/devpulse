@@ -1,80 +1,15 @@
-# ── Stage 1: 前端 build ──────────────────────────────────────────
-FROM node:22-alpine AS frontend
+# Multi-stage Dockerfile for the DevPulse binary.
 
-WORKDIR /app
-
-COPY package.json package-lock.json ./
-RUN npm ci
-
-COPY vite.config.js tsconfig.json ./
-COPY resources ./resources
-RUN npm run build
-
-# ── Stage 2: composer deps（無前端、無原始碼）──────────────────
-FROM composer:2 AS vendor
-
-WORKDIR /app
-
-COPY composer.json composer.lock ./
-RUN composer install \
-        --no-dev \
-        --no-autoloader \
-        --no-scripts \
-        --prefer-dist \
-        --no-interaction \
-        --no-progress
-
-# ── Stage 3: PHP 應用（Apache + mod_php，含 bash）─────────────
-FROM php:8.4-apache AS app
-
-ENV TZ=Asia/Taipei
-ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
-
-# Runtime deps：跑時要的
-# libzip-dev 同時當 build 與 runtime（套件名在 Debian 各版本浮動，這樣最穩；
-# 體積影響極小，~1MB）
-ARG RUNTIME_DEPS="libpq5 libzip-dev ca-certificates tzdata"
-
-# Build deps：編譯 ext 用，編完移除
-ARG BUILD_DEPS="libpq-dev pkg-config"
-
-RUN set -xe \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends $RUNTIME_DEPS $BUILD_DEPS \
-    && docker-php-ext-install -j "$(nproc)" \
-        pdo \
-        pdo_pgsql \
-        opcache \
-        zip \
-    && apt-get purge -y --auto-remove $BUILD_DEPS \
-    && rm -rf /var/lib/apt/lists/* \
-    && cp /usr/share/zoneinfo/$TZ /etc/localtime \
-    && echo $TZ > /etc/timezone \
-    && a2enmod rewrite headers \
-    && sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \
-    && sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf \
-    && sed -ri -e 's!Listen 80!Listen 8080!' /etc/apache2/ports.conf \
-    && sed -ri -e 's!:80>!:8080>!' /etc/apache2/sites-available/*.conf \
-    && php -m
-
-WORKDIR /var/www/html
-
-# 先帶 vendor（layer cache 只跟 composer.lock 走）
-COPY --from=vendor /app/vendor ./vendor
-
-# 帶原始碼
+FROM golang:1.26-alpine AS build
+ENV CGO_ENABLED=0
+WORKDIR /src
+COPY go.mod go.sum* ./
+RUN go mod download
 COPY . .
+RUN go build -ldflags='-s -w' -o /out/devpulse ./cmd/devpulse
 
-# 前端 build 產物
-COPY --from=frontend /app/public/build ./public/build
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/devpulse /usr/local/bin/devpulse
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/local/bin/devpulse"]
 
-# 補 autoload + 權限
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-RUN set -xe \
-    && composer dump-autoload --optimize --no-dev \
-    && mkdir -p storage/framework/sessions storage/framework/views storage/framework/cache \
-    && chown -R www-data:www-data storage bootstrap/cache
-
-EXPOSE 8080
-
-CMD ["sh", "-c", "php artisan optimize && apache2-foreground"]

@@ -1,9 +1,0 @@
-services:
-  app:
-    build: .
-    ports:
-      - "8080:8080"
-
-  queue:
-    build: .
-    command: sh -c "php artisan queue:work --tries=3"

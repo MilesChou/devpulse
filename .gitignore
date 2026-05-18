@@ -1,53 +1,34 @@
-# Global/Temp.gitignore
-*~
-*.swp
-
-# Global/OSX.gitignore
+# OS
 .DS_Store
 .AppleDouble
-
-# Thumbnails
 ._*
-
-# Files that might appear on external disk
 .Spotlight-V100
 .Trashes
-
-# Global/Windows.gitignore
 Thumbs.db
 Desktop.ini
 
-# Laravel
-*.log
-.env
-.env.backup
-.env.production
-.cache
-.phpactor.json
-.phpstan.result.cache
-.phpunit.result.cache
-/.codex
-/.cursor/
+# Editor / IDE
+*~
+*.swp
 /.idea
-/.nova
-/.phpunit.cache
 /.vscode
 /.zed
-/auth.json
-/node_modules
-/public/build
-/public/hot
-/public/storage
-/storage/*.key
-/storage/pail
-/vendor
-_ide_helper.php
-Homestead.json
-Homestead.yaml
+/.nova
+/.codex
+/.cursor/
 
-# devpulse local config
-/database/database.sqlite
-/.docker/grafana/.env
+# DevPulse local config
+.env
+.env.local
+*.log
+/devpulse.db
+/devpulse.db-*
+
+# Go
+/bin
+*.test
+*.out
+coverage.txt
 
 # AI
 .claude/settings.local.json
@@ -55,7 +36,3 @@ Homestead.yaml
 .claude/scheduled_tasks.lock
 .mcp.json
 
-# Go
-/bin
-*.test
-*.out

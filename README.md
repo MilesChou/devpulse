@@ -1,145 +1,113 @@
-# devpulse
+# DevPulse
 
-研發效能觀測工具：從 GitHub / CI 抓資料、聚合成團隊指標（CI 失敗率、PR review latency、build duration、PR 重跑次數），最終以 markdown 月報或 Grafana dashboard 呈現。
+研發效能觀測工具：從 GitHub 與 CI 抓資料、聚合成團隊指標
+（CI 失敗率、PR review latency、build duration、PR 重跑次數），
+寫入關聯式資料庫供後續分析使用。
 
-從 Python prototype（`ci_analysis`）改寫的「正規版本」，目標是長期維護、可重複部署於不同團隊。
+從 Python prototype 與 Laravel 版本演進而來，目前以 Go 重寫為單一 binary。
 
 ## 定位
 
-- **是什麼**：本機自用的 CLI 工具 + MySQL 資料層
-- **不是什麼**：SaaS、多租戶、即時 webhook 服務、Web Dashboard（dashboard 規劃由 Stage 2 改用 Grafana 直連 DB）
+- **是什麼**：CLI 工具 + 關聯式資料層
+- **不是什麼**：SaaS、多租戶、即時 webhook 服務
 - **量級**：單機、單一使用者、單月單 repo 約 100~1000 筆 build 的小資料量
 
 ## 安裝
 
 ### 環境需求
 
-- PHP **8.4+**
-- Composer
-- MySQL 8.4+（開發階段也可先用 SQLite）
+- Go **1.26+**（編譯時）
+- 任一支援的資料庫：PostgreSQL、MySQL、SQLite（含 in-memory）
 - GitHub personal access token、Travis CI token
 
-### 步驟
+### 從原始碼編譯
 
 ```bash
 git clone https://github.com/MilesChou/devpulse.git
 cd devpulse
-composer install
+make build
+./bin/devpulse --help
+```
+
+或直接用 `go install`：
+
+```bash
+go install github.com/mileschou/devpulse/cmd/devpulse@latest
+```
+
+## 設定
+
+複製 `.env.example` 並填入：
+
+```bash
 cp .env.example .env
-php artisan key:generate
 ```
 
-## 初次設定
+`DEVPULSE_DSN` 支援以下格式：
 
-### 1. 設定資料庫
-
-預設使用 SQLite，無需額外服務。要切 MySQL，編輯 `.env`：
-
-```env
-DB_CONNECTION=mysql
-DB_URL=mysql://user:password@host:3306/dbname
+```
+postgres://user:pass@host:5432/db?sslmode=disable
+mysql://user:pass@host:3306/db?parseTime=true
+sqlite://./devpulse.db?_fk=true
+memory                              # in-memory SQLite，每次重啟自動跑 migration
 ```
 
-或拆開設定 `DB_HOST` / `DB_PORT` / `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD`。
+`memory` 模式不需任何外部服務，適合測試與一次性 CLI 跑。
 
-### 2. 設定外部 API token
-
-在 `.env` 填入：
-
-```env
-GITHUB_TOKEN=ghp_xxxxx
-TRAVIS_TOKEN=xxxxx
-```
-
-取得方式：
-- **GitHub**：<https://github.com/settings/tokens>（需 `repo` 與 `read:user` scope）
-- **Travis**：登入 <https://app.travis-ci.com> → Account Settings → API authentication
-
-### 3. 跑 migration
+## Quick Start
 
 ```bash
-php artisan migrate
+# 跑 migration（in-memory 會自動跑，這步可省略）
+devpulse migrate up
+
+# 註冊 repo
+devpulse repo-add MilesChou/devpulse
+
+# 撈某月份的 build / PR / review 與計算 lead-time
+devpulse fetch MilesChou/devpulse 2026-05
+
+# 針對單一 PR 重新算 enrichment
+devpulse enrich-pr MilesChou/devpulse 42
+
+# 啟動 worker 處理 enqueue 的 job
+devpulse worker
 ```
 
-### 4. 建立你的觀測群體（group）
+## 指令一覽
 
-```bash
-# 建一個 group
-php artisan devpulse:group:create my-team --description="My Team"
-
-# 加 repo 到 group
-php artisan devpulse:repo:add my-team your-org/your-repo
-
-# 加成員到 group
-php artisan devpulse:member:add my-team alice "Alice Chen"
-```
-
-詳細的 group / member / repo 設定流程請見 [docs/group-setup.md](docs/group-setup.md)。
-
-## Quick Start：跑第一份月報
-
-```bash
-# 撈資料（透過 GitHub / Travis API 寫入 DB；已過月份會走 cache，--force 可繞過）
-php artisan devpulse:fetch my-team 2026-04
-
-# 產出 markdown 報告（不指定 --output 則印到 stdout）
-php artisan devpulse:report 2026-04 --group=my-team --output=report.md
-```
-
-支援的 command：
-
-```bash
-php artisan devpulse:group:create <slug> [--description=...]
-php artisan devpulse:repo:add <group-slug> <owner/name>
-php artisan devpulse:member:add <group-slug> <github-account> <display-name>
-php artisan devpulse:fetch <group-slug> <Y-m> [--force]
-php artisan devpulse:report <Y-m> --group=<slug> [--output=<path>]
-```
+| 指令 | 用途 |
+|---|---|
+| `devpulse migrate {up,down,status}` | Schema migration |
+| `devpulse repo-add <owner/name>` | 註冊一個 repo |
+| `devpulse fetch <owner/name> <YYYY-MM>` | 抓某月的 build + PR + review |
+| `devpulse enrich-pr <owner/name> <number>` | 重新計算單一 PR 的 enrichment |
+| `devpulse worker` | 啟動 DB-backed job worker |
+| `devpulse serve` | (placeholder，v2 提供 HTTP API) |
 
 ## 開發
 
 ```bash
-make all        # lint + phpstan + test
-make lint       # 只跑 phpcs
-make stan       # 只跑 phpstan
-make test       # 只跑 phpunit
+make build          # 編譯 binary 到 ./bin/devpulse
+make test           # 跑 unit tests
+make test-race      # 跑 unit tests 含 race detector
+make test-integration  # 跑 integration tests（需 Docker）
+make lint           # gofmt + go vet
+make tidy           # go mod tidy
 ```
 
-## Web UI（PoC）
-
-以 Laravel + Inertia.js + Vue 3 + ECharts 內建一個最小 Web UI，提供 PR Lifecycle p90 儀表板。
-
-```bash
-npm install         # 安裝前端依賴
-npm run dev         # 啟動 Vite dev server
-php artisan serve   # 另一個 terminal，啟動 Laravel
-```
-
-開瀏覽器訪問 <http://127.0.0.1:8000/dashboard>。
-
-production build：
-
-```bash
-npm run build
-```
-
-技術棧：Vue 3 + `<script setup>` + TypeScript、Tailwind CSS v4、Apache ECharts；無 SSR。詳見 [openspec/changes/build-web-ui-poc/](openspec/changes/build-web-ui-poc/)。
-
-## 文件
-
-- [docs/group-setup.md](docs/group-setup.md) — group / member / repo / human signals 設定
-- [docs/migration-from-prototype.md](docs/migration-from-prototype.md) — 什麼時候可以 retire Python prototype
-- [grafana/README.md](grafana/README.md) — 本機 Grafana dashboard（接 MySQL）
-- [openspec/changes/propose-devpulse/](openspec/changes/propose-devpulse/) — 完整 spec、design decisions、tasks
+OpenTelemetry tracing 可選：把 `OTEL_EXPORTER_OTLP_ENDPOINT` 設成本機 Jaeger
+（`localhost:4318`）就能在 dev 環境看 span。
 
 ## 技術棧
 
-- Laravel 13（PHP 8.4+）
-- MySQL 8.4+（開發階段可用 SQLite）
-- Saloon（HTTP client）、Carbon（datetime）
-- Web UI：Inertia.js + Vue 3 + ECharts + Tailwind v4
-- 對照來源：Python prototype `ci_analysis`（保留為 golden output）
+- Go 1.26
+- `database/sql` + 多 driver（pgx、go-sql-driver/mysql、modernc.org/sqlite）
+- spf13/cobra（CLI）
+- hashicorp/go-retryablehttp（HTTP retry）
+- OpenTelemetry SDK（tracing）
+- 自寫 DB-backed job queue
 
 ## License
 
 MIT — 詳見 [LICENSE](LICENSE)
+

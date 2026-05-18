@@ -1,90 +1,47 @@
-#!/usr/bin/make -f
+# Makefile for DevPulse.
 
-PROCESSORS_NUM := $(shell getconf _NPROCESSORS_ONLN)
+GO       ?= go
+PKG      ?= ./...
+BIN_DIR  ?= bin
+BIN      ?= $(BIN_DIR)/devpulse
 
-PHP_INTERPRETER ?= $(shell which php)
-PHP_GLOBAL_CONFIG := -d memory_limit=-1
+.PHONY: help build test test-race test-integration lint vet tidy clean run
 
-PHP_HAS_XDEBUG_EXTENSION := $(shell ${PHP_INTERPRETER} -r 'echo extension_loaded("xdebug") ? 1 : 0;' 2>/dev/null)
-PHP_HAS_PCOV_EXTENSION := $(shell ${PHP_INTERPRETER} -r 'echo extension_loaded("pcov") ? 1 : 0;' 2>/dev/null)
+help:
+	@echo "Targets:"
+	@echo "  build             Build the devpulse binary into $(BIN)"
+	@echo "  test              Run unit tests"
+	@echo "  test-race         Run unit tests with -race"
+	@echo "  test-integration  Run integration tests (requires Docker)"
+	@echo "  lint              Run go vet + gofmt check"
+	@echo "  tidy              go mod tidy"
+	@echo "  clean             Remove build artifacts"
 
-ifeq ($(PHP_HAS_PCOV_EXTENSION),1)
-PHP_DISABLE_COVERAGE_MODE := -d pcov.enabled=0
-else ifeq ($(PHP_HAS_XDEBUG_EXTENSION),1)
-PHP_DISABLE_COVERAGE_MODE := -d xdebug.mode=off
-else
-PHP_DISABLE_COVERAGE_MODE :=
-endif
+build:
+	@mkdir -p $(BIN_DIR)
+	$(GO) build -o $(BIN) ./cmd/devpulse
 
-# 只跑 staged 的 php 檔案，給 fast-* target 用
-CACHED_PHP_FILES := $(shell git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep -E '^(app|database|tests)/.*\.php$$')
-
-TARGET_FILES :=
-
-PHP := ${PHP_INTERPRETER} ${PHP_GLOBAL_CONFIG} ${PHP_DISABLE_COVERAGE_MODE}
-
-# ---------------------------------------------------------------------
-
-.PHONY: all
-all: lint stan test
-
-.PHONY: clean-cache
-clean-cache:
-	rm -rf .cache .phpstan.result.cache .phpunit.result.cache
-
-# ---- Lint --------------------------------------------------------
-
-.PHONY: lint
-lint: phpcs
-
-.PHONY: phpcs
-phpcs:
-	@mkdir -p .cache/phpcs
-	${PHP} vendor/bin/phpcs --parallel=${PROCESSORS_NUM} --cache=.cache/phpcs/.phpcs.cache ${TARGET_FILES}
-
-.PHONY: phpcbf
-phpcbf:
-	@mkdir -p .cache/phpcs
-	${PHP} vendor/bin/phpcbf --parallel=${PROCESSORS_NUM} --cache=.cache/phpcs/.phpcs.cache ${TARGET_FILES}
-
-# ---- Static analysis ---------------------------------------------
-
-.PHONY: stan
-stan:
-	${PHP} vendor/bin/phpstan analyse
-
-# ---- Test --------------------------------------------------------
-
-.PHONY: test
 test:
-	@out=$$(${PHP} artisan test --parallel --processes=${PROCESSORS_NUM} --no-coverage --stop-on-failure --stop-on-error --passthru-php="${PHP_GLOBAL_CONFIG} ${PHP_DISABLE_COVERAGE_MODE}" ${TARGET_FILES}); status=$$?; \
-	printf '%s\n' "$$out"; \
-	if printf '%s' "$$out" | grep -q '"result":"passed"'; then exit 0; else exit $$status; fi
+	$(GO) test -count=1 $(PKG)
 
-# ---- Fast (staged files only) ------------------------------------
+test-race:
+	$(GO) test -race -count=1 $(PKG)
 
-.PHONY: fast-phpcs
-fast-phpcs:
-ifeq ($(strip $(CACHED_PHP_FILES)),)
-	@echo ">>> No staged php files under app/, database/, tests/"
-else
-	@mkdir -p .cache/phpcs
-	${PHP} vendor/bin/phpcs --parallel=${PROCESSORS_NUM} --cache=.cache/phpcs/.phpcs.cache ${CACHED_PHP_FILES}
-endif
+test-integration:
+	$(GO) test -race -count=1 -tags=integration $(PKG)
 
-.PHONY: fast-phpcbf
-fast-phpcbf:
-ifeq ($(strip $(CACHED_PHP_FILES)),)
-	@echo ">>> No staged php files under app/, database/, tests/"
-else
-	@mkdir -p .cache/phpcs
-	${PHP} vendor/bin/phpcbf --parallel=${PROCESSORS_NUM} --cache=.cache/phpcs/.phpcs.cache ${CACHED_PHP_FILES}
-endif
+lint: vet
+	@gofmt -l . | grep -v '^vendor/' | tee /dev/stderr | (! read)
 
-.PHONY: fast-stan
-fast-stan:
-ifeq ($(strip $(CACHED_PHP_FILES)),)
-	@echo ">>> No staged php files under app/, database/, tests/"
-else
-	${PHP} vendor/bin/phpstan analyse ${CACHED_PHP_FILES}
-endif
+vet:
+	$(GO) vet $(PKG)
+
+tidy:
+	$(GO) mod tidy
+
+clean:
+	rm -rf $(BIN_DIR)
+
+run: build
+	$(BIN) $(ARGS)
+
