@@ -46,6 +46,9 @@ tidy:
 clean:
 	rm -rf $(BIN_DIR)
 
+# run loads .env if present (Unix-style: `set -a` exports every var
+# sourced afterwards), then invokes the binary. Use ARGS="..." to pass
+# arguments, e.g. `make run ARGS="pr fetch MilesChou/devpulse 2026-05"`.
 run: build
-	$(BIN) $(ARGS)
+	@set -a; [ -f .env ] && . ./.env; set +a; $(BIN) $(ARGS)
 
