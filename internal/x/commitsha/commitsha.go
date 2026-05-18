@@ -11,9 +11,9 @@ import (
 type SHA string
 
 var (
-	ErrEmpty   = errors.New("commit sha is empty")
-	ErrBadLen  = errors.New("commit sha must be 40 hex characters")
-	ErrBadHex  = errors.New("commit sha contains non-hex character")
+	ErrEmpty  = errors.New("commit sha is empty")
+	ErrBadLen = errors.New("commit sha must be 40 hex characters")
+	ErrBadHex = errors.New("commit sha contains non-hex character")
 )
 
 // Parse validates and lower-cases the input.
@@ -36,4 +36,3 @@ func Parse(s string) (SHA, error) {
 }
 
 func (s SHA) String() string { return string(s) }
-

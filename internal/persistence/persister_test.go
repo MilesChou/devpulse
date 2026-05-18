@@ -327,4 +327,3 @@ func TestReviewPersister_Upsert(t *testing.T) {
 		t.Fatalf("expected state=approved, got %q", state)
 	}
 }
-

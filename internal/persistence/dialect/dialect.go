@@ -75,4 +75,3 @@ func (d Dialect) Rebind(query string) string {
 	}
 	return b.String()
 }
-

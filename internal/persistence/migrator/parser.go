@@ -91,4 +91,3 @@ func parseFileName(base string) (fileName, error) {
 		Raw:       base,
 	}, nil
 }
-

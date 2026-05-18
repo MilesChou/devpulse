@@ -153,4 +153,3 @@ func TestMarkFailed_BurnsOutAtMaxAttempts(t *testing.T) {
 		t.Fatalf("burned-out job must not be leased, got %+v", got)
 	}
 }
-

@@ -110,4 +110,3 @@ func pickForDialect(files []fileName, d dialect.Dialect) (fileName, bool) {
 	}
 	return fileName{}, false
 }
-

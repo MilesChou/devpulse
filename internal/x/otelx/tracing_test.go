@@ -24,4 +24,3 @@ func TestShutdown_NilProvider_NoPanic(t *testing.T) {
 		t.Fatalf("expected nil error, got %v", err)
 	}
 }
-

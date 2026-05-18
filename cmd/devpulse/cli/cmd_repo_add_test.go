@@ -10,7 +10,7 @@ import (
 func setEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("DEVPULSE_DSN", "memory")
-	t.Setenv("LOG_LEVEL", "error")  // keep test output quiet
+	t.Setenv("LOG_LEVEL", "error") // keep test output quiet
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
 }
 
@@ -57,4 +57,3 @@ func TestServe_NotImplemented(t *testing.T) {
 		t.Fatalf("expected stub message, got: %q", out)
 	}
 }
-

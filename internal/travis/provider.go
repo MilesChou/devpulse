@@ -23,4 +23,3 @@ func (p *Provider) ListBuildsInMonth(
 ) ([]build.Build, error) {
 	return p.client.ListBuildsInMonth(ctx, repoName.String(), month.Start, month.End)
 }
-

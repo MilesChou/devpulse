@@ -52,4 +52,3 @@ func runEnrichPR(ctx context.Context, repoArg, numArg string) error {
 	fmt.Fprintf(stdout(), "Enriched %s#%d\n", name.String(), num)
 	return nil
 }
-

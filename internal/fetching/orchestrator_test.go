@@ -31,15 +31,15 @@ func (f *fakeCIProvider) ListBuildsInMonth(
 
 // fakeVCSProvider stubs out every method the orchestrator calls.
 type fakeVCSProvider struct {
-	pulls     []pullrequest.PullRequest
-	allPulls  []pullrequest.PullRequest
-	detail    pullrequest.PullRequest
-	reviews   []pullrequest.Review
-	logins    map[commitsha.SHA]*string
-	listErr   error
-	getErr    error
-	revsErr   error
-	bulkErr   error
+	pulls    []pullrequest.PullRequest
+	allPulls []pullrequest.PullRequest
+	detail   pullrequest.PullRequest
+	reviews  []pullrequest.Review
+	logins   map[commitsha.SHA]*string
+	listErr  error
+	getErr   error
+	revsErr  error
+	bulkErr  error
 }
 
 func (f *fakeVCSProvider) ListPullRequestsInMonth(
@@ -233,4 +233,3 @@ func TestFetch_BuildAuthorEnrichmentFailureDoesNotAbortPRFetch(t *testing.T) {
 		t.Fatalf("PR not written: %+v", outcome)
 	}
 }
-

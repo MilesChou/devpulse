@@ -166,4 +166,3 @@ func sqliteURLToDataSource(u *url.URL) string {
 	}
 	return path
 }
-

@@ -46,4 +46,3 @@ func (r *ReviewPersister) upsertSQL() string {
 		            updated_at = EXCLUDED.updated_at`
 	}
 }
-

@@ -15,7 +15,7 @@ type FullName struct {
 }
 
 var (
-	ErrEmptyFullName    = errors.New("repo full name is empty")
+	ErrEmptyFullName     = errors.New("repo full name is empty")
 	ErrMalformedFullName = errors.New("repo full name must be owner/name")
 )
 
@@ -44,4 +44,3 @@ func ParseFullName(s string) (FullName, error) {
 func (f FullName) String() string {
 	return f.Owner + "/" + f.Name
 }
-

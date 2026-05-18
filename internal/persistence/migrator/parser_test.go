@@ -8,13 +8,13 @@ import (
 
 func TestParseFileName(t *testing.T) {
 	tests := []struct {
-		name     string
-		in       string
-		wantTS   int64
-		wantEnt  string
-		wantDia  dialect.Dialect
-		wantDir  Direction
-		wantErr  bool
+		name    string
+		in      string
+		wantTS  int64
+		wantEnt string
+		wantDia dialect.Dialect
+		wantDir Direction
+		wantErr bool
 	}{
 		{"generic up", "20260518000001_repos.up.sql", 20260518000001, "repos", dialect.Unknown, DirUp, false},
 		{"generic down", "20260518000001_repos.down.sql", 20260518000001, "repos", dialect.Unknown, DirDown, false},
@@ -55,4 +55,3 @@ func TestParseFileName(t *testing.T) {
 		})
 	}
 }
-

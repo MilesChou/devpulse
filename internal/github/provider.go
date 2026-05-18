@@ -61,4 +61,3 @@ func (p *Provider) GetCommitAuthorAccountsBulk(
 ) (map[commitsha.SHA]*string, error) {
 	return p.client.GetCommitAuthorAccountsBulk(ctx, repoName, shas)
 }
-

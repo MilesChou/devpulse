@@ -9,10 +9,10 @@ import (
 // Build is one CI run for a commit. Author may be empty until enrichment
 // resolves the GitHub login for CommitSHA (Travis payload does not carry it).
 type Build struct {
-	ID         string        // local ULID (PK)
-	ExternalID string        // provider-side ID (Travis build number / id)
+	ID         string // local ULID (PK)
+	ExternalID string // provider-side ID (Travis build number / id)
 	RepoID     string
-	Number     int           // PR number (when triggered by PR)
+	Number     int // PR number (when triggered by PR)
 	CommitSHA  commitsha.SHA
 	Branch     string
 	Status     Status
@@ -85,4 +85,3 @@ func (t Trigger) String() string {
 		return "unknown"
 	}
 }
-

@@ -8,4 +8,3 @@ type ChangeStats struct {
 }
 
 func (c ChangeStats) Total() int { return c.Additions + c.Deletions }
-

@@ -44,4 +44,3 @@ func TestNew_RespectsLevel(t *testing.T) {
 		t.Fatalf("warn should pass, got: %s", out)
 	}
 }
-

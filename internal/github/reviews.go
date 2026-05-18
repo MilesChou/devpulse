@@ -100,4 +100,3 @@ func parseReviewState(s string) pullrequest.ReviewState {
 		return pullrequest.ReviewStateUnknown
 	}
 }
-

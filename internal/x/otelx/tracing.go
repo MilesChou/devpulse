@@ -94,4 +94,3 @@ func (p *Provider) Shutdown(ctx context.Context) error {
 	}
 	return p.shutdown(ctx)
 }
-

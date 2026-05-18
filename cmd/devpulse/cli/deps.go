@@ -125,4 +125,3 @@ func logFormatFromCfg(s string) logx.Format {
 	}
 	return logx.FormatJSON
 }
-

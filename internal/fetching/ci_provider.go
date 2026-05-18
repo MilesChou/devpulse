@@ -12,4 +12,3 @@ import (
 type CIProvider interface {
 	ListBuildsInMonth(ctx context.Context, repoName repo.FullName, month MonthRange) ([]build.Build, error)
 }
-

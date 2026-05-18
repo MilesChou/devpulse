@@ -165,4 +165,3 @@ func TestParse_Unsupported(t *testing.T) {
 		t.Fatalf("expected error")
 	}
 }
-

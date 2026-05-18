@@ -31,7 +31,7 @@ func TestAggregateReviews_IgnoresPreReadyReviews(t *testing.T) {
 	postReady2 := mustTime(t, "2026-05-01T13:00:00Z")
 
 	reviews := []Review{
-		{ReviewerAccount: "alice", State: ReviewStateApproved, SubmittedAt: preReady},   // dropped
+		{ReviewerAccount: "alice", State: ReviewStateApproved, SubmittedAt: preReady}, // dropped
 		{ReviewerAccount: "bob", State: ReviewStateCommented, SubmittedAt: postReady1},
 		{ReviewerAccount: "carol", State: ReviewStateApproved, SubmittedAt: postReady2},
 	}
@@ -180,4 +180,3 @@ func TestBuildEnrichmentPatch_NoReadyAt_TimeToApprovalNil(t *testing.T) {
 		t.Fatalf("TimeToMerge got %v want 10800", patch.TimeToMerge)
 	}
 }
-

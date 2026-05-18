@@ -61,4 +61,3 @@ func TestNew_RetriesOn500(t *testing.T) {
 		t.Fatalf("attempts got %d want 3", got)
 	}
 }
-

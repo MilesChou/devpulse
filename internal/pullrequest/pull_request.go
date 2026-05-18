@@ -52,4 +52,3 @@ type PullRequest struct {
 func (p PullRequest) ChangeStats() ChangeStats {
 	return ChangeStats{Additions: p.Additions, Deletions: p.Deletions}
 }
-

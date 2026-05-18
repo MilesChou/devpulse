@@ -10,4 +10,3 @@ import "net/http"
 func registerRoutes(mux *http.ServeMux) {
 	_ = mux // placeholder
 }
-

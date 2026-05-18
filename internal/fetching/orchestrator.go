@@ -263,4 +263,3 @@ func (o *Orchestrator) enrichOnePullRequest(
 	}
 	return nil
 }
-

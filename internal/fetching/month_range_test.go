@@ -62,4 +62,3 @@ func TestParseMonthRange(t *testing.T) {
 		t.Fatalf("expected parse error")
 	}
 }
-

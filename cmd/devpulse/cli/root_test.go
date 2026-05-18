@@ -22,4 +22,3 @@ func TestRootCmd_PrintsUsage(t *testing.T) {
 		t.Fatalf("expected output to mention DevPulse, got: %q", out)
 	}
 }
-

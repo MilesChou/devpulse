@@ -95,4 +95,3 @@ func BuildEnrichmentPatch(pr PullRequest, additions, deletions int, agg ReviewAg
 		TimeToMerge:       ComputeTimeToMerge(agg.FirstApprovedAt, pr.MergedAt),
 	}
 }
-

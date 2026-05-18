@@ -199,4 +199,3 @@ func TestREST_ErrorResponsePropagated(t *testing.T) {
 		t.Fatalf("expected 404 in error, got: %v", err)
 	}
 }
-

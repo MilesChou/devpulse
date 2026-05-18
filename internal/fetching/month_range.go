@@ -37,4 +37,3 @@ func (m MonthRange) Contains(t time.Time) bool {
 func (m MonthRange) String() string {
 	return m.Start.Format("2006-01")
 }
-

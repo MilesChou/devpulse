@@ -23,4 +23,3 @@ func TestStart_NoAddrIsNoOp(t *testing.T) {
 		t.Fatal("server did not return on cancel")
 	}
 }
-

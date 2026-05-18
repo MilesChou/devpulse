@@ -39,15 +39,15 @@ const (
 
 // Job is the in-memory representation of a row.
 type Job struct {
-	ID           string
-	Kind         string
-	Payload      []byte
-	Status       Status
-	Attempts     int
-	MaxAttempts  int
-	LastError    string
-	AvailableAt  time.Time
-	LeasedUntil  *time.Time
+	ID          string
+	Kind        string
+	Payload     []byte
+	Status      Status
+	Attempts    int
+	MaxAttempts int
+	LastError   string
+	AvailableAt time.Time
+	LeasedUntil *time.Time
 }
 
 // Queue is the central enqueue/dequeue API.
@@ -205,11 +205,11 @@ func (q *Queue) loadByID(ctx context.Context, id string) (*Job, error) {
 
 	row := q.p.QueryRowCtx(ctx, sel, id)
 	var (
-		j        Job
-		payload  string
-		status   string
-		lastErr  sql.NullString
-		leased   sql.NullTime
+		j       Job
+		payload string
+		status  string
+		lastErr sql.NullString
+		leased  sql.NullTime
 	)
 	err := row.Scan(&j.ID, &j.Kind, &payload, &status, &j.Attempts, &j.MaxAttempts,
 		&lastErr, &j.AvailableAt, &leased)
@@ -243,4 +243,3 @@ func backoff(attempt int) time.Duration {
 	}
 	return d
 }
-

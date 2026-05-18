@@ -45,4 +45,3 @@ func newWorkerCmd() *cobra.Command {
 	cmd.Flags().DurationVar(&leaseFor, "lease", 60*time.Second, "Lease duration before a stuck job is requeued")
 	return cmd
 }
-

@@ -25,11 +25,11 @@ type HandlerFunc func(ctx context.Context, payload []byte) error
 
 // Worker polls a Queue, dispatching to a per-kind HandlerFunc.
 type Worker struct {
-	q           *Queue
-	handlers    map[string]HandlerFunc
-	pollEvery   time.Duration
-	leaseFor    time.Duration
-	logger      *slog.Logger
+	q         *Queue
+	handlers  map[string]HandlerFunc
+	pollEvery time.Duration
+	leaseFor  time.Duration
+	logger    *slog.Logger
 }
 
 // NewWorker creates a Worker. handlers maps job.Kind -> HandlerFunc.
@@ -114,8 +114,8 @@ const KindEnrichPullRequest = "enrich_pull_request"
 
 // EnrichPullRequestArgs is the payload for an enrich_pull_request job.
 type EnrichPullRequestArgs struct {
-	RepoID   string `json:"repo_id"`
-	Number   int    `json:"number"`
+	RepoID string `json:"repo_id"`
+	Number int    `json:"number"`
 }
 
 // NewEnrichPullRequestHandler returns a HandlerFunc that calls the
@@ -150,4 +150,3 @@ func NewEnrichPullRequestHandler(
 var _ interface {
 	FindByID(ctx context.Context, id string) (repo.Repo, error)
 } = (*persistence.RepoPersister)(nil)
-

@@ -133,4 +133,3 @@ func repoSlugEscaped(slug string) string {
 
 // itoa is a tiny convenience.
 func itoa(n int) string { return strconv.Itoa(n) }
-

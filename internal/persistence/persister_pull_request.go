@@ -200,4 +200,3 @@ func scanPullRequest(s rowScanner) (pullrequest.PullRequest, error) {
 	}
 	return p, nil
 }
-

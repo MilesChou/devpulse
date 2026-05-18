@@ -100,4 +100,3 @@ func decodeCommitAuthorLogin(raw json.RawMessage) *string {
 	login := node.Author.User.Login
 	return &login
 }
-

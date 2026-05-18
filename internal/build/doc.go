@@ -3,4 +3,3 @@
 //
 // Consumer-side interfaces (BuildWriter etc.) live in internal/fetching.
 package build
-

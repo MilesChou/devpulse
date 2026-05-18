@@ -54,4 +54,3 @@ type VCSProvider interface {
 		shas []commitsha.SHA,
 	) (map[commitsha.SHA]*string, error)
 }
-

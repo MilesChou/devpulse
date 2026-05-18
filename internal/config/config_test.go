@@ -56,4 +56,3 @@ func TestLoad_InvalidLogFormat(t *testing.T) {
 		t.Fatalf("expected error")
 	}
 }
-

@@ -52,4 +52,3 @@ func runFetch(ctx context.Context, repoArg, monthArg string) error {
 	)
 	return nil
 }
-

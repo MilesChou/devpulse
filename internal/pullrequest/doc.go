@@ -3,4 +3,3 @@
 //
 // Consumer-side interfaces (PullRequestWriter etc.) live in internal/fetching.
 package pullrequest
-

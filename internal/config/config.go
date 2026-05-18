@@ -22,10 +22,10 @@ type Config struct {
 	TravisBase  string
 
 	// Observability.
-	LogLevel    string
-	LogFormat   string // "json" or "text"
+	LogLevel     string
+	LogFormat    string // "json" or "text"
 	OTLPEndpoint string
-	OTELSample  float64
+	OTELSample   float64
 
 	// Service identity.
 	ServiceName    string
@@ -101,4 +101,3 @@ func getenvFloat(key string, def float64) float64 {
 	}
 	return def
 }
-

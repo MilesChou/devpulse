@@ -4,4 +4,3 @@
 // Naming follows ory/hydra: persister.go for the shared struct,
 // persister_<entity>.go for entity-specific implementations.
 package persistence
-

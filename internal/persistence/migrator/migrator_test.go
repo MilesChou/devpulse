@@ -154,4 +154,3 @@ func TestMigrator_MigrateDown_NoOpWhenEmpty(t *testing.T) {
 		t.Fatalf("down on empty state should be no-op, got: %v", err)
 	}
 }
-

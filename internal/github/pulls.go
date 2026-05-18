@@ -15,19 +15,19 @@ import (
 // rawPull is the slim subset of GitHub's REST PR JSON we read. Extend as
 // new fields become relevant; unknown JSON keys are tolerated.
 type rawPull struct {
-	Number    int       `json:"number"`
-	State     string    `json:"state"`     // open / closed
-	Draft     bool      `json:"draft"`
-	Title     string    `json:"title"`
-	User      *rawUser  `json:"user"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Number    int        `json:"number"`
+	State     string     `json:"state"` // open / closed
+	Draft     bool       `json:"draft"`
+	Title     string     `json:"title"`
+	User      *rawUser   `json:"user"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 	MergedAt  *time.Time `json:"merged_at"`
 	ClosedAt  *time.Time `json:"closed_at"`
 
 	// PR detail-only fields. Absent from the /pulls list endpoint.
-	Additions   int  `json:"additions,omitempty"`
-	Deletions   int  `json:"deletions,omitempty"`
+	Additions    int `json:"additions,omitempty"`
+	Deletions    int `json:"deletions,omitempty"`
 	ChangedLines int `json:"changed_files,omitempty"`
 }
 
@@ -196,4 +196,3 @@ func (c *Client) GetPullRequest(
 	}
 	return raw.toDomain(repoID), nil
 }
-

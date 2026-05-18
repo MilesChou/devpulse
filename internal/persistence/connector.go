@@ -51,4 +51,3 @@ func Open(ctx context.Context, raw string) (*Connection, error) {
 		IsMemory: p.IsMemory,
 	}, nil
 }
-

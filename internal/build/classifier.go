@@ -9,11 +9,11 @@ import "strings"
 type HumanSignal int
 
 const (
-	HumanSignalNone           HumanSignal = iota
-	HumanSignalTestFailure                // a real test failed
-	HumanSignalInfraFailure               // CI infra / runner / network noise
-	HumanSignalCancelation                // human or system cancellation
-	HumanSignalConfiguration              // syntax / config error in pipeline
+	HumanSignalNone          HumanSignal = iota
+	HumanSignalTestFailure               // a real test failed
+	HumanSignalInfraFailure              // CI infra / runner / network noise
+	HumanSignalCancelation               // human or system cancellation
+	HumanSignalConfiguration             // syntax / config error in pipeline
 )
 
 // ClassifyFromLog scans a build log excerpt and returns the human signal.
@@ -43,4 +43,3 @@ func containsAny(haystack string, needles ...string) bool {
 	}
 	return false
 }
-

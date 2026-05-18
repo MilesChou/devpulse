@@ -74,4 +74,3 @@ func runMigrate(ctx context.Context, op string) error {
 	}
 	return nil
 }
-

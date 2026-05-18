@@ -77,10 +77,18 @@ func (t *uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // slogAdapter satisfies retryablehttp.LeveledLogger using slog.
 type slogAdapter struct{ logger *slog.Logger }
 
-func (a slogAdapter) Error(msg string, keysAndValues ...any) { a.log(slog.LevelError, msg, keysAndValues) }
-func (a slogAdapter) Info(msg string, keysAndValues ...any)  { a.log(slog.LevelInfo, msg, keysAndValues) }
-func (a slogAdapter) Debug(msg string, keysAndValues ...any) { a.log(slog.LevelDebug, msg, keysAndValues) }
-func (a slogAdapter) Warn(msg string, keysAndValues ...any)  { a.log(slog.LevelWarn, msg, keysAndValues) }
+func (a slogAdapter) Error(msg string, keysAndValues ...any) {
+	a.log(slog.LevelError, msg, keysAndValues)
+}
+func (a slogAdapter) Info(msg string, keysAndValues ...any) {
+	a.log(slog.LevelInfo, msg, keysAndValues)
+}
+func (a slogAdapter) Debug(msg string, keysAndValues ...any) {
+	a.log(slog.LevelDebug, msg, keysAndValues)
+}
+func (a slogAdapter) Warn(msg string, keysAndValues ...any) {
+	a.log(slog.LevelWarn, msg, keysAndValues)
+}
 
 func (a slogAdapter) log(level slog.Level, msg string, kv []any) {
 	if a.logger == nil {
@@ -88,4 +96,3 @@ func (a slogAdapter) log(level slog.Level, msg string, kv []any) {
 	}
 	a.logger.Log(nil, level, msg, kv...)
 }
-

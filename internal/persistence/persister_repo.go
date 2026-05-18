@@ -111,4 +111,3 @@ func (r *RepoPersister) touch(ctx context.Context, id string, t time.Time) error
 	_, err := r.ExecCtx(ctx, q, t, id)
 	return err
 }
-

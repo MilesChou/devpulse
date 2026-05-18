@@ -18,19 +18,19 @@ import (
 )
 
 const (
-	DefaultBaseURL    = "https://api.github.com"
-	DefaultUserAgent  = "devpulse/0 (+https://github.com/MilesChou/devpulse)"
-	DefaultTimeout    = 30 * time.Second
-	DefaultRetryMax   = 3
-	graphqlEndpoint   = "/graphql"
-	defaultPerPage    = 100
-	graphqlMaxBatch   = 80 // alias batch limit for GetCommitAuthorsBulk
+	DefaultBaseURL   = "https://api.github.com"
+	DefaultUserAgent = "devpulse/0 (+https://github.com/MilesChou/devpulse)"
+	DefaultTimeout   = 30 * time.Second
+	DefaultRetryMax  = 3
+	graphqlEndpoint  = "/graphql"
+	defaultPerPage   = 100
+	graphqlMaxBatch  = 80 // alias batch limit for GetCommitAuthorsBulk
 )
 
 // Config controls the GitHub client.
 type Config struct {
-	BaseURL   string        // override for tests / GitHub Enterprise
-	Token     string        // personal access token or App installation token
+	BaseURL   string // override for tests / GitHub Enterprise
+	Token     string // personal access token or App installation token
 	UserAgent string
 	Timeout   time.Duration
 	RetryMax  int
@@ -127,8 +127,8 @@ type graphqlRequest struct {
 
 // graphqlResponse captures the canonical "data + errors" envelope.
 type graphqlResponse struct {
-	Data   json.RawMessage  `json:"data"`
-	Errors []graphqlError   `json:"errors,omitempty"`
+	Data   json.RawMessage `json:"data"`
+	Errors []graphqlError  `json:"errors,omitempty"`
 }
 
 type graphqlError struct {
@@ -193,4 +193,3 @@ func snippet(b []byte) string {
 	}
 	return string(b)
 }
-

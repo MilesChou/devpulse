@@ -59,4 +59,3 @@ func TestRebind(t *testing.T) {
 		t.Fatalf("sqlite got %q want unchanged", got)
 	}
 }
-

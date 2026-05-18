@@ -39,4 +39,3 @@ func runRepoAdd(ctx context.Context, repoArg string) error {
 	fmt.Fprintf(stdout(), "%s (id=%s)\n", r.Name.String(), r.ID)
 	return nil
 }
-

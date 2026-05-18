@@ -10,4 +10,3 @@ type RepoFetchOutcome struct {
 	PullRequestsWritten int
 	Error               error
 }
-

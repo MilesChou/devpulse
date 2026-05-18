@@ -5,10 +5,14 @@ PKG      ?= ./...
 BIN_DIR  ?= bin
 BIN      ?= $(BIN_DIR)/devpulse
 
-.PHONY: help build test test-race test-integration lint vet tidy clean run
+.PHONY: all help build test test-race test-integration lint vet tidy clean run
+
+# Default target — used by the pre-commit hook.
+all: lint test build
 
 help:
 	@echo "Targets:"
+	@echo "  all               (default) lint + test + build"
 	@echo "  build             Build the devpulse binary into $(BIN)"
 	@echo "  test              Run unit tests"
 	@echo "  test-race         Run unit tests with -race"

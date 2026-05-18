@@ -62,4 +62,3 @@ func (p *Persister) QueryCtx(ctx context.Context, q string, args ...any) (*sql.R
 func (p *Persister) QueryRowCtx(ctx context.Context, q string, args ...any) *sql.Row {
 	return p.DB.QueryRowContext(ctx, p.Rebind(q), args...)
 }
-

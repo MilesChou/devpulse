@@ -204,4 +204,3 @@ func resolveTrigger(eventType, branch string) build.Trigger {
 
 // unused, kept to satisfy imports if PHP-style itoa is referenced
 var _ = itoa
-

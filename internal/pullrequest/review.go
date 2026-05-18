@@ -34,4 +34,3 @@ type Review struct {
 	State           ReviewState
 	SubmittedAt     time.Time
 }
-

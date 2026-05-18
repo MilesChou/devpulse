@@ -34,4 +34,3 @@ func NewRootCmd() *cobra.Command {
 	)
 	return root
 }
-

@@ -55,4 +55,3 @@ func TestFullName_String_RoundTrip(t *testing.T) {
 		t.Fatalf("round-trip failed: got %q want %q", got.String(), in)
 	}
 }
-

@@ -5,4 +5,3 @@
 // PullRequestWriter, ReviewWriter). Interface definitions live here, with
 // the consumer, per Go convention.
 package fetching
-

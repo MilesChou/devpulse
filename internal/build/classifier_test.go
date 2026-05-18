@@ -29,4 +29,3 @@ func TestClassifyFromLog(t *testing.T) {
 		})
 	}
 }
-

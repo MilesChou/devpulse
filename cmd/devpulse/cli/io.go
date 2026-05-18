@@ -19,4 +19,3 @@ func SetStdout(w io.Writer) io.Writer {
 	stdoutWriter = w
 	return prev
 }
-

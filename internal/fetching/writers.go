@@ -35,4 +35,3 @@ type PullRequestWriter interface {
 type ReviewWriter interface {
 	Upsert(ctx context.Context, prID string, r pullrequest.Review) error
 }
-
