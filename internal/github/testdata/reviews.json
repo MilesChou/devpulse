@@ -1,0 +1,16 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "reviews": {
+          "nodes": [
+            {"state": "COMMENTED", "submittedAt": "2026-05-15T11:00:00Z", "author": {"login": "bob"}},
+            {"state": "APPROVED",  "submittedAt": "2026-05-15T12:00:00Z", "author": {"login": "carol"}},
+            {"state": "PENDING",   "submittedAt": null,                   "author": {"login": "dave"}},
+            {"state": "COMMENTED", "submittedAt": "2026-05-15T12:30:00Z", "author": null}
+          ]
+        }
+      }
+    }
+  }
+}

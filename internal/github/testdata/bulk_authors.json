@@ -1,0 +1,9 @@
+{
+  "data": {
+    "repository": {
+      "c0": {"oid": "aaa1234567890abcdef1234567890abcdef12345", "author": {"user": {"login": "alice"}}},
+      "c1": {"oid": "bbb1234567890abcdef1234567890abcdef12345", "author": {"user": null}},
+      "c2": {"oid": "ccc1234567890abcdef1234567890abcdef12345", "author": {"user": {"login": "bob"}}}
+    }
+  }
+}

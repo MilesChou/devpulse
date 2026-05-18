@@ -54,3 +54,8 @@ Homestead.yaml
 .claude/worktrees/
 .claude/scheduled_tasks.lock
 .mcp.json
+
+# Go
+/bin
+*.test
+*.out
