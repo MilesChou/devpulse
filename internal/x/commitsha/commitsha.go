@@ -1,6 +1,7 @@
 package commitsha
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -24,15 +25,10 @@ func Parse(s string) (SHA, error) {
 	if len(s) != 40 {
 		return "", fmt.Errorf("%w: %q (len=%d)", ErrBadLen, s, len(s))
 	}
-
-	lower := strings.ToLower(s)
-	for i := 0; i < len(lower); i++ {
-		c := lower[i]
-		if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') {
-			return "", fmt.Errorf("%w: %q", ErrBadHex, s)
-		}
+	if _, err := hex.DecodeString(s); err != nil {
+		return "", fmt.Errorf("%w: %q", ErrBadHex, s)
 	}
-	return SHA(lower), nil
+	return SHA(strings.ToLower(s)), nil
 }
 
 func (s SHA) String() string { return string(s) }

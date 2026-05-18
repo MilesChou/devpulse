@@ -4,8 +4,6 @@ import "strings"
 
 // HumanSignal labels a build outcome with a coarse intent: whether it
 // points at a human-driven CI issue we want surfaced in dashboards.
-//
-// Mirrors the PHP-side classifier in src/DevPulse/Ci/Classification.
 type HumanSignal int
 
 const (

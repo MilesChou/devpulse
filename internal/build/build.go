@@ -12,7 +12,7 @@ type Build struct {
 	ID         string // local ULID (PK)
 	ExternalID string // provider-side ID (Travis build number / id)
 	RepoID     string
-	Number     int // PR number (when triggered by PR)
+	PRNumber   int // PR number when Trigger == TriggerPullRequest; 0 otherwise
 	CommitSHA  commitsha.SHA
 	Branch     string
 	Status     Status
@@ -60,6 +60,23 @@ func (s Status) String() string {
 	}
 }
 
+// ParseStatus is the inverse of Status.String. Unknown inputs map to
+// StatusUnknown so downstream code can still operate on stale rows.
+func ParseStatus(s string) Status {
+	switch s {
+	case "passed":
+		return StatusPassed
+	case "failed":
+		return StatusFailed
+	case "errored":
+		return StatusErrored
+	case "canceled":
+		return StatusCanceled
+	default:
+		return StatusUnknown
+	}
+}
+
 // Trigger identifies why the CI build ran.
 type Trigger int
 
@@ -83,5 +100,22 @@ func (t Trigger) String() string {
 		return "cron"
 	default:
 		return "unknown"
+	}
+}
+
+// ParseTrigger is the inverse of Trigger.String. Unknown inputs map to
+// TriggerUnknown.
+func ParseTrigger(s string) Trigger {
+	switch s {
+	case "push":
+		return TriggerPush
+	case "pull_request":
+		return TriggerPullRequest
+	case "api":
+		return TriggerAPI
+	case "cron":
+		return TriggerCron
+	default:
+		return TriggerUnknown
 	}
 }

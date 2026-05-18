@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/mileschou/devpulse/internal/persistence"
@@ -235,11 +234,13 @@ func (q *Queue) loadByID(ctx context.Context, id string) (*Job, error) {
 // at 5 minutes — short enough that transient API blips recover quickly
 // without burning CPU.
 func backoff(attempt int) time.Duration {
-	const cap = 5 * time.Minute
-	secs := math.Pow(2, float64(attempt))
-	d := time.Duration(secs) * time.Second
-	if d > cap {
-		return cap
+	const maxDelay = 5 * time.Minute
+	if attempt > 30 { // 2^30s already exceeds the cap; guard against shift overflow
+		return maxDelay
+	}
+	d := time.Duration(int64(1)<<attempt) * time.Second
+	if d > maxDelay {
+		return maxDelay
 	}
 	return d
 }

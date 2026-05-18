@@ -1,7 +1,17 @@
 // Package cli wires together cobra commands for the devpulse binary.
 //
-// Convention follows ory/hydra: one file per subcommand, named
-// cmd_<verb>_<noun>.go.
+// The CLI follows a noun-on-verb layout (in the style of gh, jira-cli):
+//
+//	devpulse repo add ...
+//	devpulse build fetch ...
+//	devpulse pr fetch ...
+//	devpulse pr enrich ...
+//	devpulse migrate up | down | status
+//	devpulse worker
+//	devpulse serve
+//
+// Each group lives in cmd_<group>.go; each leaf action lives in
+// cmd_<group>_<verb>.go.
 package cli
 
 import (
@@ -25,9 +35,9 @@ func NewRootCmd() *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.AddCommand(
-		newFetchCmd(),
-		newEnrichPRCmd(),
-		newRepoAddCmd(),
+		newRepoCmd(),
+		newBuildCmd(),
+		newPRCmd(),
 		newMigrateCmd(),
 		newWorkerCmd(),
 		newServeCmd(),

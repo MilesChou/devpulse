@@ -108,7 +108,7 @@ func (c *Client) rest(ctx context.Context, method, path string, query url.Values
 	if resp.StatusCode/100 != 2 {
 		body, _ := io.ReadAll(resp.Body)
 		return resp.Header, fmt.Errorf("github: %s %s: status %d: %s",
-			method, path, resp.StatusCode, snippet(body))
+			method, path, resp.StatusCode, httpx.Snippet(body))
 	}
 
 	if out != nil {
@@ -161,7 +161,7 @@ func (c *Client) graphql(ctx context.Context, query string, vars map[string]any,
 
 	if resp.StatusCode/100 != 2 {
 		raw, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("github: graphql status %d: %s", resp.StatusCode, snippet(raw))
+		return fmt.Errorf("github: graphql status %d: %s", resp.StatusCode, httpx.Snippet(raw))
 	}
 
 	var env graphqlResponse
@@ -184,12 +184,4 @@ func (c *Client) applyAuth(req *http.Request) {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-}
-
-func snippet(b []byte) string {
-	const max = 512
-	if len(b) > max {
-		return string(b[:max]) + "..."
-	}
-	return string(b)
 }

@@ -10,18 +10,18 @@ import (
 	"github.com/mileschou/devpulse/internal/repo"
 )
 
-func newFetchCmd() *cobra.Command {
+func newPRFetchCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "fetch <owner/name> <YYYY-MM>",
-		Short: "Fetch CI builds and PRs for a repo in a given month",
+		Short: "Fetch PRs and run enrichment for a repo within the given month",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runFetch(cmd.Context(), args[0], args[1])
+			return runPRFetch(cmd.Context(), args[0], args[1])
 		},
 	}
 }
 
-func runFetch(ctx context.Context, repoArg, monthArg string) error {
+func runPRFetch(ctx context.Context, repoArg, monthArg string) error {
 	name, err := repo.ParseFullName(repoArg)
 	if err != nil {
 		return fmt.Errorf("invalid repo: %w", err)
@@ -42,13 +42,12 @@ func runFetch(ctx context.Context, repoArg, monthArg string) error {
 		return fmt.Errorf("ensure repo: %w", err)
 	}
 
-	outcome := d.orch.Fetch(ctx, r, month)
+	outcome := d.orch.FetchPullRequests(ctx, r, month)
 	if outcome.Error != nil {
 		return outcome.Error
 	}
-	fmt.Fprintf(stdout(), "Fetched %s for %s: builds=%d pulls=%d\n",
-		outcome.RepoFullName, month.String(),
-		outcome.BuildsWritten, outcome.PullRequestsWritten,
+	fmt.Fprintf(stdout(), "Fetched %s PRs for %s: written=%d\n",
+		outcome.RepoFullName, month.String(), outcome.PullRequestsWritten,
 	)
 	return nil
 }

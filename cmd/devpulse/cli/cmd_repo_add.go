@@ -11,7 +11,7 @@ import (
 
 func newRepoAddCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "repo-add <owner/name>",
+		Use:   "add <owner/name>",
 		Short: "Register a repository in the DevPulse store",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

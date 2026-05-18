@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -100,7 +99,7 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, out any
 
 	if resp.StatusCode/100 != 2 {
 		raw, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("travis: GET %s: status %d: %s", path, resp.StatusCode, snippet(raw))
+		return fmt.Errorf("travis: GET %s: status %d: %s", path, resp.StatusCode, httpx.Snippet(raw))
 	}
 
 	if out != nil {
@@ -117,19 +116,8 @@ func (c *Client) applyAuth(req *http.Request) {
 	}
 }
 
-func snippet(b []byte) string {
-	const max = 512
-	if len(b) > max {
-		return string(b[:max]) + "..."
-	}
-	return string(b)
-}
-
 // repoSlugEscaped URL-encodes the slug for use in a /repo/:slug path.
 // Travis expects "owner%2Fname".
 func repoSlugEscaped(slug string) string {
 	return strings.ReplaceAll(url.PathEscape(slug), "/", "%2F")
 }
-
-// itoa is a tiny convenience.
-func itoa(n int) string { return strconv.Itoa(n) }

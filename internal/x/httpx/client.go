@@ -1,6 +1,7 @@
 package httpx
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -94,5 +95,5 @@ func (a slogAdapter) log(level slog.Level, msg string, kv []any) {
 	if a.logger == nil {
 		return
 	}
-	a.logger.Log(nil, level, msg, kv...)
+	a.logger.Log(context.Background(), level, msg, kv...)
 }

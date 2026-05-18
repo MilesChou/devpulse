@@ -10,18 +10,18 @@ import (
 	"github.com/mileschou/devpulse/internal/repo"
 )
 
-func newEnrichPRCmd() *cobra.Command {
+func newPREnrichCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "enrich-pr <owner/name> <number>",
+		Use:   "enrich <owner/name> <number>",
 		Short: "Re-fetch detail and reviews for one PR and write the enrichment patch",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runEnrichPR(cmd.Context(), args[0], args[1])
+			return runPREnrich(cmd.Context(), args[0], args[1])
 		},
 	}
 }
 
-func runEnrichPR(ctx context.Context, repoArg, numArg string) error {
+func runPREnrich(ctx context.Context, repoArg, numArg string) error {
 	name, err := repo.ParseFullName(repoArg)
 	if err != nil {
 		return fmt.Errorf("invalid repo: %w", err)
@@ -47,7 +47,7 @@ func runEnrichPR(ctx context.Context, repoArg, numArg string) error {
 		return err
 	}
 	if !found {
-		return fmt.Errorf("PR #%d not in store; run `devpulse fetch` first", num)
+		return fmt.Errorf("PR #%d not in store; run `devpulse pr fetch` first", num)
 	}
 	fmt.Fprintf(stdout(), "Enriched %s#%d\n", name.String(), num)
 	return nil

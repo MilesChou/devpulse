@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -82,8 +83,8 @@ func TestListBuildsInMonth_FiltersAndSkipsUnparseable(t *testing.T) {
 	if builds[1].Trigger != build.TriggerPullRequest {
 		t.Fatalf("PR trigger: %v", builds[1].Trigger)
 	}
-	if builds[1].Number != 42 {
-		t.Fatalf("PR number: %d", builds[1].Number)
+	if builds[1].PRNumber != 42 {
+		t.Fatalf("PR number: %d", builds[1].PRNumber)
 	}
 	if builds[1].Status != build.StatusFailed {
 		t.Fatalf("status: %v", builds[1].Status)
@@ -103,7 +104,7 @@ func TestListBuildsInMonth_TerminatesOn50ConsecutiveBelow(t *testing.T) {
 			comma = ""
 		}
 		entry := `{
-		    "id": ` + itoa(i) + `,
+		    "id": ` + strconv.Itoa(i) + `,
 		    "number": "n",
 		    "state": "passed",
 		    "event_type": "push",
@@ -140,23 +141,4 @@ func TestListBuildsInMonth_TerminatesOn50ConsecutiveBelow(t *testing.T) {
 	if calls > 1 {
 		t.Fatalf("expected 1 API call before cutoff fires, got %d", calls)
 	}
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var b []byte
-	for n > 0 {
-		b = append([]byte{byte('0' + n%10)}, b...)
-		n /= 10
-	}
-	if neg {
-		b = append([]byte{'-'}, b...)
-	}
-	return string(b)
 }

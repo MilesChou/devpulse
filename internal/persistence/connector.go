@@ -13,9 +13,8 @@ import (
 // Connection bundles a *sql.DB with the metadata callers need to write
 // dialect-aware queries against it.
 type Connection struct {
-	DB       *sql.DB
-	Dialect  dialect.Dialect
-	IsMemory bool
+	DB      *sql.DB
+	Dialect dialect.Dialect
 }
 
 // Open parses the DSN, registers the right driver under the hood, and
@@ -46,8 +45,7 @@ func Open(ctx context.Context, raw string) (*Connection, error) {
 	}
 
 	return &Connection{
-		DB:       db,
-		Dialect:  p.Dialect,
-		IsMemory: p.IsMemory,
+		DB:      db,
+		Dialect: p.Dialect,
 	}, nil
 }

@@ -8,30 +8,14 @@ import (
 	"github.com/mileschou/devpulse/internal/build"
 	"github.com/mileschou/devpulse/internal/fetching"
 	"github.com/mileschou/devpulse/internal/persistence"
-	"github.com/mileschou/devpulse/internal/persistence/migrator"
+	"github.com/mileschou/devpulse/internal/persistence/persistencetest"
 	"github.com/mileschou/devpulse/internal/pullrequest"
 	"github.com/mileschou/devpulse/internal/repo"
 	"github.com/mileschou/devpulse/internal/x/commitsha"
-	"github.com/mileschou/devpulse/migrations"
 )
 
-// setup boots an in-memory SQLite database with all migrations applied
-// and returns a Persister rooted at it.
 func setup(t *testing.T) *persistence.Persister {
-	t.Helper()
-	ctx := context.Background()
-
-	conn, err := persistence.Open(ctx, "memory")
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.DB.Close() })
-
-	m := migrator.New(conn.DB, conn.Dialect, migrations.FS, nil)
-	if err := m.MigrateUp(ctx); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	return persistence.New(conn, nil)
+	return persistencetest.NewMemoryPersister(t)
 }
 
 func mustFullName(t *testing.T, s string) repo.FullName {

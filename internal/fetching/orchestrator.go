@@ -15,10 +15,7 @@ import (
 
 const tracerName = "github.com/mileschou/devpulse/internal/fetching"
 
-// Orchestrator coordinates CI + VCS fetch and enrichment.
-// Mirrors the responsibilities of the PHP FetchOrchestrator but with all
-// of the previous trip-hazards (fillable drift, model-state pollution,
-// negative-int writes) eliminated by construction.
+// Orchestrator coordinates CI + VCS fetch and enrichment for one repo/month.
 type Orchestrator struct {
 	ci      CIProvider
 	vcs     VCSProvider
@@ -45,35 +42,50 @@ func NewOrchestrator(
 	}
 }
 
-// Fetch pulls builds + PRs for one repo / month and runs enrichment.
+// FetchBuilds pulls CI builds for one repo / month, upserts them, and
+// back-fills GitHub commit-author logins for any rows that still lack one.
 // Safe to re-run for the same month: upserts dedupe writes.
-func (o *Orchestrator) Fetch(ctx context.Context, r repo.Repo, month MonthRange) RepoFetchOutcome {
+func (o *Orchestrator) FetchBuilds(ctx context.Context, r repo.Repo, month MonthRange) BuildsFetchOutcome {
 	tracer := otel.Tracer(tracerName)
-	ctx, span := tracer.Start(ctx, "Orchestrator.Fetch",
+	ctx, span := tracer.Start(ctx, "Orchestrator.FetchBuilds",
 		trace.WithAttributes(
 			attribute.String("repo", r.Name.String()),
 			attribute.String("month", month.String()),
 		))
 	defer span.End()
 
-	outcome := RepoFetchOutcome{RepoFullName: r.Name.String()}
+	outcome := BuildsFetchOutcome{RepoFullName: r.Name.String()}
 
-	buildsWritten, err := o.fetchBuilds(ctx, r, month)
+	written, err := o.fetchBuilds(ctx, r, month)
 	if err != nil {
 		outcome.Error = fmt.Errorf("fetch builds: %w", err)
 		span.RecordError(err)
 		return outcome
 	}
-	outcome.BuildsWritten = buildsWritten
+	outcome.BuildsWritten = written
+	return outcome
+}
 
-	prsWritten, err := o.fetchPullRequests(ctx, r, month)
+// FetchPullRequests pulls PRs (and their reviews / enrichment) for one
+// repo / month. Safe to re-run.
+func (o *Orchestrator) FetchPullRequests(ctx context.Context, r repo.Repo, month MonthRange) PullRequestsFetchOutcome {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, "Orchestrator.FetchPullRequests",
+		trace.WithAttributes(
+			attribute.String("repo", r.Name.String()),
+			attribute.String("month", month.String()),
+		))
+	defer span.End()
+
+	outcome := PullRequestsFetchOutcome{RepoFullName: r.Name.String()}
+
+	written, err := o.fetchPullRequests(ctx, r, month)
 	if err != nil {
 		outcome.Error = fmt.Errorf("fetch pull requests: %w", err)
 		span.RecordError(err)
 		return outcome
 	}
-	outcome.PullRequestsWritten = prsWritten
-
+	outcome.PullRequestsWritten = written
 	return outcome
 }
 
@@ -216,16 +228,9 @@ func (o *Orchestrator) fetchPullRequests(ctx context.Context, r repo.Repo, month
 	return written, nil
 }
 
-// enrichOnePullRequest is the heart of the lead-time pipeline.
-//
-// All of the PHP-era issues that bit us in production are killed here:
-//   - missing fillable fields: impossible, EnrichmentPatch is a struct
-//   - partial-model pollution: we never mutate the stored PullRequest
-//     object; we hand a patch to the writer
-//   - negative time-to-merge crashing on unsignedInteger: ComputeTimeToMerge
-//     clamps to >=0; the CHECK constraint is belt-and-braces protection
-//   - draft-period reviews polluting Pickup Time: AggregateReviews
-//     filters by readyAt
+// enrichOnePullRequest fetches PR detail + reviews and writes the
+// derived lead-time fields. Reviews submitted before pr.ReadyAt are
+// dropped so draft-period activity does not contribute to Pickup Time.
 func (o *Orchestrator) enrichOnePullRequest(
 	ctx context.Context,
 	r repo.Repo,

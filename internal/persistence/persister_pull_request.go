@@ -147,8 +147,7 @@ func (r *PullRequestPersister) upsertSQL() string {
 	           ?, ?, ?, ?, ?,
 	           ?, ?`
 
-	switch r.Dialect.String() {
-	case "mysql":
+	if r.Dialect.IsMySQL() {
 		return `INSERT INTO pull_requests (` + cols + `) VALUES (` + values + `)
 		        ON DUPLICATE KEY UPDATE
 		            status        = VALUES(status),
@@ -157,16 +156,15 @@ func (r *PullRequestPersister) upsertSQL() string {
 		            merged_at     = VALUES(merged_at),
 		            closed_at     = VALUES(closed_at),
 		            updated_at    = VALUES(updated_at)`
-	default:
-		return `INSERT INTO pull_requests (` + cols + `) VALUES (` + values + `)
-		        ON CONFLICT (repo_id, number) DO UPDATE SET
-		            status        = EXCLUDED.status,
-		            is_draft      = EXCLUDED.is_draft,
-		            ready_at      = EXCLUDED.ready_at,
-		            merged_at     = EXCLUDED.merged_at,
-		            closed_at     = EXCLUDED.closed_at,
-		            updated_at    = EXCLUDED.updated_at`
 	}
+	return `INSERT INTO pull_requests (` + cols + `) VALUES (` + values + `)
+	        ON CONFLICT (repo_id, number) DO UPDATE SET
+	            status        = EXCLUDED.status,
+	            is_draft      = EXCLUDED.is_draft,
+	            ready_at      = EXCLUDED.ready_at,
+	            merged_at     = EXCLUDED.merged_at,
+	            closed_at     = EXCLUDED.closed_at,
+	            updated_at    = EXCLUDED.updated_at`
 }
 
 // scanPullRequest decodes one row from the standard SELECT column list.
@@ -188,15 +186,6 @@ func scanPullRequest(s rowScanner) (pullrequest.PullRequest, error) {
 		return p, err
 	}
 
-	switch statusStr {
-	case "open":
-		p.Status = pullrequest.StatusOpen
-	case "merged":
-		p.Status = pullrequest.StatusMerged
-	case "closed":
-		p.Status = pullrequest.StatusClosed
-	default:
-		p.Status = pullrequest.StatusUnknown
-	}
+	p.Status = pullrequest.ParseStatus(statusStr)
 	return p, nil
 }

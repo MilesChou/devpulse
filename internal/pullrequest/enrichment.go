@@ -55,28 +55,22 @@ func AggregateReviews(reviews []Review, readyAt *time.Time) ReviewAggregate {
 
 // ComputeTimeToApproval returns seconds from readyAt to firstApprovedAt,
 // or nil if either anchor is missing. Negative results are clamped to 0
-// to honor the unsignedInteger storage contract.
+// because the column is non-negative by CHECK constraint.
 func ComputeTimeToApproval(readyAt *time.Time, firstApprovedAt *time.Time) *int {
-	if readyAt == nil || firstApprovedAt == nil {
-		return nil
-	}
-	d := int(firstApprovedAt.Sub(*readyAt).Seconds())
-	if d < 0 {
-		d = 0
-	}
-	return &d
+	return secondsBetween(readyAt, firstApprovedAt)
 }
 
 // ComputeTimeToMerge returns seconds from firstApprovedAt to mergedAt,
-// or nil if either anchor is missing. Clamped to 0 like above.
+// with the same nil + clamp behavior as ComputeTimeToApproval.
 func ComputeTimeToMerge(firstApprovedAt *time.Time, mergedAt *time.Time) *int {
-	if firstApprovedAt == nil || mergedAt == nil {
+	return secondsBetween(firstApprovedAt, mergedAt)
+}
+
+func secondsBetween(start, end *time.Time) *int {
+	if start == nil || end == nil {
 		return nil
 	}
-	d := int(mergedAt.Sub(*firstApprovedAt).Seconds())
-	if d < 0 {
-		d = 0
-	}
+	d := max(0, int(end.Sub(*start).Seconds()))
 	return &d
 }
 

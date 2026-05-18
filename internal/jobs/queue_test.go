@@ -9,22 +9,11 @@ import (
 
 	"github.com/mileschou/devpulse/internal/jobs"
 	"github.com/mileschou/devpulse/internal/persistence"
-	"github.com/mileschou/devpulse/internal/persistence/migrator"
-	"github.com/mileschou/devpulse/migrations"
+	"github.com/mileschou/devpulse/internal/persistence/persistencetest"
 )
 
 func setup(t *testing.T) *persistence.Persister {
-	t.Helper()
-	ctx := context.Background()
-	conn, err := persistence.Open(ctx, "memory")
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.DB.Close() })
-	if err := migrator.New(conn.DB, conn.Dialect, migrations.FS, nil).MigrateUp(ctx); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	return persistence.New(conn, nil)
+	return persistencetest.NewMemoryPersister(t)
 }
 
 func TestEnqueueAndLease(t *testing.T) {

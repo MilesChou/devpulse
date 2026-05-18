@@ -9,11 +9,12 @@ import (
 
 	"github.com/mileschou/devpulse/internal/build"
 	"github.com/mileschou/devpulse/internal/x/commitsha"
+	"github.com/mileschou/devpulse/internal/x/timex"
 )
 
-// trunkBranches mirrors the PHP-side mapping: pushes to main/master are
-// post-merge builds; pushes to other branches are treated as PR-flow
-// builds (covers PRs merged before Travis is paged).
+// Pushes to a trunk branch are post-merge builds; pushes to any other
+// branch are treated as PR-flow builds (covers PRs merged before the
+// Travis backfill catches up).
 var trunkBranches = map[string]struct{}{"main": {}, "master": {}}
 
 // rawBuild is the slim subset of Travis v3 /repo/:slug/builds JSON.
@@ -44,9 +45,10 @@ type buildsResponse struct {
 // ListBuildsInMonth pages through /repo/:slug/builds in id-desc order,
 // terminating after 50 consecutive builds older than month.Start.
 //
-// Mirrors the PHP-side behavior: id-desc is not strictly time-desc, so
-// stopping on the first below-window build can drop legitimate entries.
-// 50-consecutive is the safe cutoff carried over from the Python prototype.
+// id-desc is not strictly time-desc because cancelled / re-run / PR
+// builds can interleave with push builds. Stopping on the first
+// below-window entry would drop legitimate ones, so we use a
+// consecutive-50 cutoff inherited from the Python prototype.
 func (c *Client) ListBuildsInMonth(
 	ctx context.Context,
 	slug string,
@@ -151,22 +153,14 @@ func buildFromRaw(r rawBuild) (build.Build, bool) {
 
 	return build.Build{
 		ExternalID: strconv.Itoa(r.ID),
-		Number:     r.PullRequestNumber,
+		PRNumber:   r.PullRequestNumber,
 		CommitSHA:  sha,
 		Branch:     branch,
 		Status:     resolveStatus(r.State),
 		Trigger:    resolveTrigger(r.EventType, branch),
 		StartedAt:  startRaw.UTC(),
-		FinishedAt: ptrUTC(r.FinishedAt),
+		FinishedAt: timex.PtrUTC(r.FinishedAt),
 	}, true
-}
-
-func ptrUTC(t *time.Time) *time.Time {
-	if t == nil {
-		return nil
-	}
-	u := t.UTC()
-	return &u
 }
 
 func resolveStatus(state string) build.Status {
@@ -201,6 +195,3 @@ func resolveTrigger(eventType, branch string) build.Trigger {
 		return build.TriggerUnknown
 	}
 }
-
-// unused, kept to satisfy imports if PHP-style itoa is referenced
-var _ = itoa

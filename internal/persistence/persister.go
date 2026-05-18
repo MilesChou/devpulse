@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -20,6 +21,12 @@ type Persister struct {
 	Dialect dialect.Dialect
 	Logger  *slog.Logger
 	Now     func() time.Time
+
+	// rebindCache memoizes Rebind output keyed on the raw `?`-placeholder
+	// query. Persisters call ExecCtx/QueryCtx in tight loops with the
+	// same SQL each iteration; without the cache every call allocates a
+	// fresh strings.Builder for the same result.
+	rebindCache sync.Map // map[string]string
 }
 
 // New builds a Persister from an open Connection.
@@ -35,9 +42,16 @@ func New(conn *Connection, logger *slog.Logger) *Persister {
 	}
 }
 
-// Rebind rewrites `?` placeholders for the persister's dialect.
+// Rebind rewrites `?` placeholders for the persister's dialect. Results
+// are memoized per raw query string so high-frequency call sites do not
+// re-walk the string on every invocation.
 func (p *Persister) Rebind(query string) string {
-	return p.Dialect.Rebind(query)
+	if v, ok := p.rebindCache.Load(query); ok {
+		return v.(string)
+	}
+	rebound := p.Dialect.Rebind(query)
+	p.rebindCache.Store(query, rebound)
+	return rebound
 }
 
 // NewID returns a new ULID string suitable for CHAR(26) primary keys.

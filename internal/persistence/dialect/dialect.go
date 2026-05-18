@@ -29,6 +29,13 @@ func (d Dialect) String() string {
 	}
 }
 
+// IsMySQL reports whether the dialect is MySQL. Useful when MySQL needs
+// different SQL syntax (INSERT IGNORE vs ON CONFLICT, backtick identifiers).
+func (d Dialect) IsMySQL() bool { return d == MySQL }
+
+// IsPostgres reports whether the dialect is PostgreSQL.
+func (d Dialect) IsPostgres() bool { return d == Postgres }
+
 // Parse accepts the common driver and short-name spellings.
 func Parse(s string) (Dialect, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {

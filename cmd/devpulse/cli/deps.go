@@ -8,6 +8,7 @@ import (
 	"github.com/mileschou/devpulse/internal/fetching"
 	"github.com/mileschou/devpulse/internal/github"
 	"github.com/mileschou/devpulse/internal/persistence"
+	"github.com/mileschou/devpulse/internal/persistence/dsn"
 	"github.com/mileschou/devpulse/internal/persistence/migrator"
 	"github.com/mileschou/devpulse/internal/travis"
 	"github.com/mileschou/devpulse/internal/x/logx"
@@ -61,7 +62,7 @@ func buildDeps(ctx context.Context) (*deps, error) {
 	// Memory DSNs are fresh on every process start, so auto-apply
 	// migrations so the binary "just works" for tests and one-off CLI
 	// invocations. Mirrors ory/hydra's behaviour.
-	if conn.IsMemory {
+	if dsn.IsMemory(cfg.DSN) {
 		if err := migrator.New(conn.DB, conn.Dialect, migrations.FS, logger).MigrateUp(ctx); err != nil {
 			_ = conn.DB.Close()
 			_ = tp.Shutdown(ctx)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/mileschou/devpulse/internal/pullrequest"
 	"github.com/mileschou/devpulse/internal/repo"
+	"github.com/mileschou/devpulse/internal/x/timex"
 )
 
 // rawPull is the slim subset of GitHub's REST PR JSON we read. Extend as
@@ -61,8 +62,8 @@ func (r rawPull) toDomain(repoID string) pullrequest.PullRequest {
 		TotalChangedLines: r.Additions + r.Deletions,
 		IsDraft:           r.Draft,
 		CreatedAt:         r.CreatedAt.UTC(),
-		MergedAt:          ptrUTC(r.MergedAt),
-		ClosedAt:          ptrUTC(r.ClosedAt),
+		MergedAt:          timex.PtrUTC(r.MergedAt),
+		ClosedAt:          timex.PtrUTC(r.ClosedAt),
 	}
 
 	// GitHub's REST does not surface ready_at directly. For non-draft PRs,
@@ -74,14 +75,6 @@ func (r rawPull) toDomain(repoID string) pullrequest.PullRequest {
 		pr.ReadyAt = &t
 	}
 	return pr
-}
-
-func ptrUTC(t *time.Time) *time.Time {
-	if t == nil {
-		return nil
-	}
-	u := t.UTC()
-	return &u
 }
 
 // ListPullRequestsInMonth pages through GET /repos/:owner/:name/pulls,

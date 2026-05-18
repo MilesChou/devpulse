@@ -45,7 +45,7 @@ func (b *BuildPersister) UpsertMany(ctx context.Context, repoID string, builds [
 			row.ExternalID,
 			row.CommitSHA.String(),
 			nullStr(row.Author),
-			nullInt(row.Number),
+			nullInt(row.PRNumber),
 			row.Status.String(),
 			row.Trigger.String(),
 			nullStr(row.Branch),
@@ -134,18 +134,16 @@ func (b *BuildPersister) buildInsertSQL() string {
 	           ?, ?, ?,
 	           ?, ?`
 
-	switch b.Dialect.String() {
-	case "mysql":
+	if b.Dialect.IsMySQL() {
 		cols = `id, repo_id, external_id, commit_sha, author_account, pr_number,
 		        status, ` + "`trigger`" + `, branch,
 		        is_post_merge, is_pull_request, is_deploy_event, is_failure,
 		        started_at, duration_seconds, raw_payload,
 		        created_at, updated_at`
 		return `INSERT IGNORE INTO builds (` + cols + `) VALUES (` + values + `)`
-	default:
-		return `INSERT INTO builds (` + cols + `) VALUES (` + values + `)
-		        ON CONFLICT (repo_id, external_id) DO NOTHING`
 	}
+	return `INSERT INTO builds (` + cols + `) VALUES (` + values + `)
+	        ON CONFLICT (repo_id, external_id) DO NOTHING`
 }
 
 func nullStr(s string) any {

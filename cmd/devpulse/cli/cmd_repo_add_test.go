@@ -30,7 +30,7 @@ func runCmd(t *testing.T, args ...string) (string, error) {
 
 func TestRepoAdd_RejectsInvalidName(t *testing.T) {
 	setEnv(t)
-	_, err := runCmd(t, "repo-add", "not-a-slug")
+	_, err := runCmd(t, "repo", "add", "not-a-slug")
 	if err == nil {
 		t.Fatalf("expected error")
 	}

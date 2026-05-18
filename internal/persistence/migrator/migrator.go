@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"slices"
 
 	"github.com/mileschou/devpulse/internal/persistence/dialect"
 )
@@ -137,7 +138,7 @@ func (m *Migrator) Status(ctx context.Context) ([]int64, error) {
 	for v := range applied {
 		out = append(out, v)
 	}
-	sortInt64Asc(out)
+	slices.Sort(out)
 	return out, nil
 }
 
@@ -162,12 +163,4 @@ func (m *Migrator) runStep(ctx context.Context, step Step, up bool) error {
 	}
 
 	return tx.Commit()
-}
-
-func sortInt64Asc(s []int64) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j] < s[j-1]; j-- {
-			s[j], s[j-1] = s[j-1], s[j]
-		}
-	}
 }

@@ -8,11 +8,10 @@ import (
 	"github.com/mileschou/devpulse/internal/build"
 	"github.com/mileschou/devpulse/internal/fetching"
 	"github.com/mileschou/devpulse/internal/persistence"
-	"github.com/mileschou/devpulse/internal/persistence/migrator"
+	"github.com/mileschou/devpulse/internal/persistence/persistencetest"
 	"github.com/mileschou/devpulse/internal/pullrequest"
 	"github.com/mileschou/devpulse/internal/repo"
 	"github.com/mileschou/devpulse/internal/x/commitsha"
-	"github.com/mileschou/devpulse/migrations"
 )
 
 // fakeCIProvider returns canned builds.
@@ -83,19 +82,10 @@ func (f *fakeVCSProvider) GetCommitAuthorAccountsBulk(
 
 func setup(t *testing.T) (*persistence.Persister, repo.Repo) {
 	t.Helper()
-	ctx := context.Background()
-	conn, err := persistence.Open(ctx, "memory")
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	t.Cleanup(func() { _ = conn.DB.Close() })
-	if err := migrator.New(conn.DB, conn.Dialect, migrations.FS, nil).MigrateUp(ctx); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	p := persistence.New(conn, nil)
+	p := persistencetest.NewMemoryPersister(t)
 	rp := persistence.NewRepoPersister(p)
 	name, _ := repo.ParseFullName("MilesChou/devpulse")
-	r, err := rp.EnsureID(ctx, "github", name)
+	r, err := rp.EnsureID(context.Background(), "github", name)
 	if err != nil {
 		t.Fatalf("ensure repo: %v", err)
 	}
@@ -154,12 +144,20 @@ func TestFetch_PersistsBuildsAndPRs(t *testing.T) {
 	orch := fetching.NewOrchestrator(ci, vcs, bp, pp, rvp, nil)
 	month := fetching.NewMonthRange(2026, time.May)
 
-	outcome := orch.Fetch(ctx, r, month)
-	if outcome.Error != nil {
-		t.Fatalf("outcome err: %v", outcome.Error)
+	buildOutcome := orch.FetchBuilds(ctx, r, month)
+	if buildOutcome.Error != nil {
+		t.Fatalf("build outcome err: %v", buildOutcome.Error)
 	}
-	if outcome.BuildsWritten != 1 || outcome.PullRequestsWritten != 1 {
-		t.Fatalf("counts: %+v", outcome)
+	if buildOutcome.BuildsWritten != 1 {
+		t.Fatalf("builds written: %+v", buildOutcome)
+	}
+
+	prOutcome := orch.FetchPullRequests(ctx, r, month)
+	if prOutcome.Error != nil {
+		t.Fatalf("pr outcome err: %v", prOutcome.Error)
+	}
+	if prOutcome.PullRequestsWritten != 1 {
+		t.Fatalf("prs written: %+v", prOutcome)
 	}
 
 	// Build author should have been back-filled.
@@ -225,11 +223,22 @@ func TestFetch_BuildAuthorEnrichmentFailureDoesNotAbortPRFetch(t *testing.T) {
 
 	orch := fetching.NewOrchestrator(ci, vcs, bp, pp, rvp, nil)
 	month := fetching.NewMonthRange(2026, time.May)
-	outcome := orch.Fetch(ctx, r, month)
-	if outcome.Error != nil {
-		t.Fatalf("PR fetch should still succeed despite author backfill failure: %v", outcome.Error)
+
+	// Author backfill failure inside FetchBuilds is swallowed (logged
+	// only); the build itself is still written.
+	buildOutcome := orch.FetchBuilds(ctx, r, month)
+	if buildOutcome.Error != nil {
+		t.Fatalf("FetchBuilds should not surface bulk-author failure: %v", buildOutcome.Error)
 	}
-	if outcome.PullRequestsWritten != 1 {
-		t.Fatalf("PR not written: %+v", outcome)
+	if buildOutcome.BuildsWritten != 1 {
+		t.Fatalf("build not written: %+v", buildOutcome)
+	}
+
+	prOutcome := orch.FetchPullRequests(ctx, r, month)
+	if prOutcome.Error != nil {
+		t.Fatalf("FetchPullRequests should still succeed: %v", prOutcome.Error)
+	}
+	if prOutcome.PullRequestsWritten != 1 {
+		t.Fatalf("PR not written: %+v", prOutcome)
 	}
 }
