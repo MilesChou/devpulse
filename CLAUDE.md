@@ -4,6 +4,10 @@
 
 - Use English in PRs and all code internals (comments, variable names, commit messages, etc.).
 
+## Documentation
+
+- `README.md` (English) and `README.zh-TW.md` (Traditional Chinese, Taiwan) must stay in sync. Whenever you change one, mirror the change in the other in the same commit.
+
 ## Project goal
 
 DevPulse exists to **observe CI and PR engineering-efficiency metrics**.
