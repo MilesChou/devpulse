@@ -182,21 +182,23 @@ final class FetchOrchestrator
         }
 
         $timeToApproval = ($pr->ready_at !== null && $firstApprovedAt !== null)
-            ? $firstApprovedAt->getTimestamp() - $pr->ready_at->getTimestamp()
+            ? max(0, $firstApprovedAt->getTimestamp() - $pr->ready_at->getTimestamp())
             : null;
 
         $timeToMerge = ($firstApprovedAt !== null && $pr->merged_at !== null)
-            ? $pr->merged_at->getTimestamp() - $firstApprovedAt->getTimestamp()
+            ? max(0, $pr->merged_at->getTimestamp() - $firstApprovedAt->getTimestamp())
             : null;
 
-        $pr->update([
-            'additions' => $detail->changes()->additions,
-            'deletions' => $detail->changes()->deletions,
-            'total_changed_lines' => $detail->changes()->total(),
-            'first_review_at' => $firstReviewAt,
-            'first_approved_at' => $firstApprovedAt,
-            'time_to_approval' => $timeToApproval,
-            'time_to_merge' => $timeToMerge,
-        ]);
+        PullRequest::query()
+            ->whereKey($pr->id)
+            ->update([
+                'additions' => $detail->changes()->additions,
+                'deletions' => $detail->changes()->deletions,
+                'total_changed_lines' => $detail->changes()->total(),
+                'first_review_at' => $firstReviewAt,
+                'first_approved_at' => $firstApprovedAt,
+                'time_to_approval' => $timeToApproval,
+                'time_to_merge' => $timeToMerge,
+            ]);
     }
 }

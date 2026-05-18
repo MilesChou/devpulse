@@ -46,6 +46,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'pr_created_at',
     'ready_at',
     'first_review_at',
+    'first_approved_at',
+    'time_to_approval',
+    'time_to_merge',
     'merged_at',
     'closed_at',
 ])]
