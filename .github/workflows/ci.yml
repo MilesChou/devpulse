@@ -44,7 +44,7 @@ jobs:
           - dialect: postgres
             dsn: "postgres://devpulse:devpulse@localhost:5432/devpulse?sslmode=disable"
           - dialect: mysql
-            dsn: "mysql://devpulse:devpulse@(localhost:3306)/devpulse?parseTime=true&multiStatements=true"
+            dsn: "mysql://devpulse:devpulse@localhost:3306/devpulse?parseTime=true&multiStatements=true"
 
     services:
       postgres:
