@@ -65,8 +65,8 @@ func (r *RepoPersister) Create(ctx context.Context, platform string, fullName re
 	id := r.NewID()
 	now := r.Now()
 
-	const q = `INSERT INTO repos (id, slug, name, type, url, human_signals, created_at, updated_at)
-	           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	const q = `INSERT INTO repos (id, slug, name, type, url, created_at, updated_at)
+	           VALUES (?, ?, ?, ?, ?, ?, ?)`
 
 	if _, err := r.ExecCtx(ctx, q,
 		id,
@@ -74,7 +74,6 @@ func (r *RepoPersister) Create(ctx context.Context, platform string, fullName re
 		fullName.String(),
 		platform,
 		url,
-		"[]",
 		now,
 		now,
 	); err != nil {

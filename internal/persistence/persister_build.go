@@ -49,7 +49,7 @@ func (b *BuildPersister) UpsertMany(ctx context.Context, repoID string, builds [
 			row.Status.String(),
 			row.Trigger.String(),
 			nullStr(row.Branch),
-			false, // is_post_merge — populated later by classifier
+			false, // is_post_merge — populated later by post-processing
 			row.Trigger == build.TriggerPullRequest,
 			false, // is_deploy_event
 			row.Status == build.StatusFailed || row.Status == build.StatusErrored,
