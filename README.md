@@ -118,6 +118,14 @@ DEVPULSE_DSN='postgres://devpulse:devpulse@localhost:5432/devpulse?sslmode=disab
   go test -p 1 -race -count=1 ./...
 ```
 
+A pair of Docker Compose overlays is provided to spin up a local backend.
+The base file is intentionally empty; pick one or both overlays:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml    up -d
+```
+
 CI runs the SQLite, PostgreSQL, and MySQL matrix automatically — see
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 

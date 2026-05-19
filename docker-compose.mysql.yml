@@ -1,0 +1,28 @@
+# MySQL backend overlay for DevPulse.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d
+#
+# Matching DSN:
+#   mysql://devpulse:devpulse@localhost:3306/devpulse?parseTime=true&multiStatements=true
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: devpulse-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: devpulse
+      MYSQL_USER: devpulse
+      MYSQL_PASSWORD: devpulse
+      MYSQL_ROOT_PASSWORD: root
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-udevpulse", "-pdevpulse"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - devpulse

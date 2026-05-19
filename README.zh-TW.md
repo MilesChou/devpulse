@@ -113,6 +113,14 @@ DEVPULSE_DSN='postgres://devpulse:devpulse@localhost:5432/devpulse?sslmode=disab
   go test -p 1 -race -count=1 ./...
 ```
 
+本機備有一組 Docker Compose overlay 可起本地後端。base 檔故意留空，
+請挑一個（或同時開兩個）overlay：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml    up -d
+```
+
 CI 會自動跑 SQLite、PostgreSQL、MySQL 三套 matrix — 詳見
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)。
 
