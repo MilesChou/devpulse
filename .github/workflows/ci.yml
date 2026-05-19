@@ -46,41 +46,22 @@ jobs:
           - dialect: mysql
             dsn: "mysql://devpulse:devpulse@localhost:3306/devpulse?parseTime=true&multiStatements=true"
 
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: devpulse
-          POSTGRES_USER: devpulse
-          POSTGRES_PASSWORD: devpulse
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U devpulse -d devpulse"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      mysql:
-        image: mysql:8.4
-        env:
-          MYSQL_DATABASE: devpulse
-          MYSQL_USER: devpulse
-          MYSQL_PASSWORD: devpulse
-          MYSQL_ROOT_PASSWORD: root
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd "mysqladmin ping -h localhost -udevpulse -pdevpulse"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
           cache: true
+
+      # Start the matching backend via the same compose overlays
+      # developers use locally. SQLite needs no container.
+      - name: Start backend
+        if: matrix.dialect != 'sqlite'
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.${{ matrix.dialect }}.yml \
+            up -d --wait
 
       # Remote DSNs share one DB across every test. -p 1 keeps tests
       # serial so each can roll migrations down + back up cleanly.
@@ -93,6 +74,14 @@ jobs:
           else
             go test -p 1 -race -count=1 -timeout=10m ./...
           fi
+
+      - name: Stop backend
+        if: always() && matrix.dialect != 'sqlite'
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.${{ matrix.dialect }}.yml \
+            down -v
 
   docker:
     name: Docker build
