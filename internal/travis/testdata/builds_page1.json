@@ -1,0 +1,43 @@
+{
+  "builds": [
+    {
+      "id": 9001,
+      "number": "1234",
+      "state": "passed",
+      "event_type": "push",
+      "pull_request_number": 0,
+      "duration": 300,
+      "started_at": "2026-05-20T10:00:00Z",
+      "finished_at": "2026-05-20T10:05:00Z",
+      "commit": {"sha": "aaa1234567890abcdef1234567890abcdef12345"},
+      "branch": {"name": "main"},
+      "repository": {"slug": "MilesChou/devpulse"}
+    },
+    {
+      "id": 9000,
+      "number": "1233",
+      "state": "failed",
+      "event_type": "pull_request",
+      "pull_request_number": 42,
+      "duration": 250,
+      "started_at": "2026-05-15T10:00:00Z",
+      "finished_at": "2026-05-15T10:04:10Z",
+      "commit": {"sha": "bbb1234567890abcdef1234567890abcdef12345"},
+      "branch": {"name": "feature-x"},
+      "repository": {"slug": "MilesChou/devpulse"}
+    },
+    {
+      "id": 8500,
+      "number": "1100",
+      "state": "canceled",
+      "event_type": "push",
+      "pull_request_number": 0,
+      "duration": null,
+      "started_at": null,
+      "finished_at": null,
+      "commit": {"sha": "ccc1234567890abcdef1234567890abcdef12345"},
+      "branch": {"name": "main"},
+      "repository": {"slug": "MilesChou/devpulse"}
+    }
+  ]
+}

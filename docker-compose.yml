@@ -1,0 +1,18 @@
+# Base compose file for DevPulse local backends.
+#
+# This file on its own brings up nothing — pick a backend overlay and
+# compose them with `-f`:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
+#   docker compose -f docker-compose.yml -f docker-compose.mysql.yml    up -d
+#
+# Multiple overlays can be combined, e.g. to run Postgres and MySQL
+# side-by-side for cross-dialect testing.
+services: {}
+
+networks:
+  devpulse:
+
+volumes:
+  postgres-data:
+  mysql-data:

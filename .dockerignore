@@ -1,0 +1,10 @@
+.git
+.github
+.claude
+.idea
+bin
+openspec
+README.md
+.env
+.env.*
+

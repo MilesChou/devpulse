@@ -1,1 +1,151 @@
-# coverdiff
+# DevPulse
+
+Engineering-efficiency observability for CI and PR workflows: pulls data
+from GitHub and CI providers, computes team-level metrics (CI failure
+rate, PR review latency, build duration, PR re-push count), and persists
+them to a relational database for downstream analysis.
+
+Distributed as a single Go binary.
+
+> 正體中文：[README.zh-TW.md](README.zh-TW.md)
+
+## Scope
+
+- **Is**: a CLI tool plus a relational data layer.
+- **Is not**: a SaaS, a multi-tenant platform, or a realtime webhook
+  service.
+- **Designed for**: single-host, single-user, ~100–1000 builds per repo
+  per month.
+
+## Install
+
+### Requirements
+
+- Go **1.26+** (only for building from source)
+- A supported database: PostgreSQL, MySQL, or SQLite (including in-memory)
+- A GitHub personal access token; a Travis CI token if Travis is used
+
+### Build from source
+
+```bash
+git clone https://github.com/MilesChou/devpulse.git
+cd devpulse
+make build
+./bin/devpulse --help
+```
+
+Or install directly:
+
+```bash
+go install github.com/mileschou/devpulse/cmd/devpulse@latest
+```
+
+## Configuration
+
+Copy the example file and fill in the secrets:
+
+```bash
+cp .env.example .env
+```
+
+`DEVPULSE_DSN` accepts the following forms:
+
+```
+postgres://user:pass@host:5432/db?sslmode=disable
+mysql://user:pass@host:3306/db?parseTime=true
+sqlite://./devpulse.db?_fk=true
+memory                              # in-memory SQLite, auto-migrates on startup
+```
+
+The `memory` form requires no external services and is convenient for
+testing or one-off CLI invocations.
+
+## Quick start
+
+```bash
+# Apply migrations (skipped automatically when DEVPULSE_DSN=memory).
+devpulse migrate up
+
+# Register a repository.
+devpulse repo add MilesChou/devpulse
+
+# Pull CI builds for one month.
+devpulse build fetch MilesChou/devpulse 2026-05
+
+# Pull PRs + reviews + enrichment for the same month.
+devpulse pr fetch MilesChou/devpulse 2026-05
+
+# Re-run enrichment for a single PR.
+devpulse pr enrich MilesChou/devpulse 42
+
+# Process enqueued jobs (long-running).
+devpulse worker
+```
+
+## Commands
+
+DevPulse groups commands by resource (`repo`, `build`, `pr`) with verbs
+underneath, in the style of `gh` and `jira-cli`.
+
+| Command | Purpose |
+|---|---|
+| `devpulse repo add <owner/name>` | Register a repository |
+| `devpulse build fetch <owner/name> <YYYY-MM>` | Fetch CI builds for one month |
+| `devpulse pr fetch <owner/name> <YYYY-MM>` | Fetch PRs + reviews + enrichment for one month |
+| `devpulse pr enrich <owner/name> <number>` | Recompute enrichment for one PR |
+| `devpulse migrate {up,down,status}` | Schema migration |
+| `devpulse worker` | Run the DB-backed job worker |
+| `devpulse serve` | Placeholder for the v2 HTTP API |
+
+## Development
+
+```bash
+make all       # gofmt + go vet + go test + build (used by the pre-commit hook)
+make build     # Build the binary into ./bin/devpulse
+make test      # Run unit tests
+make test-race # Run unit tests with the race detector
+make lint      # gofmt + go vet
+make tidy      # go mod tidy
+```
+
+By default `make test` runs against in-memory SQLite. To run the same
+test suite against a real PostgreSQL or MySQL instance, point
+`DEVPULSE_DSN` at it and serialize the tests (the suite resets migrations
+between cases, so parallel runs would race):
+
+```bash
+DEVPULSE_DSN='postgres://devpulse:devpulse@localhost:5432/devpulse?sslmode=disable' \
+  go test -p 1 -race -count=1 ./...
+```
+
+A pair of Docker Compose overlays is provided to spin up a local backend.
+The base file is intentionally empty; pick one or both overlays:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml    up -d
+```
+
+CI runs the SQLite, PostgreSQL, and MySQL matrix automatically — see
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+### Tracing
+
+OpenTelemetry tracing is optional. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to a
+collector address (e.g. a local Jaeger at `localhost:4318`) to ship
+spans; leave it empty and the provider is a no-op.
+
+## Stack
+
+- Go 1.26
+- `database/sql` with three drivers: `jackc/pgx/v5/stdlib`,
+  `go-sql-driver/mysql`, `modernc.org/sqlite`
+- [`spf13/cobra`](https://github.com/spf13/cobra) for the CLI
+- [`hashicorp/go-retryablehttp`](https://github.com/hashicorp/go-retryablehttp)
+  for outbound HTTP
+- OpenTelemetry SDK for tracing
+- A small in-tree DB-backed job queue
+
+## License
+
+MIT — see [LICENSE](LICENSE).

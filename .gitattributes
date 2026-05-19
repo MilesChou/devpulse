@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+*.go text diff=golang
+*.md diff=markdown
+*.sql diff
+*.sum text
+
+/.github export-ignore
+

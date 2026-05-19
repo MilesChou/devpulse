@@ -1,0 +1,13 @@
+{
+  "number": 42,
+  "state": "closed",
+  "draft": false,
+  "title": "Add fetch orchestrator",
+  "user": {"login": "alice"},
+  "created_at": "2026-05-15T10:00:00Z",
+  "updated_at": "2026-05-15T14:00:00Z",
+  "merged_at": "2026-05-15T13:00:00Z",
+  "closed_at": "2026-05-15T13:00:00Z",
+  "additions": 120,
+  "deletions": 35
+}

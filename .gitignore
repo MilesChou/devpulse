@@ -1,0 +1,38 @@
+# OS
+.DS_Store
+.AppleDouble
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+Desktop.ini
+
+# Editor / IDE
+*~
+*.swp
+/.idea
+/.vscode
+/.zed
+/.nova
+/.codex
+/.cursor/
+
+# DevPulse local config
+.env
+.env.local
+*.log
+/devpulse.db
+/devpulse.db-*
+
+# Go
+/bin
+*.test
+*.out
+coverage.txt
+
+# AI
+.claude/settings.local.json
+.claude/worktrees/
+.claude/scheduled_tasks.lock
+.mcp.json
+

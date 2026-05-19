@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+      - name: gofmt
+        run: |
+          diff=$(gofmt -l .)
+          if [ -n "$diff" ]; then
+            echo "Files need gofmt:" >&2
+            echo "$diff" >&2
+            exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+
+  test:
+    name: Test (${{ matrix.dialect }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        dialect: [sqlite, postgres, mysql]
+        include:
+          - dialect: sqlite
+            dsn: "memory"
+          - dialect: postgres
+            dsn: "postgres://devpulse:devpulse@localhost:5432/devpulse?sslmode=disable"
+          - dialect: mysql
+            dsn: "mysql://devpulse:devpulse@localhost:3306/devpulse?parseTime=true&multiStatements=true"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      # setup-go only caches module downloads. Cache the build cache too
+      # so re-runs of the same matrix don't recompile every package.
+      # Key on dialect because -race builds (sqlite) are a separate cache
+      # from non-race builds (postgres/mysql).
+      - name: Cache go build
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/go-build
+          key: gobuild-${{ runner.os }}-${{ matrix.dialect }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            gobuild-${{ runner.os }}-${{ matrix.dialect }}-
+
+      # Start the matching backend via the same compose overlays
+      # developers use locally. SQLite needs no container.
+      - name: Start backend
+        if: matrix.dialect != 'sqlite'
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.${{ matrix.dialect }}.yml \
+            up -d --wait
+
+      # Remote DSNs share one DB across every test. -p 1 keeps tests
+      # serial so each can roll migrations down + back up cleanly.
+      # -race only on sqlite — it's 2-3x slower and the race detector
+      # finds dialect-independent bugs, so one matrix entry covers it.
+      - name: go test
+        env:
+          DEVPULSE_DSN: ${{ matrix.dsn }}
+        run: |
+          if [ "${{ matrix.dialect }}" = "sqlite" ]; then
+            go test -race -count=1 -timeout=10m ./...
+          else
+            go test -p 1 -count=1 -timeout=10m ./...
+          fi
+
+      - name: Stop backend
+        if: always() && matrix.dialect != 'sqlite'
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.${{ matrix.dialect }}.yml \
+            down -v
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: devpulse:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

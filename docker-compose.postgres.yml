@@ -1,0 +1,27 @@
+# PostgreSQL backend overlay for DevPulse.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
+#
+# Matching DSN:
+#   postgres://devpulse:devpulse@localhost:5432/devpulse?sslmode=disable
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: devpulse-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: devpulse
+      POSTGRES_USER: devpulse
+      POSTGRES_PASSWORD: devpulse
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devpulse -d devpulse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - devpulse

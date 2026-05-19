@@ -1,0 +1,17 @@
+{
+  "builds": [
+    {
+      "id": 7000,
+      "number": "500",
+      "state": "passed",
+      "event_type": "push",
+      "pull_request_number": 0,
+      "duration": 200,
+      "started_at": "2026-04-30T23:00:00Z",
+      "finished_at": "2026-04-30T23:03:20Z",
+      "commit": {"sha": "ddd1234567890abcdef1234567890abcdef12345"},
+      "branch": {"name": "main"},
+      "repository": {"slug": "MilesChou/devpulse"}
+    }
+  ]
+}
