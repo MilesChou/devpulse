@@ -118,12 +118,8 @@ func (b *BuildPersister) UpdateAuthorBySHA(ctx context.Context, repoID string, s
 // PostgreSQL/SQLite support ON CONFLICT; MySQL uses INSERT IGNORE.
 // All three skip duplicates by (repo_id, external_id).
 func (b *BuildPersister) buildInsertSQL() string {
-	// trigger is a Postgres non-reserved word but is safer quoted, so we
-	// quote it unconditionally. MySQL accepts backticks; we use double
-	// quotes which MySQL only honors in ANSI_QUOTES mode — fall back to
-	// no quoting on MySQL.
 	cols := `id, repo_id, external_id, commit_sha, author_account, pr_number,
-	         status, "trigger", branch,
+	         status, trigger_event, branch,
 	         is_post_merge, is_pull_request, is_deploy_event, is_failure,
 	         started_at, duration_seconds, raw_payload,
 	         created_at, updated_at`
@@ -135,11 +131,6 @@ func (b *BuildPersister) buildInsertSQL() string {
 	           ?, ?`
 
 	if b.Dialect.IsMySQL() {
-		cols = `id, repo_id, external_id, commit_sha, author_account, pr_number,
-		        status, ` + "`trigger`" + `, branch,
-		        is_post_merge, is_pull_request, is_deploy_event, is_failure,
-		        started_at, duration_seconds, raw_payload,
-		        created_at, updated_at`
 		return `INSERT IGNORE INTO builds (` + cols + `) VALUES (` + values + `)`
 	}
 	return `INSERT INTO builds (` + cols + `) VALUES (` + values + `)

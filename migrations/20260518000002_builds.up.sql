@@ -6,7 +6,7 @@ CREATE TABLE builds (
     author_account   VARCHAR(64) NULL,
     pr_number        INTEGER NULL,
     status           VARCHAR(32) NOT NULL,
-    trigger          VARCHAR(32) NOT NULL,
+    trigger_event    VARCHAR(32) NOT NULL,
     branch           VARCHAR(255) NULL,
     is_post_merge    BOOLEAN NOT NULL,
     is_pull_request  BOOLEAN NOT NULL,
