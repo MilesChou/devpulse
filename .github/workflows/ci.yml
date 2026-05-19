@@ -53,6 +53,18 @@ jobs:
           go-version: '1.26'
           cache: true
 
+      # setup-go only caches module downloads. Cache the build cache too
+      # so re-runs of the same matrix don't recompile every package.
+      # Key on dialect because -race builds (sqlite) are a separate cache
+      # from non-race builds (postgres/mysql).
+      - name: Cache go build
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/go-build
+          key: gobuild-${{ runner.os }}-${{ matrix.dialect }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            gobuild-${{ runner.os }}-${{ matrix.dialect }}-
+
       # Start the matching backend via the same compose overlays
       # developers use locally. SQLite needs no container.
       - name: Start backend
@@ -65,6 +77,8 @@ jobs:
 
       # Remote DSNs share one DB across every test. -p 1 keeps tests
       # serial so each can roll migrations down + back up cleanly.
+      # -race only on sqlite — it's 2-3x slower and the race detector
+      # finds dialect-independent bugs, so one matrix entry covers it.
       - name: go test
         env:
           DEVPULSE_DSN: ${{ matrix.dsn }}
@@ -72,7 +86,7 @@ jobs:
           if [ "${{ matrix.dialect }}" = "sqlite" ]; then
             go test -race -count=1 -timeout=10m ./...
           else
-            go test -p 1 -race -count=1 -timeout=10m ./...
+            go test -p 1 -count=1 -timeout=10m ./...
           fi
 
       - name: Stop backend
