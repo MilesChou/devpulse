@@ -23,6 +23,7 @@ Desktop.ini
 *.log
 /devpulse.db
 /devpulse.db-*
+init.yaml
 
 # Go
 /bin
