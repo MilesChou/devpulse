@@ -80,6 +80,12 @@ func (f *fakeVCSProvider) GetCommitAuthorAccountsBulk(
 	return out, nil
 }
 
+func (f *fakeVCSProvider) GetRepo(
+	_ context.Context, name repo.FullName,
+) (repo.Repo, error) {
+	return repo.Repo{Name: name}, nil
+}
+
 func setup(t *testing.T) (*persistence.Persister, repo.Repo) {
 	t.Helper()
 	p := persistencetest.NewMemoryPersister(t)
