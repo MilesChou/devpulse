@@ -53,6 +53,16 @@ func (f *fakeVCSProvider) ListAllPullRequests(
 	return f.allPulls, nil
 }
 
+func (f *fakeVCSProvider) ListAllPullRequestsPageFunc(
+	_ context.Context, _ string, _ repo.FullName,
+	fn func(page []pullrequest.PullRequest) error,
+) error {
+	if len(f.allPulls) == 0 {
+		return nil
+	}
+	return fn(f.allPulls)
+}
+
 func (f *fakeVCSProvider) GetPullRequest(
 	_ context.Context, _ string, _ repo.FullName, number int,
 ) (pullrequest.PullRequest, error) {

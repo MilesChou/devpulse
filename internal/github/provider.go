@@ -37,6 +37,15 @@ func (p *Provider) ListAllPullRequests(
 	return p.client.ListAllPullRequests(ctx, repoID, repoName)
 }
 
+func (p *Provider) ListAllPullRequestsPageFunc(
+	ctx context.Context,
+	repoID string,
+	repoName repo.FullName,
+	fn func(page []pullrequest.PullRequest) error,
+) error {
+	return p.client.ListAllPullRequestsPageFunc(ctx, repoID, repoName, fn)
+}
+
 func (p *Provider) GetPullRequest(
 	ctx context.Context,
 	repoID string,

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -18,6 +19,29 @@ func newRepoCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newRepoAddCmd(), newRepoRefreshCmd())
 	return cmd
+}
+
+// registerRepo ensures a repo exists in the store and best-effort fetches
+// GitHub metadata. Used by both `repo add` and `init`.
+func registerRepo(ctx context.Context, w io.Writer, d *deps, name repo.FullName) (repo.Repo, error) {
+	r, err := d.repos.EnsureID(ctx, "github", name)
+	if err != nil {
+		return r, fmt.Errorf("ensure repo %s: %w", name, err)
+	}
+
+	if meta, err := d.vcs.GetRepo(ctx, name); err == nil {
+		if uerr := d.repos.UpdateMetadata(ctx, r.ID, meta); uerr != nil {
+			fmt.Fprintf(w, "warn: %s: update metadata failed: %v\n", name, uerr)
+		} else {
+			r.Description = meta.Description
+			r.DefaultBranch = meta.DefaultBranch
+			r.Disabled = meta.Disabled
+		}
+	} else {
+		fmt.Fprintf(w, "warn: %s: fetch github metadata failed: %v\n", name, err)
+	}
+
+	return r, nil
 }
 
 func printRepoSummary(w io.Writer, r repo.Repo) {

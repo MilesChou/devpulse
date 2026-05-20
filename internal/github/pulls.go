@@ -126,21 +126,40 @@ func (c *Client) ListAllPullRequests(
 	repoName repo.FullName,
 ) ([]pullrequest.PullRequest, error) {
 	var out []pullrequest.PullRequest
+	err := c.ListAllPullRequestsPageFunc(ctx, repoID, repoName, func(page []pullrequest.PullRequest) error {
+		out = append(out, page...)
+		return nil
+	})
+	return out, err
+}
 
+// ListAllPullRequestsPageFunc pages through every PR, calling fn per page.
+func (c *Client) ListAllPullRequestsPageFunc(
+	ctx context.Context,
+	repoID string,
+	repoName repo.FullName,
+	fn func(page []pullrequest.PullRequest) error,
+) error {
 	page := 1
 	for {
 		batch, more, err := c.listPullsPage(ctx, repoName, page, defaultPerPage)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if len(batch) == 0 {
-			return out, nil
+			return nil
 		}
+
+		prs := make([]pullrequest.PullRequest, 0, len(batch))
 		for _, raw := range batch {
-			out = append(out, raw.toDomain(repoID))
+			prs = append(prs, raw.toDomain(repoID))
 		}
+		if err := fn(prs); err != nil {
+			return err
+		}
+
 		if !more {
-			return out, nil
+			return nil
 		}
 		page++
 	}

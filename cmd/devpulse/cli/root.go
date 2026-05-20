@@ -35,6 +35,7 @@ func NewRootCmd() *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.AddCommand(
+		newInitCmd(),
 		newRepoCmd(),
 		newBuildCmd(),
 		newPRCmd(),

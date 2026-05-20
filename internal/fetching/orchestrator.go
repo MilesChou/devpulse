@@ -105,6 +105,52 @@ func (o *Orchestrator) FetchAllPullRequests(ctx context.Context, r repo.Repo) (i
 	return o.prs.UpsertMany(ctx, pulls)
 }
 
+// FetchAllPullRequestsWithEnrichment pages through the full PR history,
+// upserting and enriching each page as it arrives. Returns the total
+// upserted count. Enrichment failures are logged but do not abort.
+func (o *Orchestrator) FetchAllPullRequestsWithEnrichment(ctx context.Context, r repo.Repo) (int, error) {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, "Orchestrator.FetchAllPullRequestsWithEnrichment",
+		trace.WithAttributes(attribute.String("repo", r.Name.String())))
+	defer span.End()
+
+	var totalWritten int
+
+	err := o.vcs.ListAllPullRequestsPageFunc(ctx, r.ID, r.Name, func(page []pullrequest.PullRequest) error {
+		written, err := o.prs.UpsertMany(ctx, page)
+		if err != nil {
+			return err
+		}
+		totalWritten += written
+
+		for _, pr := range page {
+			stored, err := o.prs.FindByNumber(ctx, r.ID, pr.Number)
+			if err != nil {
+				o.logger.Warn("find pr for enrich failed",
+					slog.String("repo", r.Name.String()),
+					slog.Int("number", pr.Number),
+					slog.String("err", err.Error()),
+				)
+				continue
+			}
+			if err := o.enrichOnePullRequest(ctx, r, stored); err != nil {
+				o.logger.Warn("enrich pr failed",
+					slog.String("repo", r.Name.String()),
+					slog.Int("number", pr.Number),
+					slog.String("err", err.Error()),
+				)
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		span.RecordError(err)
+		return totalWritten, err
+	}
+	return totalWritten, nil
+}
+
 // EnrichOnePullRequestByNumber loads a stored PR by number, fetches detail
 // and reviews, and writes the enrichment patch. Returns (found, err).
 func (o *Orchestrator) EnrichOnePullRequestByNumber(
