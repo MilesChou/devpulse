@@ -29,6 +29,15 @@ type VCSProvider interface {
 		repoName repo.FullName,
 	) ([]pullrequest.PullRequest, error)
 
+	// ListAllPullRequestsPageFunc pages through every PR, calling fn with
+	// each page. Stops early if fn returns an error.
+	ListAllPullRequestsPageFunc(
+		ctx context.Context,
+		repoID string,
+		repoName repo.FullName,
+		fn func(page []pullrequest.PullRequest) error,
+	) error
+
 	// GetPullRequest fetches a single PR with detail (additions/deletions).
 	GetPullRequest(
 		ctx context.Context,

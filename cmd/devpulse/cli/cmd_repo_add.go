@@ -32,26 +32,12 @@ func runRepoAdd(ctx context.Context, repoArg string) error {
 	}
 	defer d.close(ctx)
 
-	r, err := d.repos.EnsureID(ctx, "github", name)
+	w := stdout()
+	r, err := registerRepo(ctx, w, d, name)
 	if err != nil {
-		return fmt.Errorf("ensure repo: %w", err)
+		return err
 	}
 
-	// Best-effort metadata fetch. A network / auth failure should not
-	// stop the user registering the repo — they can retry later via
-	// `devpulse repo refresh`.
-	if meta, err := d.vcs.GetRepo(ctx, name); err == nil {
-		if uerr := d.repos.UpdateMetadata(ctx, r.ID, meta); uerr != nil {
-			fmt.Fprintf(stdout(), "warn: update metadata failed: %v\n", uerr)
-		} else {
-			r.Description = meta.Description
-			r.DefaultBranch = meta.DefaultBranch
-			r.Disabled = meta.Disabled
-		}
-	} else {
-		fmt.Fprintf(stdout(), "warn: fetch github metadata failed: %v\n", err)
-	}
-
-	printRepoSummary(stdout(), r)
+	printRepoSummary(w, r)
 	return nil
 }
