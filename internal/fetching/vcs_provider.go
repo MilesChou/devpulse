@@ -53,4 +53,12 @@ type VCSProvider interface {
 		repoName repo.FullName,
 		shas []commitsha.SHA,
 	) (map[commitsha.SHA]*string, error)
+
+	// GetRepo fetches repo metadata (description, default branch,
+	// disabled). The returned Repo has its ID unset — the caller overlays
+	// it on the persisted aggregate.
+	GetRepo(
+		ctx context.Context,
+		repoName repo.FullName,
+	) (repo.Repo, error)
 }

@@ -24,6 +24,7 @@ type deps struct {
 	conn  *persistence.Connection
 	pers  *persistence.Persister
 	orch  *fetching.Orchestrator
+	vcs   fetching.VCSProvider
 	repos *persistence.RepoPersister
 	tp    *otelx.Provider
 }
@@ -91,9 +92,10 @@ func buildDeps(ctx context.Context) (*deps, error) {
 		Logger:   logger,
 	})
 
+	vcs := github.NewProvider(ghClient)
 	orch := fetching.NewOrchestrator(
 		travis.NewProvider(travisClient),
-		github.NewProvider(ghClient),
+		vcs,
 		builds, prs, reviews,
 		logger,
 	)
@@ -103,6 +105,7 @@ func buildDeps(ctx context.Context) (*deps, error) {
 		conn:  conn,
 		pers:  pers,
 		orch:  orch,
+		vcs:   vcs,
 		repos: repos,
 		tp:    tp,
 	}, nil
