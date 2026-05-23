@@ -32,6 +32,50 @@ func (r *RepoPersister) FindByFullName(ctx context.Context, provider string, ful
 	return r.scanOne(ctx, q, provider, fullName.Owner, fullName.Name)
 }
 
+// ListAll returns every stored repo, ordered by (owner, repo_name) so the
+// output of bulk operations like `devpulse sync` is stable across runs.
+// Returns an empty slice (not nil) when the store is empty.
+func (r *RepoPersister) ListAll(ctx context.Context) ([]repo.Repo, error) {
+	const q = `SELECT id, provider, owner, repo_name, description, default_branch, disabled
+	           FROM repos
+	           ORDER BY owner, repo_name`
+
+	rows, err := r.QueryCtx(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("repo list: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]repo.Repo, 0)
+	for rows.Next() {
+		var (
+			got                       repo.Repo
+			provider, owner, repoName string
+			description               sql.NullString
+			defaultBranch             string
+			disabled                  bool
+		)
+		if err := rows.Scan(
+			&got.ID, &provider, &owner, &repoName,
+			&description, &defaultBranch, &disabled,
+		); err != nil {
+			return nil, fmt.Errorf("repo list scan: %w", err)
+		}
+		got.Name = repo.FullName{Owner: owner, Name: repoName}
+		if description.Valid {
+			s := description.String
+			got.Description = &s
+		}
+		got.DefaultBranch = defaultBranch
+		got.Disabled = disabled
+		out = append(out, got)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("repo list rows: %w", err)
+	}
+	return out, nil
+}
+
 // scanOne runs a single-row SELECT and decodes it into Repo. It returns
 // ErrRepoNotFound on sql.ErrNoRows.
 func (r *RepoPersister) scanOne(ctx context.Context, q string, args ...any) (repo.Repo, error) {

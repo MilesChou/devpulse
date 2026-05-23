@@ -14,9 +14,49 @@ All commands except `migrate` require the following environment variables to be 
 |---|---|
 | `DEVPULSE_DSN` | Database connection string (PostgreSQL, MySQL, SQLite, or `memory`) |
 | `GITHUB_TOKEN` | GitHub personal access token (`repo` + `read:user` scopes) |
-| `TRAVIS_TOKEN` | Travis CI API token (required by `repo sync`) |
+| `TRAVIS_TOKEN` | Travis CI API token (required by `sync` and `repo sync`) |
 
 ## Command Reference
+
+### `sync`
+
+```
+devpulse sync
+```
+
+Runs `repo sync` against every repository in the store, sequentially. This is the entry point intended for cron / CI: register your repos once with `repo add`, then schedule `devpulse sync` on whatever cadence you need.
+
+- **Disabled repos are skipped** (with a `skipped <owner/name> (disabled)` line); a `disabled = true` flag means GitHub has archived or disabled the repo upstream, so syncing it would waste API quota and almost always error.
+- **Per-repo failures do not abort the loop.** A failure is logged inline (`failed <owner/name>: <err>`), recorded, and the next repo runs. After the loop a summary line (`sync: synced=N skipped=M failed=K`) is printed, followed by a list of every failure for easy grep.
+- **Exit code is non-zero if any repo failed**, so cron and CI can treat the command's status as the batch's overall health.
+- **Sequential, not parallel.** GitHub and Travis both rate-limit per-token; parallelism would bunch the burn without buying meaningful throughput. To sync a single repo on demand, use `repo sync` directly.
+
+Both `GITHUB_TOKEN` and `TRAVIS_TOKEN` are required and validated before the database is opened (fail-fast).
+
+**Arguments**
+
+None.
+
+**Output**
+
+```
+Synced MilesChou/devpulse pull requests: written=7
+Synced MilesChou/devpulse ci builds: written=42
+skipped acme/legacy (disabled)
+failed acme/broken: sync pull requests: github: 404 Not Found
+
+sync: synced=1 skipped=1 failed=1
+failures:
+  acme/broken: sync pull requests: github: 404 Not Found
+```
+
+**Example**
+
+```sh
+devpulse sync
+```
+
+---
 
 ### `repo add`
 
@@ -170,7 +210,7 @@ applied 3 migrations:
 devpulse worker [--poll <duration>] [--lease <duration>]
 ```
 
-Runs the long-running job worker. The worker polls the database for queued jobs (e.g. enrichment jobs enqueued by `repo sync`) and processes them. Stop with `Ctrl-C` (`SIGINT`) or `SIGTERM`.
+Runs the long-running job worker. The worker polls the database for queued jobs (e.g. enrichment jobs enqueued by `sync` / `repo sync`) and processes them. Stop with `Ctrl-C` (`SIGINT`) or `SIGTERM`.
 
 **Flags**
 
@@ -214,8 +254,13 @@ devpulse migrate up
 # 2. Register the target repository
 devpulse repo add MilesChou/devpulse
 
-# 3. Back-fill pull requests (with enrichment) and CI builds
+# 3. Back-fill pull requests (with enrichment) and CI builds for that
+#    one repo
 devpulse repo sync MilesChou/devpulse
+
+# 3'. ...or, once you have multiple repos registered, sync them all in
+#     one shot — this is also the command to put on a cron / CI schedule.
+devpulse sync
 
 # 4. (Optional) Refresh a single PR
 devpulse pr sync MilesChou/devpulse 42

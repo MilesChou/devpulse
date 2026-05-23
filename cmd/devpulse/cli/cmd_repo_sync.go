@@ -60,20 +60,5 @@ func runRepoSync(ctx context.Context, repoArg string) error {
 		return fmt.Errorf("ensure repo: %w", err)
 	}
 
-	prsWritten, prsErr := d.orch.FetchAllPullRequestsWithEnrichment(ctx, r)
-	// FetchAllPullRequestsWithEnrichment returns a partial count even on
-	// failure (it upserts page-by-page), so print what landed before
-	// bubbling the error up.
-	fmt.Fprintf(stdout(), "Synced %s pull requests: written=%d\n", name.String(), prsWritten)
-	if prsErr != nil {
-		return fmt.Errorf("repo sync pull requests: %w", prsErr)
-	}
-
-	buildsWritten, err := d.orch.FetchAllBuilds(ctx, r)
-	if err != nil {
-		return fmt.Errorf("repo sync ci builds: %w", err)
-	}
-	fmt.Fprintf(stdout(), "Synced %s ci builds: written=%d\n", name.String(), buildsWritten)
-
-	return nil
+	return syncOneRepo(ctx, d, r)
 }

@@ -69,12 +69,17 @@ devpulse migrate up
 # Register a repository.
 devpulse repo add MilesChou/devpulse
 
-# Sync everything: PRs (with reviews and enrichment) first, then CI
+# Sync one repo: PRs (with reviews and enrichment) first, then CI
 # builds. The first run touches the full GitHub and Travis histories and
 # consumes a significant share of the REST/GraphQL quota; subsequent
 # runs are incremental (upserts dedupe and author back-fill skips
 # populated rows).
 devpulse repo sync MilesChou/devpulse
+
+# Or sync every tracked repo in one go (sequential; disabled repos are
+# skipped; per-repo failures are aggregated into a final summary so one
+# bad repo does not block the rest).
+devpulse sync
 
 # Re-sync a single PR (re-fetch detail and reviews).
 devpulse pr sync MilesChou/devpulse 42
@@ -86,12 +91,15 @@ devpulse worker
 ## Commands
 
 DevPulse groups commands by resource (`repo`, `pr`) with verbs underneath,
-in the style of `gh` and `jira-cli`.
+in the style of `gh` and `jira-cli`. `sync` is the one top-level verb —
+it fans out across every tracked repo and is the natural entry point for
+cron / CI.
 
 | Command | Purpose |
 |---|---|
+| `devpulse sync` | Sync every tracked repo (sequential; skips disabled; aggregates failures) |
 | `devpulse repo add <owner/name>` | Register a repository |
-| `devpulse repo sync <owner/name>` | Sync all PRs (with enrichment) then all CI builds |
+| `devpulse repo sync <owner/name>` | Sync one repo: all PRs (with enrichment) then all CI builds |
 | `devpulse pr sync <owner/name> <number>` | Re-sync a single PR (detail + reviews) |
 | `devpulse migrate {up,down,status}` | Schema migration |
 | `devpulse worker` | Run the DB-backed job worker |

@@ -14,9 +14,49 @@ devpulse <名詞> <動詞> [引數] [旗標]
 |---|---|
 | `DEVPULSE_DSN` | 資料庫連線字串（支援 PostgreSQL、MySQL、SQLite 或 `memory`） |
 | `GITHUB_TOKEN` | GitHub 個人存取權杖（需要 `repo` + `read:user` 範圍） |
-| `TRAVIS_TOKEN` | Travis CI API 權杖（`repo sync` 需要） |
+| `TRAVIS_TOKEN` | Travis CI API 權杖（`sync` 與 `repo sync` 需要） |
 
 ## 指令參考
+
+### `sync`
+
+```
+devpulse sync
+```
+
+對資料庫中的每一個 repo 依序執行 `repo sync`。這是設計給 cron / CI 排程的入口：先用 `repo add` 註冊 repo，之後就以任意週期排 `devpulse sync`。
+
+- **Disabled repo 會被跳過**（會印一行 `skipped <owner/name> (disabled)`）；`disabled = true` 代表 GitHub 端已 archive 或停用該 repo，繼續同步會浪費 API 配額且幾乎必定失敗。
+- **單一 repo 失敗不會中斷迴圈。** 失敗會立即印出（`failed <owner/name>: <err>`）、被記錄下來，下一個 repo 繼續執行。所有 repo 跑完後會印彙整（`sync: synced=N skipped=M failed=K`），並列出所有失敗 repo 與錯誤訊息方便 grep。
+- **任何 repo 失敗時，整體 exit code 非零**，cron / CI 可直接用回傳碼判斷整批健康度。
+- **循序執行，不並行。** GitHub 與 Travis 都對單一 token 做 rate limit，並行只會讓配額集中爆掉、沒有明顯吞吐量收益。若要對單一 repo 即時同步，直接用 `repo sync`。
+
+`GITHUB_TOKEN` 與 `TRAVIS_TOKEN` 都是必要參數，且會在開啟資料庫之前先檢查（fail-fast）。
+
+**引數**
+
+無。
+
+**輸出**
+
+```
+Synced MilesChou/devpulse pull requests: written=7
+Synced MilesChou/devpulse ci builds: written=42
+skipped acme/legacy (disabled)
+failed acme/broken: sync pull requests: github: 404 Not Found
+
+sync: synced=1 skipped=1 failed=1
+failures:
+  acme/broken: sync pull requests: github: 404 Not Found
+```
+
+**範例**
+
+```sh
+devpulse sync
+```
+
+---
 
 ### `repo add`
 
@@ -170,7 +210,7 @@ applied 3 migrations:
 devpulse worker [--poll <時間間隔>] [--lease <時間間隔>]
 ```
 
-啟動長期執行的背景工作程序。Worker 會持續輪詢資料庫中的待執行工作（例如由 `repo sync` 排入佇列的補充工作）並加以處理。按 `Ctrl-C`（`SIGINT`）或傳送 `SIGTERM` 以停止。
+啟動長期執行的背景工作程序。Worker 會持續輪詢資料庫中的待執行工作（例如由 `sync` / `repo sync` 排入佇列的補充工作）並加以處理。按 `Ctrl-C`（`SIGINT`）或傳送 `SIGTERM` 以停止。
 
 **旗標**
 
@@ -214,8 +254,12 @@ devpulse migrate up
 # 2. 註冊目標儲存庫
 devpulse repo add MilesChou/devpulse
 
-# 3. 同步所有 Pull Request（含 enrichment）與 CI 建置記錄
+# 3. 同步該 repo 的所有 Pull Request（含 enrichment）與 CI 建置記錄
 devpulse repo sync MilesChou/devpulse
+
+# 3'. ...或者，當已經註冊多個 repo 時，一次同步全部——這也是 cron / CI
+#     排程要用的指令。
+devpulse sync
 
 # 4. （選用）刷新單一 PR
 devpulse pr sync MilesChou/devpulse 42
