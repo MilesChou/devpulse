@@ -141,8 +141,10 @@ spans; leave it empty and the provider is a no-op.
 - `database/sql` with three drivers: `jackc/pgx/v5/stdlib`,
   `go-sql-driver/mysql`, `modernc.org/sqlite`
 - [`spf13/cobra`](https://github.com/spf13/cobra) for the CLI
+- [`cli/go-gh`](https://github.com/cli/go-gh) for the GitHub HTTP client
+  (rate-limit-aware)
 - [`hashicorp/go-retryablehttp`](https://github.com/hashicorp/go-retryablehttp)
-  for outbound HTTP
+  for the Travis HTTP client (and any other generic outbound HTTP)
 - OpenTelemetry SDK for tracing
 - A small in-tree DB-backed job queue
 
