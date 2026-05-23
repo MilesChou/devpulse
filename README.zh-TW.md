@@ -137,7 +137,7 @@ collector 位址（例如本機 Jaeger 的 `localhost:4318`）就會把 span 送
   `go-sql-driver/mysql`、`modernc.org/sqlite`
 - [`spf13/cobra`](https://github.com/spf13/cobra) 處理 CLI
 - [`cli/go-gh`](https://github.com/cli/go-gh) 提供 GitHub HTTP client
-  （懂 rate limit）
+  （帶預設 header 與 ASCII sanitizer；目前不會自動 retry）
 - [`hashicorp/go-retryablehttp`](https://github.com/hashicorp/go-retryablehttp)
   處理 Travis HTTP client（以及其他通用對外 HTTP）
 - OpenTelemetry SDK 提供 tracing

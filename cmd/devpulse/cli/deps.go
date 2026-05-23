@@ -77,15 +77,21 @@ func buildDeps(ctx context.Context) (*deps, error) {
 	prs := persistence.NewPullRequestPersister(pers)
 	reviews := persistence.NewReviewPersister(pers)
 
-	// HTTPRetry is no longer plumbed through to the GitHub client: go-gh
-	// handles GitHub-specific rate-limit retries internally and does not
-	// expose a configurable retry count. Travis still honors HTTPRetry.
-	ghClient := github.NewClient(github.Config{
+	// HTTPRetry is not plumbed through to the GitHub client. go-gh's
+	// pkg/api does not implement retries, so the GitHub client currently
+	// does not retry on any failure; adding retry is tracked separately.
+	// Travis still honors HTTPRetry via internal/x/httpx.
+	ghClient, err := github.NewClient(github.Config{
 		BaseURL: cfg.GitHubBase,
 		Token:   cfg.GitHubToken,
 		Timeout: cfg.HTTPTimeout,
 		Logger:  logger,
 	})
+	if err != nil {
+		_ = conn.DB.Close()
+		_ = tp.Shutdown(ctx)
+		return nil, fmt.Errorf("github client: %w", err)
+	}
 	travisClient := travis.NewClient(travis.Config{
 		BaseURL:  cfg.TravisBase,
 		Token:    cfg.TravisToken,
