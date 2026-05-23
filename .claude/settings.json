@@ -1,10 +1,12 @@
 {
+    "enabledPlugins": {},
+    "autoMemoryEnabled": false,
     "permissions": {
         "allow": [
         ],
         "deny": [
             "Read(.env)"
         ]
-    },
-    "enabledPlugins": {}
+    }
 }
+
