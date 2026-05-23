@@ -14,7 +14,7 @@ All commands except `migrate` require the following environment variables to be 
 |---|---|
 | `DEVPULSE_DSN` | Database connection string (PostgreSQL, MySQL, SQLite, or `memory`) |
 | `GITHUB_TOKEN` | GitHub personal access token (`repo` + `read:user` scopes) |
-| `TRAVIS_TOKEN` | Travis CI API token (required by `sync`) |
+| `TRAVIS_TOKEN` | Travis CI API token (required by `repo sync`) |
 
 ## Command Reference
 
@@ -46,10 +46,10 @@ devpulse repo add MilesChou/devpulse
 
 ---
 
-### `sync`
+### `repo sync`
 
 ```
-devpulse sync <owner/name>
+devpulse repo sync <owner/name>
 ```
 
 Syncs the repository in two steps, in order:
@@ -77,7 +77,7 @@ Synced MilesChou/devpulse builds: written=42
 **Example**
 
 ```sh
-devpulse sync MilesChou/devpulse
+devpulse repo sync MilesChou/devpulse
 ```
 
 ---
@@ -90,7 +90,7 @@ devpulse pr sync <owner/name> <number>
 
 Re-fetches detail and review data for a single pull request that is already in the store, then writes the enrichment patch. Use this to refresh a specific PR without re-syncing the entire repository.
 
-The PR must already exist in the store. If it does not, run `devpulse sync` first.
+The PR must already exist in the store. If it does not, run `devpulse repo sync` first.
 
 **Arguments**
 
@@ -170,7 +170,7 @@ applied 3 migrations:
 devpulse worker [--poll <duration>] [--lease <duration>]
 ```
 
-Runs the long-running job worker. The worker polls the database for queued jobs (e.g. enrichment jobs enqueued by `sync`) and processes them. Stop with `Ctrl-C` (`SIGINT`) or `SIGTERM`.
+Runs the long-running job worker. The worker polls the database for queued jobs (e.g. enrichment jobs enqueued by `repo sync`) and processes them. Stop with `Ctrl-C` (`SIGINT`) or `SIGTERM`.
 
 **Flags**
 
@@ -215,7 +215,7 @@ devpulse migrate up
 devpulse repo add MilesChou/devpulse
 
 # 3. Back-fill pull requests (with enrichment) and CI builds
-devpulse sync MilesChou/devpulse
+devpulse repo sync MilesChou/devpulse
 
 # 4. (Optional) Refresh a single PR
 devpulse pr sync MilesChou/devpulse 42
@@ -242,5 +242,5 @@ The `Makefile` at the repository root provides convenience targets. Run `make he
 **Example**
 
 ```sh
-make run ARGS="sync MilesChou/devpulse"
+make run ARGS="repo sync MilesChou/devpulse"
 ```

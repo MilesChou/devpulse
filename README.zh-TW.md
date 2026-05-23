@@ -68,7 +68,7 @@ devpulse repo add MilesChou/devpulse
 # 一次同步全部：先撈所有 PR（含 review 與 enrichment），再撈所有 CI build。
 # 首次執行會打完整個 GitHub 與 Travis 歷史，會吃掉相當比例的 REST / GraphQL
 # 配額；後續執行為增量（upsert 去重、author backfill 略過已有的列）。
-devpulse sync MilesChou/devpulse
+devpulse repo sync MilesChou/devpulse
 
 # 重新同步單一 PR（重抓 detail 與 reviews）
 devpulse pr sync MilesChou/devpulse 42
@@ -80,13 +80,12 @@ devpulse worker
 ## 指令一覽
 
 指令採 noun-on-verb 結構（`repo` / `pr` 兩個 resource group，動詞掛在
-底下），風格與 `gh`、`jira-cli` 一致；`sync` 則是頂層便利指令，依序執行
-PR 與 CI build 的拉取。
+底下），風格與 `gh`、`jira-cli` 一致。
 
 | 指令 | 用途 |
 |---|---|
 | `devpulse repo add <owner/name>` | 註冊一個 repo |
-| `devpulse sync <owner/name>` | 依序同步所有 PR（含 enrichment）與 CI build |
+| `devpulse repo sync <owner/name>` | 依序同步所有 PR（含 enrichment）與 CI build |
 | `devpulse pr sync <owner/name> <number>` | 重新同步單一 PR（detail + reviews） |
 | `devpulse migrate {up,down,status}` | Schema migration |
 | `devpulse worker` | 啟動 DB-backed job worker |

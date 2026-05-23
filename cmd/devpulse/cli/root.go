@@ -1,10 +1,9 @@
 // Package cli wires together cobra commands for the devpulse binary.
 //
-// The CLI follows a noun-on-verb layout (in the style of gh, jira-cli),
-// with `sync` as a top-level convenience:
+// The CLI follows a noun-on-verb layout (in the style of gh, jira-cli):
 //
 //	devpulse repo add ...
-//	devpulse sync ...
+//	devpulse repo sync ...
 //	devpulse pr sync ...
 //	devpulse migrate up | down | status
 //	devpulse worker
@@ -37,7 +36,6 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(
 		newInitCmd(),
 		newRepoCmd(),
-		newSyncCmd(),
 		newPRCmd(),
 		newMigrateCmd(),
 		newWorkerCmd(),

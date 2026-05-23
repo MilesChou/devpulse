@@ -16,8 +16,8 @@ func newPRSyncCmd() *cobra.Command {
 		Short: "Re-fetch detail and reviews for one PR and write the enrichment patch",
 		Long: "Refreshes a single pull request that is already in the store: " +
 			"re-fetches detail and review data from GitHub and writes the " +
-			"enrichment patch. Use `devpulse sync` to back-fill PRs that are " +
-			"not yet in the store.",
+			"enrichment patch. Use `devpulse repo sync` to back-fill PRs " +
+			"that are not yet in the store.",
 		Example: "  devpulse pr sync MilesChou/devpulse 42",
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -52,7 +52,7 @@ func runPRSync(ctx context.Context, repoArg, numArg string) error {
 		return err
 	}
 	if !found {
-		return fmt.Errorf("PR #%d not in store; run `devpulse sync` first", num)
+		return fmt.Errorf("PR #%d not in store; run `devpulse repo sync` first", num)
 	}
 	fmt.Fprintf(stdout(), "Synced %s#%d\n", name.String(), num)
 	return nil
