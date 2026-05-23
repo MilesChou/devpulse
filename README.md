@@ -74,7 +74,7 @@ devpulse repo add MilesChou/devpulse
 # consumes a significant share of the REST/GraphQL quota; subsequent
 # runs are incremental (upserts dedupe and author back-fill skips
 # populated rows).
-devpulse sync MilesChou/devpulse
+devpulse repo sync MilesChou/devpulse
 
 # Re-sync a single PR (re-fetch detail and reviews).
 devpulse pr sync MilesChou/devpulse 42
@@ -86,13 +86,12 @@ devpulse worker
 ## Commands
 
 DevPulse groups commands by resource (`repo`, `pr`) with verbs underneath,
-in the style of `gh` and `jira-cli`. `sync` is a top-level convenience that
-runs the PR and CI build pulls in order.
+in the style of `gh` and `jira-cli`.
 
 | Command | Purpose |
 |---|---|
 | `devpulse repo add <owner/name>` | Register a repository |
-| `devpulse sync <owner/name>` | Sync all PRs (with enrichment) then all CI builds |
+| `devpulse repo sync <owner/name>` | Sync all PRs (with enrichment) then all CI builds |
 | `devpulse pr sync <owner/name> <number>` | Re-sync a single PR (detail + reviews) |
 | `devpulse migrate {up,down,status}` | Schema migration |
 | `devpulse worker` | Run the DB-backed job worker |

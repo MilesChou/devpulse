@@ -14,7 +14,7 @@ devpulse <名詞> <動詞> [引數] [旗標]
 |---|---|
 | `DEVPULSE_DSN` | 資料庫連線字串（支援 PostgreSQL、MySQL、SQLite 或 `memory`） |
 | `GITHUB_TOKEN` | GitHub 個人存取權杖（需要 `repo` + `read:user` 範圍） |
-| `TRAVIS_TOKEN` | Travis CI API 權杖（`sync` 需要） |
+| `TRAVIS_TOKEN` | Travis CI API 權杖（`repo sync` 需要） |
 
 ## 指令參考
 
@@ -46,10 +46,10 @@ devpulse repo add MilesChou/devpulse
 
 ---
 
-### `sync`
+### `repo sync`
 
 ```
-devpulse sync <owner/name>
+devpulse repo sync <owner/name>
 ```
 
 依序執行兩個步驟同步指定儲存庫：
@@ -77,7 +77,7 @@ Synced MilesChou/devpulse builds: written=42
 **範例**
 
 ```sh
-devpulse sync MilesChou/devpulse
+devpulse repo sync MilesChou/devpulse
 ```
 
 ---
@@ -90,7 +90,7 @@ devpulse pr sync <owner/name> <number>
 
 重新取得資料庫中已存在的單一 Pull Request 的詳細資料與審查記錄，並寫入補充更新。適用於不需要重新同步整個儲存庫、只需刷新特定 PR 的情境。
 
-該 PR 必須已存在於資料庫中。若尚未存在，請先執行 `devpulse sync`。
+該 PR 必須已存在於資料庫中。若尚未存在，請先執行 `devpulse repo sync`。
 
 **引數**
 
@@ -170,7 +170,7 @@ applied 3 migrations:
 devpulse worker [--poll <時間間隔>] [--lease <時間間隔>]
 ```
 
-啟動長期執行的背景工作程序。Worker 會持續輪詢資料庫中的待執行工作（例如由 `sync` 排入佇列的補充工作）並加以處理。按 `Ctrl-C`（`SIGINT`）或傳送 `SIGTERM` 以停止。
+啟動長期執行的背景工作程序。Worker 會持續輪詢資料庫中的待執行工作（例如由 `repo sync` 排入佇列的補充工作）並加以處理。按 `Ctrl-C`（`SIGINT`）或傳送 `SIGTERM` 以停止。
 
 **旗標**
 
@@ -215,7 +215,7 @@ devpulse migrate up
 devpulse repo add MilesChou/devpulse
 
 # 3. 同步所有 Pull Request（含 enrichment）與 CI 建置記錄
-devpulse sync MilesChou/devpulse
+devpulse repo sync MilesChou/devpulse
 
 # 4. （選用）刷新單一 PR
 devpulse pr sync MilesChou/devpulse 42
@@ -242,5 +242,5 @@ devpulse worker
 **範例**
 
 ```sh
-make run ARGS="sync MilesChou/devpulse"
+make run ARGS="repo sync MilesChou/devpulse"
 ```

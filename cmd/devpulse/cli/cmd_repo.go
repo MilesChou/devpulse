@@ -11,13 +11,13 @@ import (
 )
 
 // newRepoCmd is the `devpulse repo` command group. Concrete actions
-// (add / list / remove) live in cmd_repo_*.go.
+// (add / refresh / sync) live in cmd_repo_*.go.
 func newRepoCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "repo",
 		Short: "Manage tracked repositories",
 	}
-	cmd.AddCommand(newRepoAddCmd(), newRepoRefreshCmd())
+	cmd.AddCommand(newRepoAddCmd(), newRepoRefreshCmd(), newRepoSyncCmd())
 	return cmd
 }
 
