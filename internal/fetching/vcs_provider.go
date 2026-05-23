@@ -11,24 +11,6 @@ import (
 // VCSProvider exposes the subset of GitHub-equivalent APIs the orchestrator
 // needs. Implemented by internal/github.
 type VCSProvider interface {
-	// ListPullRequestsInMonth returns PRs whose PR-created timestamp falls
-	// within month. repoID is passed through so the returned PRs can be
-	// attached to the right Repo aggregate without an extra lookup.
-	ListPullRequestsInMonth(
-		ctx context.Context,
-		repoID string,
-		repoName repo.FullName,
-		month MonthRange,
-	) ([]pullrequest.PullRequest, error)
-
-	// ListAllPullRequests fetches the full history regardless of month
-	// — used for one-off backfills.
-	ListAllPullRequests(
-		ctx context.Context,
-		repoID string,
-		repoName repo.FullName,
-	) ([]pullrequest.PullRequest, error)
-
 	// ListAllPullRequestsPageFunc pages through every PR, calling fn with
 	// each page. Stops early if fn returns an error.
 	ListAllPullRequestsPageFunc(

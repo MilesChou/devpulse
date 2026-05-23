@@ -49,28 +49,29 @@ devpulse repo add MilesChou/devpulse
 ### `build fetch`
 
 ```
-devpulse build fetch <owner/name> <YYYY-MM>
+devpulse build fetch <owner/name>
 ```
 
-Fetches CI build records from Travis CI for the given repository and calendar month, then writes them to the store. Requires `TRAVIS_TOKEN`.
+Fetches all CI build records from Travis CI for the given repository, then writes them to the store. Requires `TRAVIS_TOKEN`.
+
+> The first run walks the full Travis history (capped at 100 pages × 100 builds). Subsequent runs are incremental — upserts dedupe writes and only commit SHAs with a NULL author are sent through the GitHub bulk-author lookup.
 
 **Arguments**
 
 | Argument | Description |
 |---|---|
 | `owner/name` | GitHub repository slug |
-| `YYYY-MM` | Calendar month, e.g. `2026-05` |
 
 **Output**
 
 ```
-Fetched MilesChou/devpulse builds for 2026-05: written=42
+Fetched MilesChou/devpulse builds: written=42
 ```
 
 **Example**
 
 ```sh
-devpulse build fetch MilesChou/devpulse 2026-05
+devpulse build fetch MilesChou/devpulse
 ```
 
 ---
@@ -78,28 +79,29 @@ devpulse build fetch MilesChou/devpulse 2026-05
 ### `pr fetch`
 
 ```
-devpulse pr fetch <owner/name> <YYYY-MM>
+devpulse pr fetch <owner/name>
 ```
 
-Fetches pull requests (including reviews and commit details) from GitHub for the given repository and calendar month, then writes them to the store and runs enrichment automatically.
+Fetches all pull requests (including reviews and commit details) from GitHub for the given repository, then writes them to the store and runs enrichment automatically.
+
+> The first run pages through the full PR history; for repos with thousands of PRs this consumes a meaningful share of the REST and GraphQL quota. Each page is upserted and enriched before moving on, so a partial run still records progress.
 
 **Arguments**
 
 | Argument | Description |
 |---|---|
 | `owner/name` | GitHub repository slug |
-| `YYYY-MM` | Calendar month, e.g. `2026-05` |
 
 **Output**
 
 ```
-Fetched MilesChou/devpulse PRs for 2026-05: written=7
+Fetched MilesChou/devpulse PRs: written=7
 ```
 
 **Example**
 
 ```sh
-devpulse pr fetch MilesChou/devpulse 2026-05
+devpulse pr fetch MilesChou/devpulse
 ```
 
 ---
@@ -236,9 +238,9 @@ devpulse migrate up
 # 2. Register the target repository
 devpulse repo add MilesChou/devpulse
 
-# 3. Back-fill CI builds and pull requests for a month
-devpulse build fetch MilesChou/devpulse 2026-05
-devpulse pr fetch MilesChou/devpulse 2026-05
+# 3. Back-fill CI builds and pull requests
+devpulse build fetch MilesChou/devpulse
+devpulse pr fetch MilesChou/devpulse
 
 # 4. (Optional) Refresh a single PR
 devpulse pr enrich MilesChou/devpulse 42
@@ -265,5 +267,5 @@ The `Makefile` at the repository root provides convenience targets. Run `make he
 **Example**
 
 ```sh
-make run ARGS="pr fetch MilesChou/devpulse 2026-05"
+make run ARGS="pr fetch MilesChou/devpulse"
 ```

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/mileschou/devpulse/internal/build"
-	"github.com/mileschou/devpulse/internal/fetching"
 	"github.com/mileschou/devpulse/internal/persistence"
 	"github.com/mileschou/devpulse/internal/persistence/persistencetest"
 	"github.com/mileschou/devpulse/internal/pullrequest"
@@ -124,8 +123,7 @@ func TestBuildPersister_ListMissingAuthorSHAs(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 
-	month := fetching.NewMonthRange(2026, time.May)
-	missing, err := bp.ListMissingAuthorSHAs(ctx, r.ID, month)
+	missing, err := bp.ListMissingAuthorSHAs(ctx, r.ID)
 	if err != nil {
 		t.Fatalf("list missing: %v", err)
 	}
@@ -150,8 +148,7 @@ func TestBuildPersister_UpdateAuthorBySHA(t *testing.T) {
 		t.Fatalf("update: %v", err)
 	}
 
-	month := fetching.NewMonthRange(2026, time.May)
-	missing, _ := bp.ListMissingAuthorSHAs(ctx, r.ID, month)
+	missing, _ := bp.ListMissingAuthorSHAs(ctx, r.ID)
 	if len(missing) != 0 {
 		t.Fatalf("expected no missing after update, got %v", missing)
 	}

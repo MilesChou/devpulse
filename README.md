@@ -69,11 +69,14 @@ devpulse migrate up
 # Register a repository.
 devpulse repo add MilesChou/devpulse
 
-# Pull CI builds for one month.
-devpulse build fetch MilesChou/devpulse 2026-05
+# Pull all CI builds. The first run walks the full Travis history, so for
+# long-lived repos expect minutes of API calls; subsequent runs are
+# incremental (upserts dedupe and author back-fill skips populated rows).
+devpulse build fetch MilesChou/devpulse
 
-# Pull PRs + reviews + enrichment for the same month.
-devpulse pr fetch MilesChou/devpulse 2026-05
+# Pull all PRs + reviews + enrichment. First run touches the full GitHub
+# history and consumes a significant share of the REST/GraphQL quota.
+devpulse pr fetch MilesChou/devpulse
 
 # Re-run enrichment for a single PR.
 devpulse pr enrich MilesChou/devpulse 42
@@ -90,8 +93,8 @@ underneath, in the style of `gh` and `jira-cli`.
 | Command | Purpose |
 |---|---|
 | `devpulse repo add <owner/name>` | Register a repository |
-| `devpulse build fetch <owner/name> <YYYY-MM>` | Fetch CI builds for one month |
-| `devpulse pr fetch <owner/name> <YYYY-MM>` | Fetch PRs + reviews + enrichment for one month |
+| `devpulse build fetch <owner/name>` | Fetch all CI builds |
+| `devpulse pr fetch <owner/name>` | Fetch all PRs + reviews + enrichment |
 | `devpulse pr enrich <owner/name> <number>` | Recompute enrichment for one PR |
 | `devpulse migrate {up,down,status}` | Schema migration |
 | `devpulse worker` | Run the DB-backed job worker |

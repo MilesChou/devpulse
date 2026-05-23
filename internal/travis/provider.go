@@ -16,10 +16,9 @@ func NewProvider(c *Client) *Provider { return &Provider{client: c} }
 // Compile-time assertion.
 var _ fetching.CIProvider = (*Provider)(nil)
 
-func (p *Provider) ListBuildsInMonth(
+func (p *Provider) ListAllBuilds(
 	ctx context.Context,
 	repoName repo.FullName,
-	month fetching.MonthRange,
 ) ([]build.Build, error) {
-	return p.client.ListBuildsInMonth(ctx, repoName.String(), month.Start, month.End)
+	return p.client.ListAllBuilds(ctx, repoName.String())
 }

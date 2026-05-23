@@ -13,9 +13,10 @@ import (
 type BuildWriter interface {
 	UpsertMany(ctx context.Context, repoID string, builds []build.Build) (int, error)
 
-	// ListMissingAuthorSHAs returns SHAs in `month` whose author_account
-	// is still NULL — these are what GetCommitAuthorAccountsBulk needs.
-	ListMissingAuthorSHAs(ctx context.Context, repoID string, month MonthRange) ([]commitsha.SHA, error)
+	// ListMissingAuthorSHAs returns commit SHAs for the repo whose
+	// author_account is still NULL. Used to drive incremental author
+	// back-fill so re-runs only fetch logins for rows that still lack one.
+	ListMissingAuthorSHAs(ctx context.Context, repoID string) ([]commitsha.SHA, error)
 
 	// UpdateAuthorBySHA updates every build row matching (repo_id, sha)
 	// with the resolved login.
@@ -26,7 +27,6 @@ type BuildWriter interface {
 type PullRequestWriter interface {
 	UpsertMany(ctx context.Context, prs []pullrequest.PullRequest) (int, error)
 	FindByNumber(ctx context.Context, repoID string, number int) (pullrequest.PullRequest, error)
-	ListInMonth(ctx context.Context, repoID string, month MonthRange) ([]pullrequest.PullRequest, error)
 	UpdateEnrichment(ctx context.Context, prID string, patch pullrequest.EnrichmentPatch) error
 }
 

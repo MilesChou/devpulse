@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/mileschou/devpulse/internal/build"
-	"github.com/mileschou/devpulse/internal/fetching"
 	"github.com/mileschou/devpulse/internal/x/commitsha"
 )
 
@@ -72,16 +71,14 @@ func (b *BuildPersister) UpsertMany(ctx context.Context, repoID string, builds [
 	return written, nil
 }
 
-// ListMissingAuthorSHAs returns SHAs whose author_account is NULL in the
-// given month, deduplicated.
-func (b *BuildPersister) ListMissingAuthorSHAs(ctx context.Context, repoID string, month fetching.MonthRange) ([]commitsha.SHA, error) {
+// ListMissingAuthorSHAs returns SHAs whose author_account is NULL,
+// deduplicated.
+func (b *BuildPersister) ListMissingAuthorSHAs(ctx context.Context, repoID string) ([]commitsha.SHA, error) {
 	const q = `SELECT DISTINCT commit_sha FROM builds
 	            WHERE repo_id = ?
-	              AND started_at >= ?
-	              AND started_at <  ?
 	              AND author_account IS NULL`
 
-	rows, err := b.QueryCtx(ctx, q, repoID, month.Start, month.End)
+	rows, err := b.QueryCtx(ctx, q, repoID)
 	if err != nil {
 		return nil, fmt.Errorf("list missing shas: %w", err)
 	}

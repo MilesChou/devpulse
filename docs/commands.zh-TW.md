@@ -49,28 +49,29 @@ devpulse repo add MilesChou/devpulse
 ### `build fetch`
 
 ```
-devpulse build fetch <owner/name> <YYYY-MM>
+devpulse build fetch <owner/name>
 ```
 
-從 Travis CI 取得指定儲存庫與月份的 CI 建置記錄，並寫入資料庫。需要設定 `TRAVIS_TOKEN`。
+從 Travis CI 取得指定儲存庫的所有 CI 建置記錄，並寫入資料庫。需要設定 `TRAVIS_TOKEN`。
+
+> 首次執行會走完整個 Travis 歷史（上限 100 頁 × 100 build）。後續執行為增量——upsert 會去重，author backfill 也只會把仍為 NULL 的 commit SHA 送去 GitHub bulk 查詢。
 
 **引數**
 
 | 引數 | 說明 |
 |---|---|
 | `owner/name` | GitHub 儲存庫識別名稱 |
-| `YYYY-MM` | 年月格式，例如 `2026-05` |
 
 **輸出**
 
 ```
-Fetched MilesChou/devpulse builds for 2026-05: written=42
+Fetched MilesChou/devpulse builds: written=42
 ```
 
 **範例**
 
 ```sh
-devpulse build fetch MilesChou/devpulse 2026-05
+devpulse build fetch MilesChou/devpulse
 ```
 
 ---
@@ -78,28 +79,29 @@ devpulse build fetch MilesChou/devpulse 2026-05
 ### `pr fetch`
 
 ```
-devpulse pr fetch <owner/name> <YYYY-MM>
+devpulse pr fetch <owner/name>
 ```
 
-從 GitHub 取得指定儲存庫與月份的 Pull Request（含審查意見與提交詳情），寫入資料庫後自動執行補充（enrich）。
+從 GitHub 取得指定儲存庫的所有 Pull Request（含審查意見與提交詳情），寫入資料庫後自動執行補充（enrich）。
+
+> 首次執行會分頁打完整個 PR 歷史；對動輒上千個 PR 的 repo 而言會吃掉相當比例的 REST 與 GraphQL 配額。每一頁都會在進到下一頁前完成 upsert 與 enrichment，所以中斷的執行也會保留已處理的進度。
 
 **引數**
 
 | 引數 | 說明 |
 |---|---|
 | `owner/name` | GitHub 儲存庫識別名稱 |
-| `YYYY-MM` | 年月格式，例如 `2026-05` |
 
 **輸出**
 
 ```
-Fetched MilesChou/devpulse PRs for 2026-05: written=7
+Fetched MilesChou/devpulse PRs: written=7
 ```
 
 **範例**
 
 ```sh
-devpulse pr fetch MilesChou/devpulse 2026-05
+devpulse pr fetch MilesChou/devpulse
 ```
 
 ---
@@ -236,9 +238,9 @@ devpulse migrate up
 # 2. 註冊目標儲存庫
 devpulse repo add MilesChou/devpulse
 
-# 3. 補抓某個月份的 CI 建置記錄與 Pull Request
-devpulse build fetch MilesChou/devpulse 2026-05
-devpulse pr fetch MilesChou/devpulse 2026-05
+# 3. 補抓所有 CI 建置記錄與 Pull Request
+devpulse build fetch MilesChou/devpulse
+devpulse pr fetch MilesChou/devpulse
 
 # 4. （選用）刷新單一 PR
 devpulse pr enrich MilesChou/devpulse 42
@@ -265,5 +267,5 @@ devpulse worker
 **範例**
 
 ```sh
-make run ARGS="pr fetch MilesChou/devpulse 2026-05"
+make run ARGS="pr fetch MilesChou/devpulse"
 ```

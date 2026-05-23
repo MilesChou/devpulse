@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mileschou/devpulse/internal/fetching"
 	"github.com/mileschou/devpulse/internal/github"
 	"github.com/mileschou/devpulse/internal/pullrequest"
 	"github.com/mileschou/devpulse/internal/repo"
@@ -39,7 +38,7 @@ func newClient(t *testing.T, server *httptest.Server) *github.Client {
 	return c
 }
 
-func TestListPullRequestsInMonth_TerminatesAtMonthBoundary(t *testing.T) {
+func TestListAllPullRequests_PagesThroughAll(t *testing.T) {
 	page1 := loadFixture(t, "list_pulls_page1.json")
 	page2 := loadFixture(t, "list_pulls_page2.json")
 
@@ -69,17 +68,15 @@ func TestListPullRequestsInMonth_TerminatesAtMonthBoundary(t *testing.T) {
 
 	c := newClient(t, srv)
 	repoName, _ := repo.ParseFullName("MilesChou/devpulse")
-	month := fetching.NewMonthRange(2026, time.May)
 
-	pulls, err := c.ListPullRequestsInMonth(context.Background(), "repo-1", repoName, month.Start, month.End)
+	pulls, err := c.ListAllPullRequests(context.Background(), "repo-1", repoName)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
 
-	// Page 1 has 2 PRs both in May 2026; page 2 has 1 in April so it must
-	// be filtered out and the loop terminates.
-	if len(pulls) != 2 {
-		t.Fatalf("expected 2 pulls, got %d", len(pulls))
+	// Without month filtering, every PR across both pages is returned.
+	if len(pulls) != 3 {
+		t.Fatalf("expected 3 pulls, got %d", len(pulls))
 	}
 	if pulls[0].Number != 42 || pulls[0].Status != pullrequest.StatusMerged {
 		t.Fatalf("first pull mismatch: %+v", pulls[0])

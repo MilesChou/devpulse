@@ -77,48 +77,6 @@ func (r rawPull) toDomain(repoID string) pullrequest.PullRequest {
 	return pr
 }
 
-// ListPullRequestsInMonth pages through GET /repos/:owner/:name/pulls,
-// stopping early once the created_at falls before month.Start.
-//
-// GitHub returns pulls sorted by created_at desc with state=all, so a
-// strict streaming order is preserved and we can terminate as soon as
-// we see a PR older than the month boundary.
-func (c *Client) ListPullRequestsInMonth(
-	ctx context.Context,
-	repoID string,
-	repoName repo.FullName,
-	startInclusive, endExclusive time.Time,
-) ([]pullrequest.PullRequest, error) {
-	var out []pullrequest.PullRequest
-
-	page := 1
-	for {
-		batch, more, err := c.listPullsPage(ctx, repoName, page, defaultPerPage)
-		if err != nil {
-			return nil, err
-		}
-		if len(batch) == 0 {
-			return out, nil
-		}
-
-		for _, raw := range batch {
-			t := raw.CreatedAt.UTC()
-			if !t.Before(endExclusive) {
-				continue
-			}
-			if t.Before(startInclusive) {
-				return out, nil
-			}
-			out = append(out, raw.toDomain(repoID))
-		}
-
-		if !more {
-			return out, nil
-		}
-		page++
-	}
-}
-
 // ListAllPullRequests pages through every PR with no time cutoff.
 func (c *Client) ListAllPullRequests(
 	ctx context.Context,
