@@ -51,6 +51,68 @@ func TestRepoPersister_EnsureID_CreatesThenReuses(t *testing.T) {
 	}
 }
 
+func TestRepoPersister_ListAll(t *testing.T) {
+	p := setup(t)
+	rp := persistence.NewRepoPersister(p)
+	ctx := context.Background()
+
+	// Empty store: must return an empty (non-nil) slice, not an error.
+	got, err := rp.ListAll(ctx)
+	if err != nil {
+		t.Fatalf("list empty: %v", err)
+	}
+	if got == nil {
+		t.Fatalf("expected empty slice, got nil")
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected 0 repos, got %d", len(got))
+	}
+
+	// Insert two; mark one disabled. EnsureID does not set Disabled, so
+	// update metadata to flip it.
+	r1, err := rp.EnsureID(ctx, "github", mustFullName(t, "zeta/one"))
+	if err != nil {
+		t.Fatalf("ensure r1: %v", err)
+	}
+	r2, err := rp.EnsureID(ctx, "github", mustFullName(t, "alpha/two"))
+	if err != nil {
+		t.Fatalf("ensure r2: %v", err)
+	}
+	if err := rp.UpdateMetadata(ctx, r2.ID, repo.Repo{
+		DefaultBranch: "main",
+		Disabled:      true,
+	}); err != nil {
+		t.Fatalf("flip disabled: %v", err)
+	}
+
+	got, err = rp.ListAll(ctx)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 repos, got %d", len(got))
+	}
+
+	// ORDER BY owner, repo_name: alpha/two should come before zeta/one.
+	if got[0].Name.String() != "alpha/two" {
+		t.Fatalf("expected alpha/two first, got %q", got[0].Name.String())
+	}
+	if !got[0].Disabled {
+		t.Fatalf("expected alpha/two disabled=true")
+	}
+	if got[1].Name.String() != "zeta/one" {
+		t.Fatalf("expected zeta/one second, got %q", got[1].Name.String())
+	}
+	if got[1].Disabled {
+		t.Fatalf("expected zeta/one disabled=false")
+	}
+	// IDs should round-trip.
+	if got[0].ID != r2.ID || got[1].ID != r1.ID {
+		t.Fatalf("id mismatch: got [%q, %q], want [%q, %q]",
+			got[0].ID, got[1].ID, r2.ID, r1.ID)
+	}
+}
+
 func TestBuildPersister_UpsertMany_Idempotent(t *testing.T) {
 	p := setup(t)
 	rp := persistence.NewRepoPersister(p)

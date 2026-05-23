@@ -1,7 +1,10 @@
 // Package cli wires together cobra commands for the devpulse binary.
 //
-// The CLI follows a noun-on-verb layout (in the style of gh, jira-cli):
+// The CLI follows a noun-on-verb layout (in the style of gh, jira-cli),
+// with `sync` as a top-level fan-out that runs `repo sync` against every
+// tracked repo:
 //
+//	devpulse sync
 //	devpulse repo add ...
 //	devpulse repo sync ...
 //	devpulse pr sync ...
@@ -10,7 +13,8 @@
 //	devpulse serve
 //
 // Each group lives in cmd_<group>.go; each leaf action lives in
-// cmd_<group>_<verb>.go.
+// cmd_<group>_<verb>.go. Cross-group helpers shared by `sync` and
+// `repo sync` live in cmd_sync_helper.go.
 package cli
 
 import (
@@ -35,6 +39,7 @@ func NewRootCmd() *cobra.Command {
 	}
 	root.AddCommand(
 		newInitCmd(),
+		newSyncCmd(),
 		newRepoCmd(),
 		newPRCmd(),
 		newMigrateCmd(),
