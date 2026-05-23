@@ -14,7 +14,7 @@ All commands except `migrate` require the following environment variables to be 
 |---|---|
 | `DEVPULSE_DSN` | Database connection string (PostgreSQL, MySQL, SQLite, or `memory`) |
 | `GITHUB_TOKEN` | GitHub personal access token (`repo` + `read:user` scopes) |
-| `TRAVIS_TOKEN` | Travis CI API token (required only for `build fetch`) |
+| `TRAVIS_TOKEN` | Travis CI API token (required by `sync`) |
 
 ## Command Reference
 
@@ -46,15 +46,20 @@ devpulse repo add MilesChou/devpulse
 
 ---
 
-### `build fetch`
+### `sync`
 
 ```
-devpulse build fetch <owner/name>
+devpulse sync <owner/name>
 ```
 
-Fetches all CI build records from Travis CI for the given repository, then writes them to the store. Requires `TRAVIS_TOKEN`.
+Syncs the repository in two steps, in order:
 
-> The first run walks the full Travis history (capped at 100 pages × 100 builds). Subsequent runs are incremental — upserts dedupe writes and only commit SHAs with a NULL author are sent through the GitHub bulk-author lookup.
+1. **Pull requests** — fetches all PRs from GitHub (including reviews and commit details), upserts them, and runs enrichment.
+2. **CI builds** — fetches all CI build records from Travis CI and upserts them.
+
+The PR step runs first; if it fails, the build step is skipped and the command exits non-zero. Both `GITHUB_TOKEN` and `TRAVIS_TOKEN` are required.
+
+> The first run is the expensive one: PR sync pages through the full PR history (a meaningful share of the GitHub REST and GraphQL quota), and build sync walks the full Travis history (capped at 100 pages × 100 builds). Subsequent runs are incremental — upserts dedupe writes, author back-fill only touches commit SHAs whose author is still NULL, and PR pages are upserted/enriched before moving on so a partial run still records progress.
 
 **Arguments**
 
@@ -65,56 +70,27 @@ Fetches all CI build records from Travis CI for the given repository, then write
 **Output**
 
 ```
-Fetched MilesChou/devpulse builds: written=42
+Synced MilesChou/devpulse PRs: written=7
+Synced MilesChou/devpulse builds: written=42
 ```
 
 **Example**
 
 ```sh
-devpulse build fetch MilesChou/devpulse
+devpulse sync MilesChou/devpulse
 ```
 
 ---
 
-### `pr fetch`
+### `pr sync`
 
 ```
-devpulse pr fetch <owner/name>
+devpulse pr sync <owner/name> <number>
 ```
 
-Fetches all pull requests (including reviews and commit details) from GitHub for the given repository, then writes them to the store and runs enrichment automatically.
+Re-fetches detail and review data for a single pull request that is already in the store, then writes the enrichment patch. Use this to refresh a specific PR without re-syncing the entire repository.
 
-> The first run pages through the full PR history; for repos with thousands of PRs this consumes a meaningful share of the REST and GraphQL quota. Each page is upserted and enriched before moving on, so a partial run still records progress.
-
-**Arguments**
-
-| Argument | Description |
-|---|---|
-| `owner/name` | GitHub repository slug |
-
-**Output**
-
-```
-Fetched MilesChou/devpulse PRs: written=7
-```
-
-**Example**
-
-```sh
-devpulse pr fetch MilesChou/devpulse
-```
-
----
-
-### `pr enrich`
-
-```
-devpulse pr enrich <owner/name> <number>
-```
-
-Re-fetches detail and review data for a single pull request that is already in the store, then writes the enrichment patch. Use this to refresh a specific PR without re-fetching the entire month.
-
-The PR must already exist in the store. If it does not, run `devpulse pr fetch` first.
+The PR must already exist in the store. If it does not, run `devpulse sync` first.
 
 **Arguments**
 
@@ -126,13 +102,13 @@ The PR must already exist in the store. If it does not, run `devpulse pr fetch` 
 **Output**
 
 ```
-Enriched MilesChou/devpulse#42
+Synced MilesChou/devpulse#42
 ```
 
 **Example**
 
 ```sh
-devpulse pr enrich MilesChou/devpulse 42
+devpulse pr sync MilesChou/devpulse 42
 ```
 
 ---
@@ -194,7 +170,7 @@ applied 3 migrations:
 devpulse worker [--poll <duration>] [--lease <duration>]
 ```
 
-Runs the long-running job worker. The worker polls the database for queued jobs (e.g. enrichment jobs enqueued by `pr fetch`) and processes them. Stop with `Ctrl-C` (`SIGINT`) or `SIGTERM`.
+Runs the long-running job worker. The worker polls the database for queued jobs (e.g. enrichment jobs enqueued by `sync`) and processes them. Stop with `Ctrl-C` (`SIGINT`) or `SIGTERM`.
 
 **Flags**
 
@@ -238,12 +214,11 @@ devpulse migrate up
 # 2. Register the target repository
 devpulse repo add MilesChou/devpulse
 
-# 3. Back-fill CI builds and pull requests
-devpulse build fetch MilesChou/devpulse
-devpulse pr fetch MilesChou/devpulse
+# 3. Back-fill pull requests (with enrichment) and CI builds
+devpulse sync MilesChou/devpulse
 
 # 4. (Optional) Refresh a single PR
-devpulse pr enrich MilesChou/devpulse 42
+devpulse pr sync MilesChou/devpulse 42
 
 # 5. (Optional) Run the background worker for async enrichment jobs
 devpulse worker
@@ -267,5 +242,5 @@ The `Makefile` at the repository root provides convenience targets. Run `make he
 **Example**
 
 ```sh
-make run ARGS="pr fetch MilesChou/devpulse"
+make run ARGS="sync MilesChou/devpulse"
 ```

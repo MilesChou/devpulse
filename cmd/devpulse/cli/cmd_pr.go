@@ -9,6 +9,6 @@ func newPRCmd() *cobra.Command {
 		Use:   "pr",
 		Short: "Pull request operations",
 	}
-	cmd.AddCommand(newPRFetchCmd(), newPREnrichCmd())
+	cmd.AddCommand(newPRSyncCmd())
 	return cmd
 }
