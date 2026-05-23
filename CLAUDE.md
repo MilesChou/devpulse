@@ -1,5 +1,12 @@
 # CLAUDE.md
 
+## Status
+
+This system is **pre-release**. Backward compatibility is not a constraint —
+anything can be rewritten or redone, including database migrations, schema,
+CLI surface, and on-disk formats. Prefer the right design over a compatible
+one.
+
 ## Language
 
 - Use English in PRs and all code internals (comments, variable names, commit messages, etc.).
