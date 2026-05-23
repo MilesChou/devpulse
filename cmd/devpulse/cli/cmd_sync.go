@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -71,8 +72,15 @@ func runSync(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("list repos: %w", err)
 	}
+	return syncRepos(ctx, d, stdout(), repos)
+}
 
-	w := stdout()
+// syncRepos walks a pre-fetched slice of repos and runs syncOneRepo
+// against each, in order. Split out from runSync so tests can drive the
+// loop with a seeded store + a pre-cancelled context, without having to
+// fight buildDeps (which opens its own connection — for `memory` DSNs
+// that means a fresh, empty DB).
+func syncRepos(ctx context.Context, d *deps, w io.Writer, repos []repo.Repo) error {
 	if len(repos) == 0 {
 		fmt.Fprintln(w, "sync: no repos in store; use `devpulse repo add` first")
 		return nil
@@ -85,6 +93,17 @@ func runSync(ctx context.Context) error {
 	)
 
 	for _, r := range repos {
+		// Honour Ctrl-C / deadline at the top of each iteration. Without
+		// this the loop would keep calling syncOneRepo after cancellation
+		// — each call would fail fast (HTTP carries ctx), but the user
+		// would see a burst of `failed ...: context canceled` lines
+		// instead of a quick exit. Surface the ctx error directly so it's
+		// clear the run was interrupted, not "every repo broke".
+		if err := ctx.Err(); err != nil {
+			fmt.Fprintf(w, "sync: interrupted (%v); stopping at %s\n", err, r.Name.String())
+			return err
+		}
+
 		if r.Disabled {
 			fmt.Fprintf(w, "skipped %s (disabled)\n", r.Name.String())
 			skipped++
