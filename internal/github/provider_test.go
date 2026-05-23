@@ -28,11 +28,15 @@ func loadFixture(t *testing.T, name string) []byte {
 
 func newClient(t *testing.T, server *httptest.Server) *github.Client {
 	t.Helper()
-	return github.NewClient(github.Config{
+	c, err := github.NewClient(github.Config{
 		BaseURL: server.URL,
 		Token:   "test-token",
 		Timeout: 5 * time.Second,
 	})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	return c
 }
 
 func TestListPullRequestsInMonth_TerminatesAtMonthBoundary(t *testing.T) {

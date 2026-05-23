@@ -1,8 +1,13 @@
 // Package github implements fetching.VCSProvider against the GitHub REST
-// and GraphQL APIs. The HTTP plumbing — auth headers, default headers,
-// rate-limit-aware behavior — comes from github.com/cli/go-gh; this package
-// just owns the request shapes (paths, queries, GraphQL bodies) and adapts
-// responses into the domain model.
+// and GraphQL APIs. The HTTP plumbing — auth header injection, default
+// headers, and an ASCII-sanitizing transport — comes from
+// github.com/cli/go-gh; this package owns the request shapes (paths,
+// queries, GraphQL bodies) and adapts responses into the domain model.
+//
+// Note: go-gh's pkg/api does not implement rate-limit-aware retries. The
+// client currently does not retry on any failure (5xx, network errors,
+// primary or secondary GitHub rate limits). Adding retry is tracked
+// separately; do not assume retries are happening here.
 //
 // OpenTelemetry instrumentation is injected via api.ClientOptions.Transport
 // using the same otelhttp wrapper used by the rest of the codebase, so spans
@@ -46,7 +51,6 @@ type Config struct {
 // requests; higher-level operations live in pulls.go, reviews.go, etc.
 type Client struct {
 	base       string
-	token      string
 	userAgent  string
 	httpClient *http.Client
 	logger     *slog.Logger
@@ -54,16 +58,30 @@ type Client struct {
 
 // NewClient returns a configured Client.
 //
-// The HTTP client is built by api.NewHTTPClient from go-gh, which provides
-// GitHub-aware rate-limit handling (secondary rate limit + Retry-After
-// header), default headers, and a sanitizing transport. The Authorization
-// header is set explicitly to "Bearer <token>" — go-gh's default is
-// "token <token>", but we keep Bearer for parity with the REST API docs and
-// existing test expectations.
+// When cfg.Token is non-empty, the HTTP client is built by api.NewHTTPClient
+// from go-gh, which provides default headers and a sanitizing transport. The
+// Authorization header is set explicitly to "Bearer <token>" — go-gh's
+// default is "token <token>", but we keep Bearer for parity with the GitHub
+// REST API documentation and existing test expectations. The host handed to
+// go-gh's same-domain check on the Authorization header is derived from
+// BaseURL, so a test server at http://127.0.0.1:PORT still receives auth
+// headers.
 //
-// The host used for the token-domain safety check is derived from BaseURL,
-// so a test server at http://127.0.0.1:PORT still receives auth headers.
-func NewClient(cfg Config) *Client {
+// When cfg.Token is empty, go-gh's NewHTTPClient would otherwise try to
+// resolve a token from gh's on-disk config (~/.config/gh/hosts.yml) and
+// fail on machines without gh installed; to preserve the "deps build even
+// without a GitHub token, fail later when an API call is actually made"
+// contract that subcommands like `init` and `migrate` depend on, we bypass
+// go-gh entirely and build a minimal *http.Client with the OTel transport.
+// In that branch no Authorization header is sent, so requests against
+// api.github.com will receive 401 — but local-only subcommands never reach
+// that code path.
+//
+// An error is returned if api.NewHTTPClient fails; callers should treat
+// that as fatal rather than fall back to a bare client, because the
+// fallback would silently drop OTel instrumentation and every default
+// header.
+func NewClient(cfg Config) (*Client, error) {
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = DefaultBaseURL
 	}
@@ -74,42 +92,46 @@ func NewClient(cfg Config) *Client {
 		cfg.Timeout = DefaultTimeout
 	}
 
-	host := hostFromBaseURL(cfg.BaseURL)
+	transport := otelhttp.NewTransport(
+		http.DefaultTransport,
+		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+			return "github." + r.Method + " " + r.URL.Path
+		}),
+	)
 
-	headers := map[string]string{
-		"User-Agent": cfg.UserAgent,
-		// go-gh's default is "token <token>"; we override to "Bearer <token>"
+	var hc *http.Client
+	if cfg.Token == "" {
+		hc = &http.Client{
+			Transport: transport,
+			Timeout:   cfg.Timeout,
+		}
+	} else {
+		host := hostFromBaseURL(cfg.BaseURL)
+		// go-gh's default is "token <token>"; override to "Bearer <token>"
 		// for parity with the GitHub REST API documentation.
-		"Authorization": "Bearer " + cfg.Token,
-	}
-
-	hc, err := api.NewHTTPClient(api.ClientOptions{
-		Host:      host,
-		AuthToken: cfg.Token,
-		Headers:   headers,
-		Timeout:   cfg.Timeout,
-		Transport: otelhttp.NewTransport(
-			http.DefaultTransport,
-			otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
-				return "github." + r.Method + " " + r.URL.Path
-			}),
-		),
-	})
-	if err != nil {
-		// api.NewHTTPClient only fails when resolving options from gh's
-		// on-disk config; we provide all required options ourselves, so
-		// this path is unreachable in practice. Fall back to a bare client
-		// to avoid panicking on a misconfigured environment.
-		hc = &http.Client{Timeout: cfg.Timeout}
+		headers := map[string]string{
+			"User-Agent":    cfg.UserAgent,
+			"Authorization": "Bearer " + cfg.Token,
+		}
+		var err error
+		hc, err = api.NewHTTPClient(api.ClientOptions{
+			Host:      host,
+			AuthToken: cfg.Token,
+			Headers:   headers,
+			Timeout:   cfg.Timeout,
+			Transport: transport,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("github: build http client: %w", err)
+		}
 	}
 
 	return &Client{
 		base:       cfg.BaseURL,
-		token:      cfg.Token,
 		userAgent:  cfg.UserAgent,
 		httpClient: hc,
 		logger:     cfg.Logger,
-	}
+	}, nil
 }
 
 // hostFromBaseURL extracts the hostname from a BaseURL so we can hand it to
@@ -129,10 +151,10 @@ func hostFromBaseURL(baseURL string) string {
 //
 // query is appended as ?k=v; pass nil if none.
 //
-// The request is sent through go-gh's http.Client, which applies the
-// Authorization, Accept, User-Agent, Content-Type, and Time-Zone headers
-// and handles GitHub's rate-limit responses. We still need to set the
-// API-version pin explicitly — it is not part of go-gh's defaults.
+// When a token is configured, the request is sent through go-gh's
+// http.Client, which applies the Authorization, User-Agent, Content-Type,
+// and Time-Zone headers. The Accept and X-GitHub-Api-Version pins are set
+// explicitly here — they are not part of go-gh's defaults.
 func (c *Client) rest(ctx context.Context, method, path string, query url.Values, out any) (http.Header, error) {
 	u, err := url.Parse(c.base + path)
 	if err != nil {

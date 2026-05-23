@@ -142,7 +142,7 @@ spans; leave it empty and the provider is a no-op.
   `go-sql-driver/mysql`, `modernc.org/sqlite`
 - [`spf13/cobra`](https://github.com/spf13/cobra) for the CLI
 - [`cli/go-gh`](https://github.com/cli/go-gh) for the GitHub HTTP client
-  (rate-limit-aware)
+  (default headers + ASCII sanitizer; does not retry)
 - [`hashicorp/go-retryablehttp`](https://github.com/hashicorp/go-retryablehttp)
   for the Travis HTTP client (and any other generic outbound HTTP)
 - OpenTelemetry SDK for tracing
