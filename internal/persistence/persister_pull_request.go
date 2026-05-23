@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/mileschou/devpulse/internal/fetching"
 	"github.com/mileschou/devpulse/internal/pullrequest"
 )
 
@@ -22,12 +21,18 @@ var ErrPullRequestNotFound = errors.New("persistence: pull request not found")
 // UpsertMany inserts each PR, updating mutable lifecycle fields on conflict
 // of (repo_id, number). Enrichment fields are not touched here — those are
 // owned by UpdateEnrichment so a re-import never blows away derived data.
+//
+// For new rows the generated id is written back into prs[i].ID so callers
+// can drive follow-up writes (enrichment, reviews) without re-querying.
+// For pre-existing rows the persisted id is looked up post-commit so the
+// caller always observes the canonical DB id.
 func (r *PullRequestPersister) UpsertMany(ctx context.Context, prs []pullrequest.PullRequest) (int, error) {
 	if len(prs) == 0 {
 		return 0, nil
 	}
 
 	insert := r.Rebind(r.upsertSQL())
+	lookup := r.Rebind(`SELECT id FROM pull_requests WHERE repo_id = ? AND number = ?`)
 
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -37,15 +42,14 @@ func (r *PullRequestPersister) UpsertMany(ctx context.Context, prs []pullrequest
 
 	var written int
 	for i := range prs {
-		p := prs[i]
-		id := p.ID
-		if id == "" {
-			id = r.NewID()
+		p := &prs[i]
+		if p.ID == "" {
+			p.ID = r.NewID()
 		}
 		now := r.Now()
 
 		res, err := tx.ExecContext(ctx, insert,
-			id, "github", p.RepoID, p.Number, p.Author, p.Status.String(),
+			p.ID, "github", p.RepoID, p.Number, p.Author, p.Status.String(),
 			p.Additions, p.Deletions, p.TotalChangedLines,
 			p.IsDraft, p.CreatedAt, p.ReadyAt, p.MergedAt, p.ClosedAt,
 			now, now,
@@ -54,7 +58,19 @@ func (r *PullRequestPersister) UpsertMany(ctx context.Context, prs []pullrequest
 			return written, fmt.Errorf("pr upsert row: %w", err)
 		}
 		n, _ := res.RowsAffected()
-		written += int(n)
+		if n > 0 {
+			written += int(n)
+			continue
+		}
+
+		// Conflict path: the row already existed. Our locally-generated id
+		// was ignored; load the persisted one so the caller can drive
+		// enrichment against the canonical row.
+		var existingID string
+		if err := tx.QueryRowContext(ctx, lookup, p.RepoID, p.Number).Scan(&existingID); err != nil {
+			return written, fmt.Errorf("pr upsert lookup id: %w", err)
+		}
+		p.ID = existingID
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -77,35 +93,6 @@ func (r *PullRequestPersister) FindByNumber(ctx context.Context, repoID string, 
 		return pullrequest.PullRequest{}, ErrPullRequestNotFound
 	}
 	return got, err
-}
-
-// ListInMonth returns PRs whose pr_created_at lies inside [month.Start, month.End).
-func (r *PullRequestPersister) ListInMonth(ctx context.Context, repoID string, month fetching.MonthRange) ([]pullrequest.PullRequest, error) {
-	const q = `SELECT id, repo_id, number, author_account, status,
-	                  additions, deletions, total_changed_lines, is_draft,
-	                  pr_created_at, ready_at, first_review_at, first_approved_at,
-	                  time_to_approval, time_to_merge, merged_at, closed_at
-	             FROM pull_requests
-	            WHERE repo_id = ?
-	              AND pr_created_at >= ?
-	              AND pr_created_at <  ?
-	            ORDER BY pr_created_at`
-
-	rows, err := r.QueryCtx(ctx, q, repoID, month.Start, month.End)
-	if err != nil {
-		return nil, fmt.Errorf("pr list in month: %w", err)
-	}
-	defer rows.Close()
-
-	out := make([]pullrequest.PullRequest, 0, 16)
-	for rows.Next() {
-		got, err := scanPullRequest(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, got)
-	}
-	return out, rows.Err()
 }
 
 // UpdateEnrichment writes every enrichment-derived field. No fillable

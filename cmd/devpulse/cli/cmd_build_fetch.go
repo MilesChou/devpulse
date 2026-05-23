@@ -6,29 +6,24 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mileschou/devpulse/internal/fetching"
 	"github.com/mileschou/devpulse/internal/repo"
 )
 
 func newBuildFetchCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "fetch <owner/name> <YYYY-MM>",
-		Short: "Fetch CI builds for a repo within the given month",
-		Args:  cobra.ExactArgs(2),
+		Use:   "fetch <owner/name>",
+		Short: "Fetch all CI builds for a repo",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runBuildFetch(cmd.Context(), args[0], args[1])
+			return runBuildFetch(cmd.Context(), args[0])
 		},
 	}
 }
 
-func runBuildFetch(ctx context.Context, repoArg, monthArg string) error {
+func runBuildFetch(ctx context.Context, repoArg string) error {
 	name, err := repo.ParseFullName(repoArg)
 	if err != nil {
 		return fmt.Errorf("invalid repo: %w", err)
-	}
-	month, err := fetching.ParseMonthRange(monthArg)
-	if err != nil {
-		return fmt.Errorf("invalid month: %w", err)
 	}
 
 	d, err := buildDeps(ctx)
@@ -42,12 +37,12 @@ func runBuildFetch(ctx context.Context, repoArg, monthArg string) error {
 		return fmt.Errorf("ensure repo: %w", err)
 	}
 
-	outcome := d.orch.FetchBuilds(ctx, r, month)
-	if outcome.Error != nil {
-		return outcome.Error
+	written, err := d.orch.FetchAllBuilds(ctx, r)
+	if err != nil {
+		return err
 	}
-	fmt.Fprintf(stdout(), "Fetched %s builds for %s: written=%d\n",
-		outcome.RepoFullName, month.String(), outcome.BuildsWritten,
+	fmt.Fprintf(stdout(), "Fetched %s builds: written=%d\n",
+		name.String(), written,
 	)
 	return nil
 }

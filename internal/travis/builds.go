@@ -2,6 +2,7 @@ package travis
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -11,6 +12,11 @@ import (
 	"github.com/mileschou/devpulse/internal/x/commitsha"
 	"github.com/mileschou/devpulse/internal/x/timex"
 )
+
+// maxBuildPages caps ListAllBuilds at 100 pages (≈10k builds at
+// defaultLimit=100). Larger repos surface a wrapped error rather than
+// silently exhausting memory + API quota.
+const maxBuildPages = 100
 
 // Pushes to a trunk branch are post-merge builds; pushes to any other
 // branch are treated as PR-flow builds (covers PRs merged before the
@@ -42,27 +48,15 @@ type buildsResponse struct {
 	Builds []rawBuild `json:"builds"`
 }
 
-// ListBuildsInMonth pages through /repo/:slug/builds in id-desc order,
-// terminating after 50 consecutive builds older than month.Start.
-//
-// id-desc is not strictly time-desc because cancelled / re-run / PR
-// builds can interleave with push builds. Stopping on the first
-// below-window entry would drop legitimate ones, so we use a
-// consecutive-50 cutoff inherited from the Python prototype.
-func (c *Client) ListBuildsInMonth(
-	ctx context.Context,
-	slug string,
-	startInclusive, endExclusive time.Time,
-) ([]build.Build, error) {
-	const consecutiveCutoff = 50
-
+// ListAllBuilds pages through all builds for a slug, returning every one.
+// Capped at maxBuildPages pages to bound memory and API quota.
+func (c *Client) ListAllBuilds(ctx context.Context, slug string) ([]build.Build, error) {
 	var (
-		out              []build.Build
-		offset           = 0
-		consecutiveBelow = 0
+		out    []build.Build
+		offset = 0
 	)
 
-	for {
+	for range maxBuildPages {
 		batch, err := c.fetchBuildsPage(ctx, slug, offset, defaultLimit)
 		if err != nil {
 			return nil, err
@@ -71,42 +65,20 @@ func (c *Client) ListBuildsInMonth(
 			return out, nil
 		}
 
-		stop := false
 		for _, raw := range batch {
 			b, ok := buildFromRaw(raw)
 			if !ok {
-				// Unparseable build (e.g. canceled with no started_at and
-				// no finished_at). Skipping it is the right move — the row
-				// has no usable timeline.
 				continue
 			}
-
-			switch {
-			case !b.StartedAt.Before(endExclusive):
-				consecutiveBelow = 0
-				continue
-			case b.StartedAt.Before(startInclusive):
-				consecutiveBelow++
-				if consecutiveBelow >= consecutiveCutoff {
-					stop = true
-					break
-				}
-				continue
-			default:
-				consecutiveBelow = 0
-				out = append(out, b)
-			}
-
-			if stop {
-				break
-			}
+			out = append(out, b)
 		}
 
-		if stop || len(batch) < defaultLimit {
+		if len(batch) < defaultLimit {
 			return out, nil
 		}
 		offset += defaultLimit
 	}
+	return out, fmt.Errorf("travis: ListAllBuilds exceeded %d pages for %s", maxBuildPages, slug)
 }
 
 // fetchBuildsPage returns one page of builds in id-desc order.

@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strconv"
 	"testing"
 	"time"
 
@@ -23,9 +22,8 @@ func loadFixture(t *testing.T, name string) []byte {
 	return data
 }
 
-func TestListBuildsInMonth_FiltersAndSkipsUnparseable(t *testing.T) {
+func TestListAllBuilds_ParsesAndSkipsUnparseable(t *testing.T) {
 	page1 := loadFixture(t, "builds_page1.json")
-	page2 := loadFixture(t, "builds_page2.json")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Travis URL-encodes "/" as "%2F" — the raw path keeps the encoded form.
@@ -39,30 +37,21 @@ func TestListBuildsInMonth_FiltersAndSkipsUnparseable(t *testing.T) {
 			t.Errorf("api version: %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Query().Get("offset") {
-		case "0":
-			_, _ = w.Write(page1)
-		case "100":
-			_, _ = w.Write(page2)
-		default:
-			t.Errorf("unexpected offset %q", r.URL.Query().Get("offset"))
-		}
+		// Page 1 has 3 entries; less than defaultLimit (100) so pagination
+		// terminates after a single fetch.
+		_, _ = w.Write(page1)
 	}))
 	defer srv.Close()
 
 	c := travis.NewClient(travis.Config{BaseURL: srv.URL, Token: "test-token", Timeout: 5 * time.Second})
 
-	start := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-	builds, err := c.ListBuildsInMonth(context.Background(), "MilesChou/devpulse", start, end)
+	builds, err := c.ListAllBuilds(context.Background(), "MilesChou/devpulse")
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
 
-	// Expected: id 9001 (May 20 push to main), id 9000 (May 15 PR). The
-	// canceled build with no started_at is dropped; the April build on
-	// page 2 is outside the window but consecutiveBelow stays at 1 so
-	// pagination terminates because page 2 is short (len < limit).
+	// id 9001 (push to main) and id 9000 (PR) should parse. id 8500 has
+	// no started_at and is silently dropped.
 	if len(builds) != 2 {
 		t.Fatalf("expected 2 builds, got %d", len(builds))
 	}
@@ -88,57 +77,5 @@ func TestListBuildsInMonth_FiltersAndSkipsUnparseable(t *testing.T) {
 	}
 	if builds[1].Status != build.StatusFailed {
 		t.Fatalf("status: %v", builds[1].Status)
-	}
-}
-
-func TestListBuildsInMonth_TerminatesOn50ConsecutiveBelow(t *testing.T) {
-	// Build a synthetic page where every build is below the window.
-	// Travis pages of size 100 → we need 50+ consecutive below entries.
-	// Generate 100 builds at id 1..100, all dated April 2026.
-
-	var body []byte
-	body = append(body, []byte(`{"builds": [`)...)
-	for i := 99; i >= 0; i-- {
-		comma := ","
-		if i == 0 {
-			comma = ""
-		}
-		entry := `{
-		    "id": ` + strconv.Itoa(i) + `,
-		    "number": "n",
-		    "state": "passed",
-		    "event_type": "push",
-		    "pull_request_number": 0,
-		    "duration": 100,
-		    "started_at": "2026-04-15T10:00:00Z",
-		    "finished_at": "2026-04-15T10:01:40Z",
-		    "commit": {"sha": "aaa1234567890abcdef1234567890abcdef12345"},
-		    "branch": {"name": "main"},
-		    "repository": {"slug": "MilesChou/devpulse"}
-		}` + comma
-		body = append(body, []byte(entry)...)
-	}
-	body = append(body, []byte(`]}`)...)
-
-	calls := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(body)
-	}))
-	defer srv.Close()
-
-	c := travis.NewClient(travis.Config{BaseURL: srv.URL, Token: "t", Timeout: 5 * time.Second})
-	start := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-	builds, err := c.ListBuildsInMonth(context.Background(), "MilesChou/devpulse", start, end)
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if len(builds) != 0 {
-		t.Fatalf("expected 0 builds inside window, got %d", len(builds))
-	}
-	if calls > 1 {
-		t.Fatalf("expected 1 API call before cutoff fires, got %d", calls)
 	}
 }

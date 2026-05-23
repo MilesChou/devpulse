@@ -65,11 +65,13 @@ devpulse migrate up
 # 註冊 repo
 devpulse repo add MilesChou/devpulse
 
-# 撈某月份的 CI build
-devpulse build fetch MilesChou/devpulse 2026-05
+# 撈所有 CI build。首次執行會走完整個 Travis 歷史，老 repo 可能需要數分鐘
+# API 呼叫；後續執行為增量（upsert 去重、author backfill 略過已有的列）。
+devpulse build fetch MilesChou/devpulse
 
-# 撈同一個月的 PR + review + enrichment
-devpulse pr fetch MilesChou/devpulse 2026-05
+# 撈所有 PR + review + enrichment。首次執行會打完整個 GitHub 歷史，
+# 會吃掉相當比例的 REST / GraphQL 配額。
+devpulse pr fetch MilesChou/devpulse
 
 # 針對單一 PR 重新計算 enrichment
 devpulse pr enrich MilesChou/devpulse 42
@@ -86,8 +88,8 @@ devpulse worker
 | 指令 | 用途 |
 |---|---|
 | `devpulse repo add <owner/name>` | 註冊一個 repo |
-| `devpulse build fetch <owner/name> <YYYY-MM>` | 撈某月份的 CI build |
-| `devpulse pr fetch <owner/name> <YYYY-MM>` | 撈某月份的 PR + review + enrichment |
+| `devpulse build fetch <owner/name>` | 撈所有 CI build |
+| `devpulse pr fetch <owner/name>` | 撈所有 PR + review + enrichment |
 | `devpulse pr enrich <owner/name> <number>` | 重新計算單一 PR 的 enrichment |
 | `devpulse migrate {up,down,status}` | Schema migration |
 | `devpulse worker` | 啟動 DB-backed job worker |

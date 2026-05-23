@@ -20,37 +20,22 @@ type fakeCIProvider struct {
 	err    error
 }
 
-func (f *fakeCIProvider) ListBuildsInMonth(
+func (f *fakeCIProvider) ListAllBuilds(
 	_ context.Context,
 	_ repo.FullName,
-	_ fetching.MonthRange,
 ) ([]build.Build, error) {
 	return f.builds, f.err
 }
 
 // fakeVCSProvider stubs out every method the orchestrator calls.
 type fakeVCSProvider struct {
-	pulls    []pullrequest.PullRequest
 	allPulls []pullrequest.PullRequest
 	detail   pullrequest.PullRequest
 	reviews  []pullrequest.Review
 	logins   map[commitsha.SHA]*string
-	listErr  error
 	getErr   error
 	revsErr  error
 	bulkErr  error
-}
-
-func (f *fakeVCSProvider) ListPullRequestsInMonth(
-	_ context.Context, _ string, _ repo.FullName, _ fetching.MonthRange,
-) ([]pullrequest.PullRequest, error) {
-	return f.pulls, f.listErr
-}
-
-func (f *fakeVCSProvider) ListAllPullRequests(
-	_ context.Context, _ string, _ repo.FullName,
-) ([]pullrequest.PullRequest, error) {
-	return f.allPulls, nil
 }
 
 func (f *fakeVCSProvider) ListAllPullRequestsPageFunc(
@@ -136,7 +121,7 @@ func TestFetch_PersistsBuildsAndPRs(t *testing.T) {
 	ready := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
 	merged := time.Date(2026, 5, 1, 15, 0, 0, 0, time.UTC)
 	vcs := &fakeVCSProvider{
-		pulls: []pullrequest.PullRequest{
+		allPulls: []pullrequest.PullRequest{
 			{
 				RepoID:    r.ID,
 				Number:    42,
@@ -158,28 +143,32 @@ func TestFetch_PersistsBuildsAndPRs(t *testing.T) {
 	}
 
 	orch := fetching.NewOrchestrator(ci, vcs, bp, pp, rvp, nil)
-	month := fetching.NewMonthRange(2026, time.May)
 
-	buildOutcome := orch.FetchBuilds(ctx, r, month)
-	if buildOutcome.Error != nil {
-		t.Fatalf("build outcome err: %v", buildOutcome.Error)
+	buildsWritten, err := orch.FetchAllBuilds(ctx, r)
+	if err != nil {
+		t.Fatalf("FetchAllBuilds err: %v", err)
 	}
-	if buildOutcome.BuildsWritten != 1 {
-		t.Fatalf("builds written: %+v", buildOutcome)
-	}
-
-	prOutcome := orch.FetchPullRequests(ctx, r, month)
-	if prOutcome.Error != nil {
-		t.Fatalf("pr outcome err: %v", prOutcome.Error)
-	}
-	if prOutcome.PullRequestsWritten != 1 {
-		t.Fatalf("prs written: %+v", prOutcome)
+	if buildsWritten != 1 {
+		t.Fatalf("builds written: %d", buildsWritten)
 	}
 
-	// Build author should have been back-filled.
-	missing, _ := bp.ListMissingAuthorSHAs(ctx, r.ID, month)
+	prsWritten, err := orch.FetchAllPullRequestsWithEnrichment(ctx, r)
+	if err != nil {
+		t.Fatalf("FetchAllPullRequestsWithEnrichment err: %v", err)
+	}
+	if prsWritten != 1 {
+		t.Fatalf("prs written: %d", prsWritten)
+	}
+
+	// Author backfill: the build's commit had a NULL author before
+	// enrichment; with logins[sha] = &alice the row should be populated
+	// and ListMissingAuthorSHAs should return nothing for the repo.
+	missing, err := bp.ListMissingAuthorSHAs(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("list missing shas: %v", err)
+	}
 	if len(missing) != 0 {
-		t.Fatalf("expected no missing authors, got %v", missing)
+		t.Fatalf("expected zero missing-author SHAs after enrichment, got %v", missing)
 	}
 
 	// PR enrichment should be populated.
@@ -231,30 +220,29 @@ func TestFetch_BuildAuthorEnrichmentFailureDoesNotAbortPRFetch(t *testing.T) {
 			StartedAt: time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)},
 	}}
 	vcs := &fakeVCSProvider{
-		pulls: []pullrequest.PullRequest{
+		allPulls: []pullrequest.PullRequest{
 			{RepoID: r.ID, Number: 1, Author: "x", Status: pullrequest.StatusOpen, CreatedAt: created, ReadyAt: &ready},
 		},
 		bulkErr: context.DeadlineExceeded, // simulate transient API failure
 	}
 
 	orch := fetching.NewOrchestrator(ci, vcs, bp, pp, rvp, nil)
-	month := fetching.NewMonthRange(2026, time.May)
 
-	// Author backfill failure inside FetchBuilds is swallowed (logged
+	// Author backfill failure inside FetchAllBuilds is swallowed (logged
 	// only); the build itself is still written.
-	buildOutcome := orch.FetchBuilds(ctx, r, month)
-	if buildOutcome.Error != nil {
-		t.Fatalf("FetchBuilds should not surface bulk-author failure: %v", buildOutcome.Error)
+	buildsWritten, err := orch.FetchAllBuilds(ctx, r)
+	if err != nil {
+		t.Fatalf("FetchAllBuilds should not surface bulk-author failure: %v", err)
 	}
-	if buildOutcome.BuildsWritten != 1 {
-		t.Fatalf("build not written: %+v", buildOutcome)
+	if buildsWritten != 1 {
+		t.Fatalf("build not written: %d", buildsWritten)
 	}
 
-	prOutcome := orch.FetchPullRequests(ctx, r, month)
-	if prOutcome.Error != nil {
-		t.Fatalf("FetchPullRequests should still succeed: %v", prOutcome.Error)
+	prsWritten, err := orch.FetchAllPullRequestsWithEnrichment(ctx, r)
+	if err != nil {
+		t.Fatalf("FetchAllPullRequestsWithEnrichment should still succeed: %v", err)
 	}
-	if prOutcome.PullRequestsWritten != 1 {
-		t.Fatalf("PR not written: %+v", prOutcome)
+	if prsWritten != 1 {
+		t.Fatalf("PR not written: %d", prsWritten)
 	}
 }
