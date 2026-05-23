@@ -136,8 +136,10 @@ collector 位址（例如本機 Jaeger 的 `localhost:4318`）就會把 span 送
 - `database/sql` 搭配三個 driver：`jackc/pgx/v5/stdlib`、
   `go-sql-driver/mysql`、`modernc.org/sqlite`
 - [`spf13/cobra`](https://github.com/spf13/cobra) 處理 CLI
+- [`cli/go-gh`](https://github.com/cli/go-gh) 提供 GitHub HTTP client
+  （懂 rate limit）
 - [`hashicorp/go-retryablehttp`](https://github.com/hashicorp/go-retryablehttp)
-  處理對外 HTTP
+  處理 Travis HTTP client（以及其他通用對外 HTTP）
 - OpenTelemetry SDK 提供 tracing
 - in-tree 的 DB-backed job queue
 
