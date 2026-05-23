@@ -10,18 +10,23 @@ import (
 	"github.com/mileschou/devpulse/internal/repo"
 )
 
-func newPREnrichCmd() *cobra.Command {
+func newPRSyncCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "enrich <owner/name> <number>",
+		Use:   "sync <owner/name> <number>",
 		Short: "Re-fetch detail and reviews for one PR and write the enrichment patch",
-		Args:  cobra.ExactArgs(2),
+		Long: "Refreshes a single pull request that is already in the store: " +
+			"re-fetches detail and review data from GitHub and writes the " +
+			"enrichment patch. Use `devpulse sync` to back-fill PRs that are " +
+			"not yet in the store.",
+		Example: "  devpulse pr sync MilesChou/devpulse 42",
+		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runPREnrich(cmd.Context(), args[0], args[1])
+			return runPRSync(cmd.Context(), args[0], args[1])
 		},
 	}
 }
 
-func runPREnrich(ctx context.Context, repoArg, numArg string) error {
+func runPRSync(ctx context.Context, repoArg, numArg string) error {
 	name, err := repo.ParseFullName(repoArg)
 	if err != nil {
 		return fmt.Errorf("invalid repo: %w", err)
@@ -47,8 +52,8 @@ func runPREnrich(ctx context.Context, repoArg, numArg string) error {
 		return err
 	}
 	if !found {
-		return fmt.Errorf("PR #%d not in store; run `devpulse pr fetch` first", num)
+		return fmt.Errorf("PR #%d not in store; run `devpulse sync` first", num)
 	}
-	fmt.Fprintf(stdout(), "Enriched %s#%d\n", name.String(), num)
+	fmt.Fprintf(stdout(), "Synced %s#%d\n", name.String(), num)
 	return nil
 }

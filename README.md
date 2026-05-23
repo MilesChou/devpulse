@@ -69,17 +69,15 @@ devpulse migrate up
 # Register a repository.
 devpulse repo add MilesChou/devpulse
 
-# Pull all CI builds. The first run walks the full Travis history, so for
-# long-lived repos expect minutes of API calls; subsequent runs are
-# incremental (upserts dedupe and author back-fill skips populated rows).
-devpulse build fetch MilesChou/devpulse
+# Sync everything: PRs (with reviews and enrichment) first, then CI
+# builds. The first run touches the full GitHub and Travis histories and
+# consumes a significant share of the REST/GraphQL quota; subsequent
+# runs are incremental (upserts dedupe and author back-fill skips
+# populated rows).
+devpulse sync MilesChou/devpulse
 
-# Pull all PRs + reviews + enrichment. First run touches the full GitHub
-# history and consumes a significant share of the REST/GraphQL quota.
-devpulse pr fetch MilesChou/devpulse
-
-# Re-run enrichment for a single PR.
-devpulse pr enrich MilesChou/devpulse 42
+# Re-sync a single PR (re-fetch detail and reviews).
+devpulse pr sync MilesChou/devpulse 42
 
 # Process enqueued jobs (long-running).
 devpulse worker
@@ -87,15 +85,15 @@ devpulse worker
 
 ## Commands
 
-DevPulse groups commands by resource (`repo`, `build`, `pr`) with verbs
-underneath, in the style of `gh` and `jira-cli`.
+DevPulse groups commands by resource (`repo`, `pr`) with verbs underneath,
+in the style of `gh` and `jira-cli`. `sync` is a top-level convenience that
+runs the PR and CI build pulls in order.
 
 | Command | Purpose |
 |---|---|
 | `devpulse repo add <owner/name>` | Register a repository |
-| `devpulse build fetch <owner/name>` | Fetch all CI builds |
-| `devpulse pr fetch <owner/name>` | Fetch all PRs + reviews + enrichment |
-| `devpulse pr enrich <owner/name> <number>` | Recompute enrichment for one PR |
+| `devpulse sync <owner/name>` | Sync all PRs (with enrichment) then all CI builds |
+| `devpulse pr sync <owner/name> <number>` | Re-sync a single PR (detail + reviews) |
 | `devpulse migrate {up,down,status}` | Schema migration |
 | `devpulse worker` | Run the DB-backed job worker |
 | `devpulse serve` | Placeholder for the v2 HTTP API |

@@ -14,7 +14,7 @@ devpulse <名詞> <動詞> [引數] [旗標]
 |---|---|
 | `DEVPULSE_DSN` | 資料庫連線字串（支援 PostgreSQL、MySQL、SQLite 或 `memory`） |
 | `GITHUB_TOKEN` | GitHub 個人存取權杖（需要 `repo` + `read:user` 範圍） |
-| `TRAVIS_TOKEN` | Travis CI API 權杖（僅 `build fetch` 需要） |
+| `TRAVIS_TOKEN` | Travis CI API 權杖（`sync` 需要） |
 
 ## 指令參考
 
@@ -46,15 +46,20 @@ devpulse repo add MilesChou/devpulse
 
 ---
 
-### `build fetch`
+### `sync`
 
 ```
-devpulse build fetch <owner/name>
+devpulse sync <owner/name>
 ```
 
-從 Travis CI 取得指定儲存庫的所有 CI 建置記錄，並寫入資料庫。需要設定 `TRAVIS_TOKEN`。
+依序執行兩個步驟同步指定儲存庫：
 
-> 首次執行會走完整個 Travis 歷史（上限 100 頁 × 100 build）。後續執行為增量——upsert 會去重，author backfill 也只會把仍為 NULL 的 commit SHA 送去 GitHub bulk 查詢。
+1. **Pull Request**：從 GitHub 抓取所有 PR（含審查與 commit 細節），寫入資料庫並執行 enrichment。
+2. **CI builds**：從 Travis CI 抓取所有建置記錄並寫入資料庫。
+
+PR 步驟先跑；若失敗則跳過 build 步驟並以非零狀態結束。需要同時設定 `GITHUB_TOKEN` 與 `TRAVIS_TOKEN`。
+
+> 首次執行最耗時：PR 同步會分頁打完整個 PR 歷史（吃掉相當比例的 GitHub REST 與 GraphQL 配額），build 同步則會走完整個 Travis 歷史（上限 100 頁 × 100 build）。後續執行為增量——upsert 會去重、author backfill 只會處理 author 仍為 NULL 的 commit SHA、PR 也會在進到下一頁前完成 upsert 與 enrichment，所以中斷的執行仍會保留已處理的進度。
 
 **引數**
 
@@ -65,56 +70,27 @@ devpulse build fetch <owner/name>
 **輸出**
 
 ```
-Fetched MilesChou/devpulse builds: written=42
+Synced MilesChou/devpulse PRs: written=7
+Synced MilesChou/devpulse builds: written=42
 ```
 
 **範例**
 
 ```sh
-devpulse build fetch MilesChou/devpulse
+devpulse sync MilesChou/devpulse
 ```
 
 ---
 
-### `pr fetch`
+### `pr sync`
 
 ```
-devpulse pr fetch <owner/name>
+devpulse pr sync <owner/name> <number>
 ```
 
-從 GitHub 取得指定儲存庫的所有 Pull Request（含審查意見與提交詳情），寫入資料庫後自動執行補充（enrich）。
+重新取得資料庫中已存在的單一 Pull Request 的詳細資料與審查記錄，並寫入補充更新。適用於不需要重新同步整個儲存庫、只需刷新特定 PR 的情境。
 
-> 首次執行會分頁打完整個 PR 歷史；對動輒上千個 PR 的 repo 而言會吃掉相當比例的 REST 與 GraphQL 配額。每一頁都會在進到下一頁前完成 upsert 與 enrichment，所以中斷的執行也會保留已處理的進度。
-
-**引數**
-
-| 引數 | 說明 |
-|---|---|
-| `owner/name` | GitHub 儲存庫識別名稱 |
-
-**輸出**
-
-```
-Fetched MilesChou/devpulse PRs: written=7
-```
-
-**範例**
-
-```sh
-devpulse pr fetch MilesChou/devpulse
-```
-
----
-
-### `pr enrich`
-
-```
-devpulse pr enrich <owner/name> <number>
-```
-
-重新取得資料庫中已存在的單一 Pull Request 的詳細資料與審查記錄，並寫入補充更新。適用於不需要重抓整個月份、只需刷新特定 PR 的情境。
-
-該 PR 必須已存在於資料庫中。若尚未存在，請先執行 `devpulse pr fetch`。
+該 PR 必須已存在於資料庫中。若尚未存在，請先執行 `devpulse sync`。
 
 **引數**
 
@@ -126,13 +102,13 @@ devpulse pr enrich <owner/name> <number>
 **輸出**
 
 ```
-Enriched MilesChou/devpulse#42
+Synced MilesChou/devpulse#42
 ```
 
 **範例**
 
 ```sh
-devpulse pr enrich MilesChou/devpulse 42
+devpulse pr sync MilesChou/devpulse 42
 ```
 
 ---
@@ -194,7 +170,7 @@ applied 3 migrations:
 devpulse worker [--poll <時間間隔>] [--lease <時間間隔>]
 ```
 
-啟動長期執行的背景工作程序。Worker 會持續輪詢資料庫中的待執行工作（例如由 `pr fetch` 排入佇列的補充工作）並加以處理。按 `Ctrl-C`（`SIGINT`）或傳送 `SIGTERM` 以停止。
+啟動長期執行的背景工作程序。Worker 會持續輪詢資料庫中的待執行工作（例如由 `sync` 排入佇列的補充工作）並加以處理。按 `Ctrl-C`（`SIGINT`）或傳送 `SIGTERM` 以停止。
 
 **旗標**
 
@@ -238,12 +214,11 @@ devpulse migrate up
 # 2. 註冊目標儲存庫
 devpulse repo add MilesChou/devpulse
 
-# 3. 補抓所有 CI 建置記錄與 Pull Request
-devpulse build fetch MilesChou/devpulse
-devpulse pr fetch MilesChou/devpulse
+# 3. 同步所有 Pull Request（含 enrichment）與 CI 建置記錄
+devpulse sync MilesChou/devpulse
 
 # 4. （選用）刷新單一 PR
-devpulse pr enrich MilesChou/devpulse 42
+devpulse pr sync MilesChou/devpulse 42
 
 # 5. （選用）啟動背景 Worker 處理非同步補充工作
 devpulse worker
@@ -267,5 +242,5 @@ devpulse worker
 **範例**
 
 ```sh
-make run ARGS="pr fetch MilesChou/devpulse"
+make run ARGS="sync MilesChou/devpulse"
 ```
