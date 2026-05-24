@@ -20,15 +20,6 @@ func NewProvider(c *Client) *Provider { return &Provider{client: c} }
 // Compile-time assertion: Provider must satisfy fetching.VCSProvider.
 var _ fetching.VCSProvider = (*Provider)(nil)
 
-func (p *Provider) ListAllPullRequestsPageFunc(
-	ctx context.Context,
-	repoID string,
-	repoName repo.FullName,
-	fn func(page []pullrequest.PullRequest) error,
-) error {
-	return p.client.ListAllPullRequestsPageFunc(ctx, repoID, repoName, fn)
-}
-
 func (p *Provider) GetPullRequest(
 	ctx context.Context,
 	repoID string,
@@ -36,6 +27,13 @@ func (p *Provider) GetPullRequest(
 	number int,
 ) (pullrequest.PullRequest, error) {
 	return p.client.GetPullRequest(ctx, repoID, repoName, number)
+}
+
+func (p *Provider) GetLatestPRNumber(
+	ctx context.Context,
+	repoName repo.FullName,
+) (int, error) {
+	return p.client.GetLatestPRNumber(ctx, repoName)
 }
 
 func (p *Provider) ListReviews(

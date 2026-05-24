@@ -8,7 +8,11 @@
             {"state": "APPROVED",  "submittedAt": "2026-05-15T12:00:00Z", "author": {"login": "carol"}},
             {"state": "PENDING",   "submittedAt": null,                   "author": {"login": "dave"}},
             {"state": "COMMENTED", "submittedAt": "2026-05-15T12:30:00Z", "author": null}
-          ]
+          ],
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": null
+          }
         }
       }
     }

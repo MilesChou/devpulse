@@ -27,6 +27,8 @@ import (
 
 	"github.com/cli/go-gh/v2/pkg/api"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	"github.com/mileschou/devpulse/internal/fetching"
 )
 
 const (
@@ -34,7 +36,6 @@ const (
 	DefaultUserAgent = "devpulse/0 (+https://github.com/MilesChou/devpulse)"
 	DefaultTimeout   = 30 * time.Second
 	graphqlEndpoint  = "/graphql"
-	defaultPerPage   = 100
 	graphqlMaxBatch  = 80 // alias batch limit for GetCommitAuthorsBulk
 )
 
@@ -179,6 +180,10 @@ func (c *Client) rest(ctx context.Context, method, path string, query url.Values
 
 	if resp.StatusCode/100 != 2 {
 		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusNotFound {
+			return resp.Header, fmt.Errorf("%w: %s %s: %s",
+				fetching.ErrNotFound, method, path, snippet(body))
+		}
 		return resp.Header, fmt.Errorf("github: %s %s: status %d: %s",
 			method, path, resp.StatusCode, snippet(body))
 	}

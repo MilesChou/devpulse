@@ -17,7 +17,7 @@ func newRepoCmd() *cobra.Command {
 		Use:   "repo",
 		Short: "Manage tracked repositories",
 	}
-	cmd.AddCommand(newRepoAddCmd(), newRepoRefreshCmd(), newRepoSyncCmd())
+	cmd.AddCommand(newRepoAddCmd(), newRepoRefreshCmd(), newRepoSyncCmd(), newRepoConfigCmd())
 	return cmd
 }
 

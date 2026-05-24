@@ -86,6 +86,40 @@ devpulse repo add MilesChou/devpulse
 
 ---
 
+### `repo config set` / `repo config get`
+
+```
+devpulse repo config set <owner/name> <key> <value>
+devpulse repo config get <owner/name> [key]
+```
+
+讀取或設定指定儲存庫的操作設定（per-repo operator settings）。設定屬於 operator 擁有，**不會**被 `repo sync` 覆寫——一旦寫入即生效，直到下次 `config set` 才會變動。
+
+**可用設定**
+
+| 設定名稱 | 型別 | 說明 |
+|---|---|---|
+| `pr-start` | 整數（>= 1） | PR 同步起點（floor）——`devpulse repo sync` 在 by-number 模式下會從這個 PR number 開始往上掃描。預設 `1`（抓全部歷史）。當早期 PR 未接 CI、不具觀測價值時將起點調高即可節省 GitHub API 配額。 |
+
+該儲存庫必須已透過 `devpulse repo add` 註冊。`repo config get` 若不帶 `key` 引數，會列出所有已知設定值。
+
+**範例**
+
+```sh
+# 跳過 PR #1 到 #499（例如尚未接 CI 的早期歷史），從 #500 開始抓
+devpulse repo config set MilesChou/devpulse pr-start 500
+
+# 讀回單一設定
+devpulse repo config get MilesChou/devpulse pr-start
+# → 500
+
+# 或一次列出所有設定
+devpulse repo config get MilesChou/devpulse
+# → pr-start=500
+```
+
+---
+
 ### `repo sync`
 
 ```
@@ -99,7 +133,7 @@ devpulse repo sync <owner/name>
 
 PR 步驟先跑；若失敗則跳過 build 步驟並以非零狀態結束。需要同時設定 `GITHUB_TOKEN` 與 `TRAVIS_TOKEN`。
 
-> 首次執行最耗時：PR 同步會分頁打完整個 PR 歷史（吃掉相當比例的 GitHub REST 與 GraphQL 配額），build 同步則會走完整個 Travis 歷史（上限 100 頁 × 100 build）。後續執行為增量——upsert 會去重、author backfill 只會處理 author 仍為 NULL 的 commit SHA、PR 也會在進到下一頁前完成 upsert 與 enrichment，所以中斷的執行仍會保留已處理的進度。
+> 首次執行最耗時：PR 同步會從 `pr_sync_start_number`（預設 1）開始往上、逐個 PR number 抓 detail + reviews，跑到 GitHub 當前最大 PR number 為止；build 同步則會走完整個 Travis 歷史，無頁數上限。後續執行為增量——PR 從 `MAX(number) + 1` 接著抓、build 用 `(repo_id, external_id)` 去重、author backfill 只會處理 author 仍為 NULL 的 commit SHA。
 
 **引數**
 
@@ -253,6 +287,10 @@ devpulse migrate up
 
 # 2. 註冊目標儲存庫
 devpulse repo add MilesChou/devpulse
+
+# 2'. （選用）跳過尚未接 CI 的早期歷史，將 PR 同步起點設高。
+#     未設定時，首次同步會從 PR #1 開始往上抓。
+devpulse repo config set MilesChou/devpulse pr-start 500
 
 # 3. 同步該 repo 的所有 Pull Request（含 enrichment）與 CI 建置記錄
 devpulse repo sync MilesChou/devpulse

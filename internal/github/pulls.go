@@ -77,59 +77,15 @@ func (r rawPull) toDomain(repoID string) pullrequest.PullRequest {
 	return pr
 }
 
-// ListAllPullRequests pages through every PR with no time cutoff.
-func (c *Client) ListAllPullRequests(
-	ctx context.Context,
-	repoID string,
-	repoName repo.FullName,
-) ([]pullrequest.PullRequest, error) {
-	var out []pullrequest.PullRequest
-	err := c.ListAllPullRequestsPageFunc(ctx, repoID, repoName, func(page []pullrequest.PullRequest) error {
-		out = append(out, page...)
-		return nil
-	})
-	return out, err
-}
-
-// ListAllPullRequestsPageFunc pages through every PR, calling fn per page.
-func (c *Client) ListAllPullRequestsPageFunc(
-	ctx context.Context,
-	repoID string,
-	repoName repo.FullName,
-	fn func(page []pullrequest.PullRequest) error,
-) error {
-	page := 1
-	for {
-		batch, more, err := c.listPullsPage(ctx, repoName, page, defaultPerPage)
-		if err != nil {
-			return err
-		}
-		if len(batch) == 0 {
-			return nil
-		}
-
-		prs := make([]pullrequest.PullRequest, 0, len(batch))
-		for _, raw := range batch {
-			prs = append(prs, raw.toDomain(repoID))
-		}
-		if err := fn(prs); err != nil {
-			return err
-		}
-
-		if !more {
-			return nil
-		}
-		page++
-	}
-}
-
-// listPullsPage returns one page worth of PRs plus a "more pages" flag
-// derived from the Link header. Sort=created, direction=desc, state=all.
+// listPullsPage returns one page worth of PRs. The new by-number sync
+// flow only ever needs the first page to read the latest PR number,
+// so pagination state (Link header) is intentionally not tracked here.
+// Sort=created, direction=desc, state=all.
 func (c *Client) listPullsPage(
 	ctx context.Context,
 	repoName repo.FullName,
 	page, perPage int,
-) ([]rawPull, bool, error) {
+) ([]rawPull, error) {
 	path := fmt.Sprintf("/repos/%s/%s/pulls", repoName.Owner, repoName.Name)
 	q := url.Values{}
 	q.Set("state", "all")
@@ -139,19 +95,15 @@ func (c *Client) listPullsPage(
 	q.Set("page", strconv.Itoa(page))
 
 	var batch []rawPull
-	hdr, err := c.rest(ctx, "GET", path, q, &batch)
-	if err != nil {
-		return nil, false, err
+	if _, err := c.rest(ctx, "GET", path, q, &batch); err != nil {
+		return nil, err
 	}
-	return batch, hasNextPage(hdr.Get("Link")), nil
-}
-
-// hasNextPage parses GitHub's Link header for a rel="next" segment.
-func hasNextPage(link string) bool {
-	return strings.Contains(link, `rel="next"`)
+	return batch, nil
 }
 
 // GetPullRequest fetches a single PR with detail (additions/deletions).
+// Returns an error wrapping ErrNotFound when the upstream responds 404
+// (the number belongs to an issue, was deleted, or never existed).
 func (c *Client) GetPullRequest(
 	ctx context.Context,
 	repoID string,
@@ -165,4 +117,32 @@ func (c *Client) GetPullRequest(
 		return pullrequest.PullRequest{}, err
 	}
 	return raw.toDomain(repoID), nil
+}
+
+// GetLatestPRNumber returns the highest PR number currently in the repo.
+// It pulls the first page of the sort=created direction=desc list and
+// reads the first entry's number — one REST call regardless of repo
+// size.
+//
+// Assumption: GitHub assigns PR numbers monotonically at creation time,
+// so "newest by created_at" coincides with "highest number". This is
+// not formally documented but holds in practice; if upstream ever
+// changes, the by-number backfill upper bound would skip the tail of
+// any window where a new PR was opened between this call and the loop
+// end — that PR would still be picked up on the next sync via the
+// db_max+1 cursor.
+//
+// Returns 0 with no error when the repo has zero PRs.
+func (c *Client) GetLatestPRNumber(
+	ctx context.Context,
+	repoName repo.FullName,
+) (int, error) {
+	batch, err := c.listPullsPage(ctx, repoName, 1, 1)
+	if err != nil {
+		return 0, fmt.Errorf("get latest pr number: %w", err)
+	}
+	if len(batch) == 0 {
+		return 0, nil
+	}
+	return batch[0].Number, nil
 }

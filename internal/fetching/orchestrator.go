@@ -2,6 +2,7 @@ package fetching
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -9,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/mileschou/devpulse/internal/persistence"
 	"github.com/mileschou/devpulse/internal/pullrequest"
 	"github.com/mileschou/devpulse/internal/repo"
 )
@@ -73,48 +75,173 @@ func (o *Orchestrator) FetchAllBuilds(ctx context.Context, r repo.Repo) (int, er
 	return written, nil
 }
 
-// FetchAllPullRequestsWithEnrichment pages through the full PR history,
-// upserting and enriching each page as it arrives. Returns the total
-// upserted count. Enrichment failures are logged but do not abort.
-func (o *Orchestrator) FetchAllPullRequestsWithEnrichment(ctx context.Context, r repo.Repo) (int, error) {
+// BackfillPullRequestsByNumber syncs every PR number from
+// max(repo.PRSyncStartNumber, MAX(number)+1) up to the upstream max,
+// ascending. Each PR is atomic — detail fetch, upsert, reviews, and
+// enrichment all complete before moving on — so MAX(number) in the DB
+// always points to a fully synced PR. An interrupted run resumes
+// naturally on the next call without any extra state.
+//
+// Error policy:
+//   - Upstream 404 (issue/deleted) is skipped silently; the loop keeps
+//     advancing. Long runs of 404s in a row do incur repeat probes on
+//     subsequent runs because MAX(number) does not advance until a real
+//     PR lands — accepted trade-off for not maintaining an absent-set.
+//   - Any other error from a single PR aborts the whole repo's PR sync
+//     immediately (fail-fast). DB state remains at the last successful
+//     PR so the next run picks up there.
+//   - ctx cancellation is honored between iterations so Ctrl-C stays
+//     responsive even on large backfills.
+//
+// Returns the count of PRs successfully written this round (404 skips
+// don't count). Used for the "Synced X pull requests: written=N" line.
+func (o *Orchestrator) BackfillPullRequestsByNumber(ctx context.Context, r repo.Repo) (int, error) {
 	tracer := otel.Tracer(tracerName)
-	ctx, span := tracer.Start(ctx, "Orchestrator.FetchAllPullRequestsWithEnrichment",
+	ctx, span := tracer.Start(ctx, "Orchestrator.BackfillPullRequestsByNumber",
 		trace.WithAttributes(attribute.String("repo", r.Name.String())))
 	defer span.End()
 
-	var totalWritten int
-
-	err := o.vcs.ListAllPullRequestsPageFunc(ctx, r.ID, r.Name, func(page []pullrequest.PullRequest) error {
-		written, err := o.prs.UpsertMany(ctx, page)
-		if err != nil {
-			return err
-		}
-		totalWritten += written
-
-		// UpsertMany writes back the canonical DB id on each entry, so
-		// enrichment can run directly against the slice — one DB hit per
-		// page instead of one FindByNumber per PR.
-		for i := range page {
-			if err := o.enrichOnePullRequest(ctx, r, page[i]); err != nil {
-				o.logger.Warn("enrich pr failed",
-					slog.String("repo", r.Name.String()),
-					slog.Int("number", page[i].Number),
-					slog.String("err", err.Error()),
-				)
-			}
-		}
-		return nil
-	})
-
+	remoteMax, err := o.vcs.GetLatestPRNumber(ctx, r.Name)
 	if err != nil {
 		span.RecordError(err)
-		return totalWritten, err
+		return 0, fmt.Errorf("get latest pr number: %w", err)
 	}
-	return totalWritten, nil
+	if remoteMax == 0 {
+		return 0, nil
+	}
+
+	dbMax, hasDBMax, err := o.prs.MaxNumber(ctx, r.ID)
+	if err != nil {
+		span.RecordError(err)
+		return 0, fmt.Errorf("get db max number: %w", err)
+	}
+
+	start := max(r.PRSyncStartNumber, 1)
+	if hasDBMax {
+		start = max(start, dbMax+1)
+	}
+
+	span.SetAttributes(
+		attribute.Int("start", start),
+		attribute.Int("remote_max", remoteMax),
+	)
+
+	var written int
+	for n := start; n <= remoteMax; n++ {
+		if err := ctx.Err(); err != nil {
+			span.RecordError(err)
+			return written, err
+		}
+
+		ok, err := o.syncOnePullRequestByNumber(ctx, r, n)
+		if err != nil {
+			span.RecordError(err)
+			return written, fmt.Errorf("sync pr #%d: %w", n, err)
+		}
+		if ok {
+			written++
+		}
+	}
+	span.SetAttributes(attribute.Int("written", written))
+	return written, nil
 }
 
-// EnrichOnePullRequestByNumber loads a stored PR by number, fetches detail
-// and reviews, and writes the enrichment patch. Returns (found, err).
+// syncOnePullRequestByNumber fetches PR #n end-to-end and writes it in
+// a single upsert that already carries the computed enrichment fields.
+// This is what makes the by-number backfill resumable from DB MAX
+// without per-PR progress state: when the row exists, every column on
+// it — including additions/deletions and lead-time metrics — was
+// written in one atomic step.
+//
+// Returns (false, nil) when the number is a 404 (issue / deleted) so
+// the caller can keep advancing without counting it.
+//
+// Failure modes:
+//   - detail / reviews fetch failure → returns the wrapped error; no
+//     DB writes happened. Next run probes the same number.
+//   - PR upsert failure → returns the wrapped error; no DB writes
+//     happened. Same recovery as above.
+//   - Review-row upsert failure → the PR row was already committed
+//     (with enrichment), so dbMax advances. Individual review-row
+//     gaps can be repaired by `devpulse pr sync <n>`. This trade-off
+//     is documented because making reviews tx-atomic with the PR row
+//     would require plumbing transactions through the writer
+//     interfaces — out of scope for this iteration.
+func (o *Orchestrator) syncOnePullRequestByNumber(
+	ctx context.Context,
+	r repo.Repo,
+	number int,
+) (bool, error) {
+	detail, err := o.vcs.GetPullRequest(ctx, r.ID, r.Name, number)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			o.logger.Debug("pr skipped (not a pr / deleted)",
+				slog.String("repo", r.Name.String()),
+				slog.Int("number", number),
+			)
+			return false, nil
+		}
+		return false, fmt.Errorf("get detail: %w", err)
+	}
+
+	reviews, err := o.vcs.ListReviews(ctx, r.Name, number)
+	if err != nil {
+		return false, fmt.Errorf("list reviews: %w", err)
+	}
+
+	// Compute enrichment BEFORE the PR row is written, so the upsert
+	// can carry the derived columns in one shot. Reviews submitted
+	// during the draft period are dropped from both the aggregation
+	// and the per-row upsert below.
+	//
+	// TotalChangedLines is recomputed here even though the GitHub
+	// provider's toDomain also sets it — this is the single point that
+	// every PR write passes through, so the cheap a+b makes the
+	// invariant `total == additions + deletions` independent of how
+	// `detail` was constructed (e.g. an alternate VCSProvider or test
+	// fake that doesn't go through toDomain).
+	detail.TotalChangedLines = detail.Additions + detail.Deletions
+	agg := pullrequest.AggregateReviews(reviews, detail.ReadyAt)
+	detail.FirstReviewAt = agg.FirstReviewAt
+	detail.FirstApprovedAt = agg.FirstApprovedAt
+	detail.TimeToApproval = pullrequest.ComputeTimeToApproval(detail.ReadyAt, agg.FirstApprovedAt)
+	detail.TimeToMerge = pullrequest.ComputeTimeToMerge(agg.FirstApprovedAt, detail.MergedAt)
+
+	// Single-element slice is intentional: UpsertMany writes the
+	// canonical id back into batch[0].ID for the review loop below.
+	batch := []pullrequest.PullRequest{detail}
+	if _, err := o.prs.UpsertMany(ctx, batch); err != nil {
+		return false, fmt.Errorf("upsert: %w", err)
+	}
+	prID := batch[0].ID
+
+	for _, rev := range reviews {
+		if detail.ReadyAt != nil && rev.SubmittedAt.Before(*detail.ReadyAt) {
+			continue
+		}
+		if err := o.reviews.Upsert(ctx, prID, rev); err != nil {
+			return false, fmt.Errorf("upsert review: %w", err)
+		}
+	}
+	return true, nil
+}
+
+// EnrichOnePullRequestByNumber re-syncs one PR that is already in the
+// store. It is the `devpulse pr sync` entry point — its job is to
+// refresh detail + reviews + enrichment for one number on demand,
+// typically to repair a row whose backfill was interrupted mid-PR.
+//
+// Return contract:
+//   - (true, nil):  PR refreshed successfully.
+//   - (false, nil): PR is not in the local store. The caller decides how
+//     to surface this (the CLI prints a "run `repo sync` first" hint).
+//     This sentinel-free signal lets the CLI distinguish "user typo"
+//     from a real failure without depending on persistence internals.
+//   - (true, err):  PR existed locally but the refresh failed (network,
+//     upstream 404, write error). Upstream 404 is surfaced as an error
+//     here — unlike the backfill loop which skips 404s — because an
+//     operator-issued `pr sync <n>` against a non-existent number is
+//     most likely a typo and should not be swallowed.
 func (o *Orchestrator) EnrichOnePullRequestByNumber(
 	ctx context.Context,
 	r repo.Repo,
@@ -128,13 +255,21 @@ func (o *Orchestrator) EnrichOnePullRequestByNumber(
 		))
 	defer span.End()
 
-	pr, err := o.prs.FindByNumber(ctx, r.ID, number)
-	if err != nil {
+	if _, err := o.prs.FindByNumber(ctx, r.ID, number); err != nil {
+		if errors.Is(err, persistence.ErrPullRequestNotFound) {
+			return false, nil
+		}
 		span.RecordError(err)
 		return false, err
 	}
 
-	if err := o.enrichOnePullRequest(ctx, r, pr); err != nil {
+	ok, err := o.syncOnePullRequestByNumber(ctx, r, number)
+	if err != nil {
+		span.RecordError(err)
+		return true, err
+	}
+	if !ok {
+		err := fmt.Errorf("pr #%d gone upstream", number)
 		span.RecordError(err)
 		return true, err
 	}
@@ -169,47 +304,6 @@ func (o *Orchestrator) enrichBuildAuthors(ctx context.Context, r repo.Repo) erro
 				slog.String("err", err.Error()),
 			)
 		}
-	}
-	return nil
-}
-
-// enrichOnePullRequest fetches PR detail + reviews and writes the
-// derived lead-time fields. Reviews submitted before pr.ReadyAt are
-// dropped so draft-period activity does not contribute to Pickup Time.
-func (o *Orchestrator) enrichOnePullRequest(
-	ctx context.Context,
-	r repo.Repo,
-	pr pullrequest.PullRequest,
-) error {
-	tracer := otel.Tracer(tracerName)
-	ctx, span := tracer.Start(ctx, "Orchestrator.enrichOnePullRequest",
-		trace.WithAttributes(attribute.Int("number", pr.Number)))
-	defer span.End()
-
-	detail, err := o.vcs.GetPullRequest(ctx, r.ID, r.Name, pr.Number)
-	if err != nil {
-		return fmt.Errorf("get detail: %w", err)
-	}
-
-	reviews, err := o.vcs.ListReviews(ctx, r.Name, pr.Number)
-	if err != nil {
-		return fmt.Errorf("list reviews: %w", err)
-	}
-
-	for _, rev := range reviews {
-		if pr.ReadyAt != nil && rev.SubmittedAt.Before(*pr.ReadyAt) {
-			continue
-		}
-		if err := o.reviews.Upsert(ctx, pr.ID, rev); err != nil {
-			return fmt.Errorf("upsert review: %w", err)
-		}
-	}
-
-	agg := pullrequest.AggregateReviews(reviews, pr.ReadyAt)
-	patch := pullrequest.BuildEnrichmentPatch(pr, detail.Additions, detail.Deletions, agg)
-
-	if err := o.prs.UpdateEnrichment(ctx, pr.ID, patch); err != nil {
-		return fmt.Errorf("update enrichment: %w", err)
 	}
 	return nil
 }
