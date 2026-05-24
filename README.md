@@ -88,6 +88,39 @@ devpulse pr sync MilesChou/devpulse 42
 devpulse worker
 ```
 
+## Local exploration with Metabase
+
+For interactive browsing of the metric views (see
+`migrations/*views_failure_rate.up.sql`), an optional Metabase overlay
+ships with the repository:
+
+```bash
+docker compose \
+    -f docker-compose.yml \
+    -f docker-compose.postgres.yml \
+    -f docker-compose.metabase.yml up -d --wait
+```
+
+The `metabase-init` sidecar auto-bootstraps:
+
+- Admin account: `admin@devpulse.local` / `changeme1!` (local dev only)
+- Data source: the DevPulse PostgreSQL, pre-registered as **DevPulse**
+
+So `up -d --wait` is the entire setup — no first-run wizard, no manual
+data-source entry. Then browse to [http://localhost:3000](http://localhost:3000)
+and log in.
+
+If the init container exits non-zero, look at its log to diagnose:
+
+```bash
+docker compose -f docker-compose.metabase.yml logs metabase-init
+```
+
+To start over from a clean Metabase: `docker compose down`, then
+`docker volume rm devpulse_metabase-data`, then `up -d --wait` again.
+The Postgres data (your synced PRs, builds, reviews) is in a separate
+volume and is not affected.
+
 ## Commands
 
 DevPulse groups commands by resource (`repo`, `pr`) with verbs underneath,

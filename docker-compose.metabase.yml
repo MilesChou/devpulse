@@ -1,0 +1,108 @@
+# Metabase overlay for DevPulse.
+#
+# Usage (typical pairing — Postgres backend + Metabase on top):
+#   docker compose -f docker-compose.yml \
+#       -f docker-compose.postgres.yml \
+#       -f docker-compose.metabase.yml up -d
+#
+# First-run experience: the `metabase-init` sidecar in this overlay
+# waits for Metabase to be healthy, then POSTs /api/setup with the
+# defaults below. After `up -d` completes you can go straight to
+# http://localhost:3000 and log in as:
+#
+#   email:    admin@devpulse.local
+#   password: changeme1!     ← change before any non-local use
+#
+# The DevPulse PostgreSQL is already registered as a data source so
+# you can jump straight to "Browse data → DevPulse" without filling
+# the wizard.
+#
+# The init script is idempotent — if Metabase has already been set up
+# (manually or by a prior init container run), it exits 0 without
+# touching anything. To start over: `docker compose down -v` wipes the
+# `metabase-data` volume and the next `up` re-runs setup.
+#
+# Metabase stores its own metadata (users, dashboards, saved questions)
+# in an embedded H2 file inside the `metabase-data` volume. That's fine
+# for local exploration; a real deployment should point Metabase at a
+# dedicated PostgreSQL via MB_DB_* env vars instead. See
+# https://www.metabase.com/docs/latest/installation-and-operation/
+# configuring-application-database.
+services:
+  metabase:
+    image: metabase/metabase:latest
+    container_name: devpulse-metabase
+    ports:
+      - "3000:3000"
+    environment:
+      # Default site locale. Per-user locale (Account Settings →
+      # Language) overrides this, so individual operators can still
+      # pick English while the default is Traditional Chinese.
+      MB_SITE_LOCALE: zh-TW
+      # Disable anonymous-usage tracking by default. The init script
+      # also passes `allow_tracking: false` to /api/setup, but that
+      # only affects setup-time defaults — the env var is what
+      # actually pins the runtime setting (and grays out the toggle
+      # in Admin → Settings, signalling that it's enforced).
+      MB_ANON_TRACKING_ENABLED: "false"
+      # Default date/time formatting (ISO 8601 + 24-hour). ISO sorts
+      # correctly as a string and is unambiguous across locales —
+      # important for the metric dashboards that live in this stack.
+      # Like the toggles above, this is an env var so the Admin →
+      # Settings → Localization toggles are pinned (grayed out as
+      # "Set via environment variable").
+      MB_CUSTOM_FORMATTING: '{"type/Temporal":{"date_style":"YYYY-MM-DD","date_separator":"-","date_abbreviate":false,"time_style":"HH:mm"}}'
+    volumes:
+      - metabase-data:/metabase.db
+    networks:
+      - devpulse
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s   # initial schema bootstrap takes a while
+
+  metabase-init:
+    # One-shot sidecar that runs Metabase's /api/setup once the main
+    # service is healthy. See .docker/metabase-init/init.sh for the
+    # admin / data-source defaults and the idempotency behavior.
+    #
+    # Depends on `postgres` as well as `metabase` because /api/setup's
+    # database payload triggers Metabase to test the connection at the
+    # moment of POST. Even when both are healthy first, Metabase has
+    # been observed to silently drop the data source on /api/setup —
+    # the init script's phase-2 step backfills via /api/database.
+    #
+    # Note on this requiring both backends: `depends_on: postgres`
+    # means this overlay only validates when composed with the
+    # postgres overlay. Running `-f docker-compose.metabase.yml` alone
+    # fails Compose's validation ("service depends on undefined
+    # service 'postgres'"), which is by design — Metabase has nothing
+    # to point at without a backend overlay.
+    #
+    # The image is plain `alpine` with `curl + jq` installed at
+    # container-start. jq is mandatory because every JSON parse in
+    # init.sh goes through it (earlier grep/sed versions had a
+    # string of edge-case bugs — id ordering, escaping, empty-grep
+    # silent failures). The ~5-second apk install is one-shot per
+    # container start; we don't bake a custom image because that adds
+    # a separate build artifact for a 226-line script.
+    image: alpine:3.20
+    container_name: devpulse-metabase-init
+    depends_on:
+      metabase:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - devpulse
+    volumes:
+      - ./.docker/metabase-init:/scripts:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - 'apk add --no-cache curl jq >/dev/null && exec /bin/sh /scripts/init.sh'
+    restart: "no"   # exits after a single run; do not restart on success
+
