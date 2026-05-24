@@ -133,7 +133,7 @@ Syncs the repository in two steps, in order:
 
 The PR step runs first; if it fails, the build step is skipped and the command exits non-zero. Both `GITHUB_TOKEN` and `TRAVIS_TOKEN` are required.
 
-> The first run is the expensive one: PR sync pages through the full PR history (a meaningful share of the GitHub REST and GraphQL quota), and build sync walks the full Travis history (capped at 100 pages × 100 builds). Subsequent runs are incremental — upserts dedupe writes, author back-fill only touches commit SHAs whose author is still NULL, and PR pages are upserted/enriched before moving on so a partial run still records progress.
+> The first run is the expensive one: PR sync walks PR numbers ascending from `pr_sync_start_number` (default 1) up to the upstream max, fetching detail + reviews per PR; build sync walks the full Travis history with no page cap. Subsequent runs are incremental — PRs resume from `MAX(number) + 1`, builds dedupe by `(repo_id, external_id)`, and author back-fill only touches commit SHAs whose author is still NULL.
 
 **Arguments**
 

@@ -133,7 +133,7 @@ devpulse repo sync <owner/name>
 
 PR 步驟先跑；若失敗則跳過 build 步驟並以非零狀態結束。需要同時設定 `GITHUB_TOKEN` 與 `TRAVIS_TOKEN`。
 
-> 首次執行最耗時：PR 同步會分頁打完整個 PR 歷史（吃掉相當比例的 GitHub REST 與 GraphQL 配額），build 同步則會走完整個 Travis 歷史（上限 100 頁 × 100 build）。後續執行為增量——upsert 會去重、author backfill 只會處理 author 仍為 NULL 的 commit SHA、PR 也會在進到下一頁前完成 upsert 與 enrichment，所以中斷的執行仍會保留已處理的進度。
+> 首次執行最耗時：PR 同步會從 `pr_sync_start_number`（預設 1）開始往上、逐個 PR number 抓 detail + reviews，跑到 GitHub 當前最大 PR number 為止；build 同步則會走完整個 Travis 歷史，無頁數上限。後續執行為增量——PR 從 `MAX(number) + 1` 接著抓、build 用 `(repo_id, external_id)` 去重、author backfill 只會處理 author 仍為 NULL 的 commit SHA。
 
 **引數**
 
