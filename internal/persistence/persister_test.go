@@ -2,6 +2,7 @@ package persistence_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -24,6 +25,62 @@ func mustFullName(t *testing.T, s string) repo.FullName {
 		t.Fatalf("parse: %v", err)
 	}
 	return n
+}
+
+func TestRepoPersister_UpdatePRSyncStart(t *testing.T) {
+	p := setup(t)
+	rp := persistence.NewRepoPersister(p)
+	ctx := context.Background()
+
+	r, err := rp.EnsureID(ctx, "github", mustFullName(t, "foo/bar"))
+	if err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	if r.PRSyncStartNumber != 1 {
+		t.Fatalf("default should be 1, got %d", r.PRSyncStartNumber)
+	}
+
+	if err := rp.UpdatePRSyncStart(ctx, r.ID, 500); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	got, err := rp.FindByID(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if got.PRSyncStartNumber != 500 {
+		t.Fatalf("expected 500, got %d", got.PRSyncStartNumber)
+	}
+}
+
+func TestRepoPersister_UpdatePRSyncStart_RejectsBelowOne(t *testing.T) {
+	p := setup(t)
+	rp := persistence.NewRepoPersister(p)
+	ctx := context.Background()
+
+	r, _ := rp.EnsureID(ctx, "github", mustFullName(t, "foo/bar"))
+
+	// 0 and negatives are rejected at the Go layer (defense-in-depth
+	// alongside the DB CHECK constraint).
+	for _, n := range []int{0, -1, -1000} {
+		if err := rp.UpdatePRSyncStart(ctx, r.ID, n); err == nil {
+			t.Fatalf("expected error for n=%d", n)
+		}
+	}
+}
+
+func TestRepoPersister_UpdatePRSyncStart_RepoNotFound(t *testing.T) {
+	p := setup(t)
+	rp := persistence.NewRepoPersister(p)
+	ctx := context.Background()
+
+	err := rp.UpdatePRSyncStart(ctx, "01HZZZZZZZZZZZZZZZZZZZZZZZ", 5)
+	if err == nil {
+		t.Fatalf("expected error for missing repo")
+	}
+	if !errors.Is(err, persistence.ErrRepoNotFound) {
+		t.Fatalf("expected ErrRepoNotFound, got %v", err)
+	}
 }
 
 func TestRepoPersister_EnsureID_CreatesThenReuses(t *testing.T) {
@@ -216,7 +273,11 @@ func TestBuildPersister_UpdateAuthorBySHA(t *testing.T) {
 	}
 }
 
-func TestPullRequestPersister_UpsertThenEnrichment(t *testing.T) {
+// TestPullRequestPersister_Upsert_RoundTripsAllFields asserts every
+// column the sync flow writes (basic + change stats + enrichment) is
+// readable via FindByNumber. With the by-number sync, UpsertMany is the
+// single write path — there is no separate UpdateEnrichment step.
+func TestPullRequestPersister_Upsert_RoundTripsAllFields(t *testing.T) {
 	p := setup(t)
 	rp := persistence.NewRepoPersister(p)
 	pp := persistence.NewPullRequestPersister(p)
@@ -226,21 +287,30 @@ func TestPullRequestPersister_UpsertThenEnrichment(t *testing.T) {
 
 	created := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
 	ready := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
+	firstReview := time.Date(2026, 5, 1, 11, 0, 0, 0, time.UTC)
+	approve := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	merged := time.Date(2026, 5, 1, 15, 0, 0, 0, time.UTC)
+	timeToApproval := 2 * 3600
+	timeToMerge := 3 * 3600
 
-	prs := []pullrequest.PullRequest{
-		{
-			RepoID:    r.ID,
-			Number:    42,
-			Author:    "alice",
-			Status:    pullrequest.StatusMerged,
-			IsDraft:   false,
-			CreatedAt: created,
-			ReadyAt:   &ready,
-			MergedAt:  &merged,
-		},
+	full := pullrequest.PullRequest{
+		RepoID:            r.ID,
+		Number:            42,
+		Author:            "alice",
+		Status:            pullrequest.StatusMerged,
+		Additions:         50,
+		Deletions:         20,
+		TotalChangedLines: 70,
+		IsDraft:           false,
+		CreatedAt:         created,
+		ReadyAt:           &ready,
+		FirstReviewAt:     &firstReview,
+		FirstApprovedAt:   &approve,
+		TimeToApproval:    &timeToApproval,
+		TimeToMerge:       &timeToMerge,
+		MergedAt:          &merged,
 	}
-	if _, err := pp.UpsertMany(ctx, prs); err != nil {
+	if _, err := pp.UpsertMany(ctx, []pullrequest.PullRequest{full}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
 
@@ -248,49 +318,32 @@ func TestPullRequestPersister_UpsertThenEnrichment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find: %v", err)
 	}
-	if got.Author != "alice" {
-		t.Fatalf("author %q", got.Author)
+	if got.Author != "alice" || got.Status != pullrequest.StatusMerged {
+		t.Fatalf("basic fields: %+v", got)
 	}
-	if got.Status != pullrequest.StatusMerged {
-		t.Fatalf("status %v", got.Status)
+	if got.Additions != 50 || got.Deletions != 20 || got.TotalChangedLines != 70 {
+		t.Fatalf("change stats: %+v", got)
 	}
-
-	approve := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
-	firstReview := time.Date(2026, 5, 1, 11, 0, 0, 0, time.UTC)
-	timeToApproval := 2 * 3600
-	timeToMerge := 3 * 3600
-
-	if err := pp.UpdateEnrichment(ctx, got.ID, pullrequest.EnrichmentPatch{
-		Additions:         50,
-		Deletions:         20,
-		TotalChangedLines: 70,
-		FirstReviewAt:     &firstReview,
-		FirstApprovedAt:   &approve,
-		TimeToApproval:    &timeToApproval,
-		TimeToMerge:       &timeToMerge,
-	}); err != nil {
-		t.Fatalf("enrich: %v", err)
+	if got.FirstReviewAt == nil || !got.FirstReviewAt.Equal(firstReview) {
+		t.Fatalf("first_review_at: %v", got.FirstReviewAt)
 	}
-
-	got2, _ := pp.FindByNumber(ctx, r.ID, 42)
-	if got2.Additions != 50 || got2.Deletions != 20 || got2.TotalChangedLines != 70 {
-		t.Fatalf("change stats: %+v", got2)
+	if got.FirstApprovedAt == nil || !got.FirstApprovedAt.Equal(approve) {
+		t.Fatalf("first_approved_at: %v", got.FirstApprovedAt)
 	}
-	if got2.FirstReviewAt == nil || !got2.FirstReviewAt.Equal(firstReview) {
-		t.Fatalf("first_review_at not stored: %v", got2.FirstReviewAt)
+	if got.TimeToApproval == nil || *got.TimeToApproval != timeToApproval {
+		t.Fatalf("time_to_approval: %v", got.TimeToApproval)
 	}
-	if got2.FirstApprovedAt == nil || !got2.FirstApprovedAt.Equal(approve) {
-		t.Fatalf("first_approved_at not stored: %v", got2.FirstApprovedAt)
-	}
-	if got2.TimeToApproval == nil || *got2.TimeToApproval != timeToApproval {
-		t.Fatalf("time_to_approval: %v", got2.TimeToApproval)
-	}
-	if got2.TimeToMerge == nil || *got2.TimeToMerge != timeToMerge {
-		t.Fatalf("time_to_merge: %v", got2.TimeToMerge)
+	if got.TimeToMerge == nil || *got.TimeToMerge != timeToMerge {
+		t.Fatalf("time_to_merge: %v", got.TimeToMerge)
 	}
 }
 
-func TestPullRequestPersister_Upsert_DoesNotClobberEnrichment(t *testing.T) {
+// TestPullRequestPersister_Upsert_OverwritesEnrichmentOnConflict asserts
+// the new contract: re-upserting the same PR number with fresh values
+// overwrites every mutable column, including additions/deletions and
+// lead-time fields. This is what lets `devpulse pr sync <n>` repair a
+// row whose backfill was interrupted mid-PR.
+func TestPullRequestPersister_Upsert_OverwritesEnrichmentOnConflict(t *testing.T) {
 	p := setup(t)
 	rp := persistence.NewRepoPersister(p)
 	pp := persistence.NewPullRequestPersister(p)
@@ -299,34 +352,45 @@ func TestPullRequestPersister_Upsert_DoesNotClobberEnrichment(t *testing.T) {
 	r, _ := rp.EnsureID(ctx, "github", mustFullName(t, "MilesChou/devpulse"))
 	created := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
 
-	_, _ = pp.UpsertMany(ctx, []pullrequest.PullRequest{
-		{RepoID: r.ID, Number: 42, Author: "alice", Status: pullrequest.StatusOpen, CreatedAt: created},
-	})
-	pr, _ := pp.FindByNumber(ctx, r.ID, 42)
+	// First write: enrichment is missing (zero/nil), Status=Open.
+	first := pullrequest.PullRequest{
+		RepoID: r.ID, Number: 42, Author: "alice",
+		Status: pullrequest.StatusOpen, CreatedAt: created,
+	}
+	if _, err := pp.UpsertMany(ctx, []pullrequest.PullRequest{first}); err != nil {
+		t.Fatalf("first upsert: %v", err)
+	}
 
-	// Apply enrichment.
-	a := 3600
+	// Second write: Status=Merged + enrichment present. Author is
+	// immutable (DO UPDATE excludes it) but everything else should refresh.
 	approve := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
-	_ = pp.UpdateEnrichment(ctx, pr.ID, pullrequest.EnrichmentPatch{
-		Additions: 10, Deletions: 5, TotalChangedLines: 15,
-		FirstApprovedAt: &approve, TimeToApproval: &a,
-	})
-
-	// Re-upsert the PR (e.g. month re-fetch). Status should refresh but
-	// enrichment columns must remain.
-	_, _ = pp.UpsertMany(ctx, []pullrequest.PullRequest{
-		{ID: pr.ID, RepoID: r.ID, Number: 42, Author: "alice", Status: pullrequest.StatusMerged, CreatedAt: created},
-	})
+	approval := 3600
+	second := pullrequest.PullRequest{
+		RepoID: r.ID, Number: 42, Author: "alice",
+		Status:            pullrequest.StatusMerged,
+		Additions:         10,
+		Deletions:         5,
+		TotalChangedLines: 15,
+		CreatedAt:         created,
+		FirstApprovedAt:   &approve,
+		TimeToApproval:    &approval,
+	}
+	if _, err := pp.UpsertMany(ctx, []pullrequest.PullRequest{second}); err != nil {
+		t.Fatalf("second upsert: %v", err)
+	}
 
 	got, _ := pp.FindByNumber(ctx, r.ID, 42)
 	if got.Status != pullrequest.StatusMerged {
 		t.Fatalf("status not refreshed: %v", got.Status)
 	}
-	if got.TimeToApproval == nil || *got.TimeToApproval != a {
-		t.Fatalf("enrichment lost: %v", got.TimeToApproval)
+	if got.Additions != 10 || got.Deletions != 5 {
+		t.Fatalf("change stats not refreshed: a=%d d=%d", got.Additions, got.Deletions)
 	}
-	if got.Additions != 10 {
-		t.Fatalf("additions lost: %d", got.Additions)
+	if got.TimeToApproval == nil || *got.TimeToApproval != approval {
+		t.Fatalf("time_to_approval not refreshed: %v", got.TimeToApproval)
+	}
+	if got.FirstApprovedAt == nil || !got.FirstApprovedAt.Equal(approve) {
+		t.Fatalf("first_approved_at not refreshed: %v", got.FirstApprovedAt)
 	}
 }
 

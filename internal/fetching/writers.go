@@ -23,11 +23,18 @@ type BuildWriter interface {
 	UpdateAuthorBySHA(ctx context.Context, repoID string, sha commitsha.SHA, login string) error
 }
 
-// PullRequestWriter persists PRs and their enrichment patches.
+// PullRequestWriter persists PRs. UpsertMany writes every column
+// including enrichment fields, so a fresh sync of an existing PR
+// converges to the upstream-fresh state in a single statement.
 type PullRequestWriter interface {
 	UpsertMany(ctx context.Context, prs []pullrequest.PullRequest) (int, error)
 	FindByNumber(ctx context.Context, repoID string, number int) (pullrequest.PullRequest, error)
-	UpdateEnrichment(ctx context.Context, prID string, patch pullrequest.EnrichmentPatch) error
+
+	// MaxNumber returns the largest PR number stored for the repo. The
+	// `has` flag distinguishes "empty store" from "stored MAX is 0".
+	// Orchestrators use it to compute the backfill cursor as
+	// max(repo.PRSyncStartNumber, MaxNumber+1).
+	MaxNumber(ctx context.Context, repoID string) (n int, has bool, err error)
 }
 
 // ReviewWriter persists individual PR review submissions. Upsert is keyed

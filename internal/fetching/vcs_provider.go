@@ -11,22 +11,24 @@ import (
 // VCSProvider exposes the subset of GitHub-equivalent APIs the orchestrator
 // needs. Implemented by internal/github.
 type VCSProvider interface {
-	// ListAllPullRequestsPageFunc pages through every PR, calling fn with
-	// each page. Stops early if fn returns an error.
-	ListAllPullRequestsPageFunc(
-		ctx context.Context,
-		repoID string,
-		repoName repo.FullName,
-		fn func(page []pullrequest.PullRequest) error,
-	) error
-
 	// GetPullRequest fetches a single PR with detail (additions/deletions).
+	// Implementations must wrap upstream 404 in a way that callers can
+	// detect via errors.Is (e.g. github.ErrNotFound) so the backfill loop
+	// can distinguish "this number is an issue" from real failures.
 	GetPullRequest(
 		ctx context.Context,
 		repoID string,
 		repoName repo.FullName,
 		number int,
 	) (pullrequest.PullRequest, error)
+
+	// GetLatestPRNumber returns the largest PR number currently visible
+	// upstream. Used as the upper bound of the by-number backfill loop.
+	// Returns 0 when the repo has no PRs.
+	GetLatestPRNumber(
+		ctx context.Context,
+		repoName repo.FullName,
+	) (int, error)
 
 	// ListReviews returns every review on the PR. Filtering against
 	// ready_at is the orchestrator's job, not the provider's.
