@@ -7,18 +7,18 @@ import (
 	"github.com/mileschou/devpulse/internal/repo"
 )
 
-// syncOneRepo runs PR sync (with enrichment) then CI build sync for a
-// single repo, in that order. Identical surface to `devpulse repo sync`
+// syncOneRepo runs PR sync (by ascending number) then CI build sync for
+// a single repo, in that order. Identical surface to `devpulse repo sync`
 // but takes a pre-resolved Repo so the top-level `devpulse sync` can
 // iterate over the store without re-ensuring each row.
 //
 // Progress messages mirror the single-repo command so a multi-repo run
 // reads as a concatenation of individual syncs. The PR step always
-// prints the written count (even on failure) because writers upsert
-// page-by-page and partial progress is real progress; that count would
-// be lost if we only printed on success.
+// prints the written count (even on failure) because each PR is written
+// atomically and partial progress is real progress; that count would be
+// lost if we only printed on success.
 func syncOneRepo(ctx context.Context, d *deps, r repo.Repo) error {
-	prsWritten, prsErr := d.orch.FetchAllPullRequestsWithEnrichment(ctx, r)
+	prsWritten, prsErr := d.orch.BackfillPullRequestsByNumber(ctx, r)
 	fmt.Fprintf(stdout(), "Synced %s pull requests: written=%d\n", r.Name.String(), prsWritten)
 	if prsErr != nil {
 		return fmt.Errorf("sync pull requests: %w", prsErr)

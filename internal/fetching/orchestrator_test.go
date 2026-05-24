@@ -2,6 +2,8 @@ package fetching_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -27,33 +29,44 @@ func (f *fakeCIProvider) ListAllBuilds(
 	return f.builds, f.err
 }
 
-// fakeVCSProvider stubs out every method the orchestrator calls.
+// fakeVCSProvider stubs out every method the orchestrator calls. The PR
+// store is map-keyed by number so the by-number backfill flow can be
+// driven precisely: omit a number to simulate 404 (issue / deleted),
+// or set a `getErrFor` entry to simulate a transient failure on that
+// specific PR.
 type fakeVCSProvider struct {
-	allPulls []pullrequest.PullRequest
-	detail   pullrequest.PullRequest
-	reviews  []pullrequest.Review
-	logins   map[commitsha.SHA]*string
-	getErr   error
-	revsErr  error
-	bulkErr  error
+	latestNumber int
+	prs          map[int]pullrequest.PullRequest
+	getErrFor    map[int]error
+	reviews      []pullrequest.Review
+	logins       map[commitsha.SHA]*string
+	revsErr      error
+	bulkErr      error
+	latestErr    error
+
+	// gotNumbers records every number GetPullRequest was called with, in
+	// call order, so tests can assert the loop's traversal.
+	gotNumbers []int
 }
 
-func (f *fakeVCSProvider) ListAllPullRequestsPageFunc(
-	_ context.Context, _ string, _ repo.FullName,
-	fn func(page []pullrequest.PullRequest) error,
-) error {
-	if len(f.allPulls) == 0 {
-		return nil
-	}
-	return fn(f.allPulls)
+func (f *fakeVCSProvider) GetLatestPRNumber(
+	_ context.Context, _ repo.FullName,
+) (int, error) {
+	return f.latestNumber, f.latestErr
 }
 
 func (f *fakeVCSProvider) GetPullRequest(
 	_ context.Context, _ string, _ repo.FullName, number int,
 ) (pullrequest.PullRequest, error) {
-	d := f.detail
-	d.Number = number
-	return d, f.getErr
+	f.gotNumbers = append(f.gotNumbers, number)
+	if err, ok := f.getErrFor[number]; ok {
+		return pullrequest.PullRequest{}, err
+	}
+	pr, ok := f.prs[number]
+	if !ok {
+		return pullrequest.PullRequest{}, fmt.Errorf("%w: pr #%d", fetching.ErrNotFound, number)
+	}
+	return pr, nil
 }
 
 func (f *fakeVCSProvider) ListReviews(
@@ -93,7 +106,26 @@ func setup(t *testing.T) (*persistence.Persister, repo.Repo) {
 	return p, r
 }
 
-func TestFetch_PersistsBuildsAndPRs(t *testing.T) {
+// makePR is a small helper to keep tests legible — only the fields the
+// orchestrator actually inspects are set.
+func makePR(repoID string, number int) pullrequest.PullRequest {
+	created := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
+	ready := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
+	merged := time.Date(2026, 5, 1, 15, 0, 0, 0, time.UTC)
+	return pullrequest.PullRequest{
+		RepoID:    repoID,
+		Number:    number,
+		Author:    "alice",
+		Status:    pullrequest.StatusMerged,
+		Additions: 50,
+		Deletions: 20,
+		CreatedAt: created,
+		ReadyAt:   &ready,
+		MergedAt:  &merged,
+	}
+}
+
+func TestBackfill_PersistsBuildsAndPRs(t *testing.T) {
 	ctx := context.Background()
 	p, r := setup(t)
 
@@ -117,22 +149,9 @@ func TestFetch_PersistsBuildsAndPRs(t *testing.T) {
 		},
 	}
 
-	created := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
-	ready := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
-	merged := time.Date(2026, 5, 1, 15, 0, 0, 0, time.UTC)
 	vcs := &fakeVCSProvider{
-		allPulls: []pullrequest.PullRequest{
-			{
-				RepoID:    r.ID,
-				Number:    42,
-				Author:    "alice",
-				Status:    pullrequest.StatusMerged,
-				CreatedAt: created,
-				ReadyAt:   &ready,
-				MergedAt:  &merged,
-			},
-		},
-		detail: pullrequest.PullRequest{Additions: 50, Deletions: 20},
+		latestNumber: 42,
+		prs:          map[int]pullrequest.PullRequest{42: makePR(r.ID, 42)},
 		reviews: []pullrequest.Review{
 			{ReviewerAccount: "bob", State: pullrequest.ReviewStateCommented,
 				SubmittedAt: time.Date(2026, 5, 1, 11, 0, 0, 0, time.UTC)},
@@ -152,26 +171,24 @@ func TestFetch_PersistsBuildsAndPRs(t *testing.T) {
 		t.Fatalf("builds written: %d", buildsWritten)
 	}
 
-	prsWritten, err := orch.FetchAllPullRequestsWithEnrichment(ctx, r)
+	prsWritten, err := orch.BackfillPullRequestsByNumber(ctx, r)
 	if err != nil {
-		t.Fatalf("FetchAllPullRequestsWithEnrichment err: %v", err)
+		t.Fatalf("BackfillPullRequestsByNumber err: %v", err)
 	}
 	if prsWritten != 1 {
 		t.Fatalf("prs written: %d", prsWritten)
 	}
 
 	// Author backfill: the build's commit had a NULL author before
-	// enrichment; with logins[sha] = &alice the row should be populated
-	// and ListMissingAuthorSHAs should return nothing for the repo.
+	// enrichment; with logins[sha] = &alice the row should be populated.
 	missing, err := bp.ListMissingAuthorSHAs(ctx, r.ID)
 	if err != nil {
 		t.Fatalf("list missing shas: %v", err)
 	}
 	if len(missing) != 0 {
-		t.Fatalf("expected zero missing-author SHAs after enrichment, got %v", missing)
+		t.Fatalf("expected zero missing-author SHAs, got %v", missing)
 	}
 
-	// PR enrichment should be populated.
 	got, err := pp.FindByNumber(ctx, r.ID, 42)
 	if err != nil {
 		t.Fatalf("find pr: %v", err)
@@ -190,7 +207,349 @@ func TestFetch_PersistsBuildsAndPRs(t *testing.T) {
 	}
 }
 
-func TestEnrichOnePullRequestByNumber_NotFound(t *testing.T) {
+// TestBackfill_StartsAtPRSyncStartNumber asserts that PRs below the
+// configured floor are not even probed — this is how an operator skips
+// early no-CI history.
+func TestBackfill_StartsAtPRSyncStartNumber(t *testing.T) {
+	ctx := context.Background()
+	p, r := setup(t)
+	r.PRSyncStartNumber = 5
+
+	bp := persistence.NewBuildPersister(p)
+	pp := persistence.NewPullRequestPersister(p)
+	rvp := persistence.NewReviewPersister(p)
+
+	prs := map[int]pullrequest.PullRequest{}
+	for n := 5; n <= 7; n++ {
+		prs[n] = makePR(r.ID, n)
+	}
+	vcs := &fakeVCSProvider{latestNumber: 7, prs: prs}
+	orch := fetching.NewOrchestrator(&fakeCIProvider{}, vcs, bp, pp, rvp, nil)
+
+	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if written != 3 {
+		t.Fatalf("written: %d", written)
+	}
+	if got := vcs.gotNumbers; len(got) != 3 || got[0] != 5 || got[2] != 7 {
+		t.Fatalf("expected probes 5..7, got %v", got)
+	}
+}
+
+// TestBackfill_ResumesFromDBMax asserts derived-state resume: after a
+// PR exists in the DB, the next backfill starts at MAX(number)+1 and
+// does not re-probe earlier numbers.
+func TestBackfill_ResumesFromDBMax(t *testing.T) {
+	ctx := context.Background()
+	p, r := setup(t)
+	bp := persistence.NewBuildPersister(p)
+	pp := persistence.NewPullRequestPersister(p)
+	rvp := persistence.NewReviewPersister(p)
+
+	// Pre-seed PR #3 directly.
+	if _, err := pp.UpsertMany(ctx, []pullrequest.PullRequest{makePR(r.ID, 3)}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	prs := map[int]pullrequest.PullRequest{
+		3: makePR(r.ID, 3),
+		4: makePR(r.ID, 4),
+		5: makePR(r.ID, 5),
+	}
+	vcs := &fakeVCSProvider{latestNumber: 5, prs: prs}
+	orch := fetching.NewOrchestrator(&fakeCIProvider{}, vcs, bp, pp, rvp, nil)
+
+	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if written != 2 {
+		t.Fatalf("written: %d (expected 2: #4, #5)", written)
+	}
+	if got := vcs.gotNumbers; len(got) != 2 || got[0] != 4 || got[1] != 5 {
+		t.Fatalf("expected probes 4,5, got %v", got)
+	}
+}
+
+// TestBackfill_404Skips asserts 404 doesn't abort the loop and isn't
+// counted toward `written`.
+func TestBackfill_404Skips(t *testing.T) {
+	ctx := context.Background()
+	p, r := setup(t)
+	bp := persistence.NewBuildPersister(p)
+	pp := persistence.NewPullRequestPersister(p)
+	rvp := persistence.NewReviewPersister(p)
+
+	// #2 is missing (simulates an issue at that number).
+	prs := map[int]pullrequest.PullRequest{
+		1: makePR(r.ID, 1),
+		3: makePR(r.ID, 3),
+	}
+	vcs := &fakeVCSProvider{latestNumber: 3, prs: prs}
+	orch := fetching.NewOrchestrator(&fakeCIProvider{}, vcs, bp, pp, rvp, nil)
+
+	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if written != 2 {
+		t.Fatalf("written: %d (expected 2; #2 was a 404)", written)
+	}
+	// All three numbers should have been probed.
+	if got := vcs.gotNumbers; len(got) != 3 || got[1] != 2 {
+		t.Fatalf("expected probes 1,2,3, got %v", got)
+	}
+}
+
+// TestBackfill_FailsFastOnNonNotFoundError asserts that a real upstream
+// failure on PR #N halts the loop immediately, leaving DB MAX at #N-1
+// for derived-state resume on the next run.
+func TestBackfill_FailsFastOnNonNotFoundError(t *testing.T) {
+	ctx := context.Background()
+	p, r := setup(t)
+	bp := persistence.NewBuildPersister(p)
+	pp := persistence.NewPullRequestPersister(p)
+	rvp := persistence.NewReviewPersister(p)
+
+	prs := map[int]pullrequest.PullRequest{
+		1: makePR(r.ID, 1),
+		3: makePR(r.ID, 3),
+	}
+	boom := errors.New("simulated 500")
+	vcs := &fakeVCSProvider{
+		latestNumber: 3,
+		prs:          prs,
+		getErrFor:    map[int]error{2: boom},
+	}
+	orch := fetching.NewOrchestrator(&fakeCIProvider{}, vcs, bp, pp, rvp, nil)
+
+	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if !errors.Is(err, boom) {
+		t.Fatalf("expected wrapped boom, got %v", err)
+	}
+	if written != 1 {
+		t.Fatalf("written: %d (expected 1: #1 only, halted at #2)", written)
+	}
+	// Loop must stop at the failing number — must not probe #3 after #2 blew up.
+	if got := vcs.gotNumbers; len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		t.Fatalf("expected probes to stop at #2, got %v", got)
+	}
+
+	// DB MAX should be #1 — i.e. interrupted state recoverable.
+	gotMax, has, err := pp.MaxNumber(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("max number: %v", err)
+	}
+	if !has || gotMax != 1 {
+		t.Fatalf("expected DB MAX = 1, got has=%v max=%d", has, gotMax)
+	}
+}
+
+// TestBackfill_EmptyUpstream asserts an upstream with zero PRs returns
+// (0, nil) — the loop short-circuits, no DB writes, no errors.
+func TestBackfill_EmptyUpstream(t *testing.T) {
+	ctx := context.Background()
+	p, r := setup(t)
+	bp := persistence.NewBuildPersister(p)
+	pp := persistence.NewPullRequestPersister(p)
+	rvp := persistence.NewReviewPersister(p)
+
+	vcs := &fakeVCSProvider{latestNumber: 0} // empty repo
+	orch := fetching.NewOrchestrator(&fakeCIProvider{}, vcs, bp, pp, rvp, nil)
+
+	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if written != 0 {
+		t.Fatalf("written: %d (expected 0)", written)
+	}
+	if len(vcs.gotNumbers) != 0 {
+		t.Fatalf("expected zero PR probes on empty repo, got %v", vcs.gotNumbers)
+	}
+}
+
+// TestBackfill_StartNumberAboveRemoteMax asserts that an operator who
+// sets PRSyncStartNumber above the upstream max gets a clean no-op
+// (e.g. floor=1000 but only 200 PRs exist).
+func TestBackfill_StartNumberAboveRemoteMax(t *testing.T) {
+	ctx := context.Background()
+	p, r := setup(t)
+	r.PRSyncStartNumber = 1000
+
+	bp := persistence.NewBuildPersister(p)
+	pp := persistence.NewPullRequestPersister(p)
+	rvp := persistence.NewReviewPersister(p)
+
+	vcs := &fakeVCSProvider{latestNumber: 200}
+	orch := fetching.NewOrchestrator(&fakeCIProvider{}, vcs, bp, pp, rvp, nil)
+
+	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if written != 0 {
+		t.Fatalf("written: %d (expected 0; start > remoteMax means nothing to do)", written)
+	}
+	if len(vcs.gotNumbers) != 0 {
+		t.Fatalf("no PR should be probed, got %v", vcs.gotNumbers)
+	}
+}
+
+// TestBackfill_ConfigVsDBPrecedence locks in the cursor formula
+// start = max(PRSyncStartNumber, dbMax+1) for both orderings of the
+// inputs.
+func TestBackfill_ConfigVsDBPrecedence(t *testing.T) {
+	mkPRs := func(repoID string, from, to int) map[int]pullrequest.PullRequest {
+		m := map[int]pullrequest.PullRequest{}
+		for n := from; n <= to; n++ {
+			m[n] = makePR(repoID, n)
+		}
+		return m
+	}
+
+	t.Run("dbMax wins when higher than config", func(t *testing.T) {
+		ctx := context.Background()
+		p, r := setup(t)
+		r.PRSyncStartNumber = 3
+		bp := persistence.NewBuildPersister(p)
+		pp := persistence.NewPullRequestPersister(p)
+		rvp := persistence.NewReviewPersister(p)
+
+		// Pre-seed up to #5 — dbMax=5 should override config floor of 3.
+		seed := []pullrequest.PullRequest{makePR(r.ID, 5)}
+		if _, err := pp.UpsertMany(ctx, seed); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+
+		vcs := &fakeVCSProvider{latestNumber: 7, prs: mkPRs(r.ID, 5, 7)}
+		orch := fetching.NewOrchestrator(&fakeCIProvider{}, vcs, bp, pp, rvp, nil)
+		if _, err := orch.BackfillPullRequestsByNumber(ctx, r); err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		// Should probe 6,7 only — not 5 (already in DB) and not 3,4 (config floor not chosen).
+		if got := vcs.gotNumbers; len(got) != 2 || got[0] != 6 || got[1] != 7 {
+			t.Fatalf("expected [6 7], got %v", got)
+		}
+	})
+
+	t.Run("config wins when higher than dbMax+1", func(t *testing.T) {
+		ctx := context.Background()
+		p, r := setup(t)
+		r.PRSyncStartNumber = 10
+		bp := persistence.NewBuildPersister(p)
+		pp := persistence.NewPullRequestPersister(p)
+		rvp := persistence.NewReviewPersister(p)
+
+		seed := []pullrequest.PullRequest{makePR(r.ID, 5)}
+		if _, err := pp.UpsertMany(ctx, seed); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+
+		vcs := &fakeVCSProvider{latestNumber: 12, prs: mkPRs(r.ID, 10, 12)}
+		orch := fetching.NewOrchestrator(&fakeCIProvider{}, vcs, bp, pp, rvp, nil)
+		if _, err := orch.BackfillPullRequestsByNumber(ctx, r); err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		// Config floor 10 wins; dbMax+1=6 is too low. Probes 10,11,12.
+		if got := vcs.gotNumbers; len(got) != 3 || got[0] != 10 || got[2] != 12 {
+			t.Fatalf("expected [10 11 12], got %v", got)
+		}
+	})
+}
+
+// TestBackfill_GetLatestPRNumberError asserts that an upstream failure
+// to read the max is surfaced and no DB writes happen.
+func TestBackfill_GetLatestPRNumberError(t *testing.T) {
+	ctx := context.Background()
+	p, r := setup(t)
+	bp := persistence.NewBuildPersister(p)
+	pp := persistence.NewPullRequestPersister(p)
+	rvp := persistence.NewReviewPersister(p)
+
+	boom := errors.New("simulated 502")
+	vcs := &fakeVCSProvider{latestErr: boom}
+	orch := fetching.NewOrchestrator(&fakeCIProvider{}, vcs, bp, pp, rvp, nil)
+
+	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
+	if err == nil || !errors.Is(err, boom) {
+		t.Fatalf("expected wrapped boom, got %v", err)
+	}
+	if written != 0 {
+		t.Fatalf("written: %d (expected 0)", written)
+	}
+}
+
+// TestBackfill_CancelledCtxBreaksOut asserts that a cancelled ctx
+// stops the orchestrator with a context.Canceled error. The exact
+// stage at which the cancellation is observed (DB read of MaxNumber,
+// or the loop's between-iteration ctx.Err() check) depends on call
+// ordering — what matters is that no work happens after cancel.
+func TestBackfill_CancelledCtxBreaksOut(t *testing.T) {
+	p, r := setup(t)
+	bp := persistence.NewBuildPersister(p)
+	pp := persistence.NewPullRequestPersister(p)
+	rvp := persistence.NewReviewPersister(p)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancelled
+
+	vcs := &fakeVCSProvider{
+		latestNumber: 3,
+		prs: map[int]pullrequest.PullRequest{
+			1: makePR(r.ID, 1), 2: makePR(r.ID, 2), 3: makePR(r.ID, 3),
+		},
+	}
+	orch := fetching.NewOrchestrator(&fakeCIProvider{}, vcs, bp, pp, rvp, nil)
+
+	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if written != 0 {
+		t.Fatalf("written: %d (no PR should have been written)", written)
+	}
+}
+
+// TestRepoPRSyncStartNumber_RoundTripsThroughDB asserts the new column
+// survives a Create → FindByID round-trip with a non-default value.
+func TestRepoPRSyncStartNumber_RoundTripsThroughDB(t *testing.T) {
+	ctx := context.Background()
+	persister := persistencetest.NewMemoryPersister(t)
+	rp := persistence.NewRepoPersister(persister)
+
+	name, _ := repo.ParseFullName("foo/bar")
+	created, err := rp.Create(ctx, "github", name, "https://github.com/foo/bar",
+		repo.Repo{PRSyncStartNumber: 1500})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if created.PRSyncStartNumber != 1500 {
+		t.Fatalf("created.PRSyncStartNumber: %d", created.PRSyncStartNumber)
+	}
+
+	got, err := rp.FindByID(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("find by id: %v", err)
+	}
+	if got.PRSyncStartNumber != 1500 {
+		t.Fatalf("round-trip lost PRSyncStartNumber: got %d", got.PRSyncStartNumber)
+	}
+}
+
+// TestEnrichOnePullRequestByNumber_LocalDBMiss covers the case where
+// `devpulse pr sync` is invoked on a PR that is not in the local store.
+// Contract: (false, nil) — the CLI surface translates this to a
+// "run `repo sync` first" hint. It is NOT an error condition at the
+// orchestrator layer; treating it as such would prevent the CLI from
+// rendering a useful message without depending on the persistence
+// sentinel.
+func TestEnrichOnePullRequestByNumber_LocalDBMiss(t *testing.T) {
 	ctx := context.Background()
 	p, r := setup(t)
 	bp := persistence.NewBuildPersister(p)
@@ -198,9 +557,41 @@ func TestEnrichOnePullRequestByNumber_NotFound(t *testing.T) {
 	rvp := persistence.NewReviewPersister(p)
 
 	orch := fetching.NewOrchestrator(&fakeCIProvider{}, &fakeVCSProvider{}, bp, pp, rvp, nil)
-	_, err := orch.EnrichOnePullRequestByNumber(ctx, r, 999)
+	found, err := orch.EnrichOnePullRequestByNumber(ctx, r, 999)
+	if err != nil {
+		t.Fatalf("local miss should not error, got: %v", err)
+	}
+	if found {
+		t.Fatalf("expected found=false when PR is not in the store")
+	}
+}
+
+// TestEnrichOnePullRequestByNumber_UpstreamGone covers the case where
+// the PR exists locally but has been deleted upstream. Unlike the
+// backfill flow, this is reported as an error (operator-initiated
+// command should not silently swallow a typo or upstream deletion).
+func TestEnrichOnePullRequestByNumber_UpstreamGone(t *testing.T) {
+	ctx := context.Background()
+	p, r := setup(t)
+	bp := persistence.NewBuildPersister(p)
+	pp := persistence.NewPullRequestPersister(p)
+	rvp := persistence.NewReviewPersister(p)
+
+	// Seed the PR locally.
+	if _, err := pp.UpsertMany(ctx, []pullrequest.PullRequest{makePR(r.ID, 42)}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// VCS doesn't know about #42 — returns ErrNotFound.
+	vcs := &fakeVCSProvider{prs: map[int]pullrequest.PullRequest{}}
+	orch := fetching.NewOrchestrator(&fakeCIProvider{}, vcs, bp, pp, rvp, nil)
+
+	found, err := orch.EnrichOnePullRequestByNumber(ctx, r, 42)
+	if !found {
+		t.Fatalf("expected found=true (PR exists locally)")
+	}
 	if err == nil {
-		t.Fatalf("expected error for missing PR")
+		t.Fatalf("expected error when upstream returns 404")
 	}
 }
 
@@ -212,18 +603,15 @@ func TestFetch_BuildAuthorEnrichmentFailureDoesNotAbortPRFetch(t *testing.T) {
 	rvp := persistence.NewReviewPersister(p)
 
 	sha, _ := commitsha.Parse("aaa1234567890abcdef1234567890abcdef12345")
-	created := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
-	ready := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
 
 	ci := &fakeCIProvider{builds: []build.Build{
 		{ExternalID: "1", CommitSHA: sha, Status: build.StatusPassed, Trigger: build.TriggerPush, Branch: "main",
 			StartedAt: time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)},
 	}}
 	vcs := &fakeVCSProvider{
-		allPulls: []pullrequest.PullRequest{
-			{RepoID: r.ID, Number: 1, Author: "x", Status: pullrequest.StatusOpen, CreatedAt: created, ReadyAt: &ready},
-		},
-		bulkErr: context.DeadlineExceeded, // simulate transient API failure
+		latestNumber: 1,
+		prs:          map[int]pullrequest.PullRequest{1: makePR(r.ID, 1)},
+		bulkErr:      context.DeadlineExceeded, // simulate transient API failure
 	}
 
 	orch := fetching.NewOrchestrator(ci, vcs, bp, pp, rvp, nil)
@@ -238,9 +626,9 @@ func TestFetch_BuildAuthorEnrichmentFailureDoesNotAbortPRFetch(t *testing.T) {
 		t.Fatalf("build not written: %d", buildsWritten)
 	}
 
-	prsWritten, err := orch.FetchAllPullRequestsWithEnrichment(ctx, r)
+	prsWritten, err := orch.BackfillPullRequestsByNumber(ctx, r)
 	if err != nil {
-		t.Fatalf("FetchAllPullRequestsWithEnrichment should still succeed: %v", err)
+		t.Fatalf("BackfillPullRequestsByNumber should succeed: %v", err)
 	}
 	if prsWritten != 1 {
 		t.Fatalf("PR not written: %d", prsWritten)

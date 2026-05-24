@@ -2,7 +2,6 @@ package travis
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -12,11 +11,6 @@ import (
 	"github.com/mileschou/devpulse/internal/x/commitsha"
 	"github.com/mileschou/devpulse/internal/x/timex"
 )
-
-// maxBuildPages caps ListAllBuilds at 100 pages (≈10k builds at
-// defaultLimit=100). Larger repos surface a wrapped error rather than
-// silently exhausting memory + API quota.
-const maxBuildPages = 100
 
 // Pushes to a trunk branch are post-merge builds; pushes to any other
 // branch are treated as PR-flow builds (covers PRs merged before the
@@ -48,15 +42,25 @@ type buildsResponse struct {
 	Builds []rawBuild `json:"builds"`
 }
 
-// ListAllBuilds pages through all builds for a slug, returning every one.
-// Capped at maxBuildPages pages to bound memory and API quota.
+// ListAllBuilds pages through every build for the slug and returns the
+// full slice. There is no hard page cap — the loop stops when Travis
+// returns a short page (the last page) or an empty one. Per-build
+// memory footprint is small (≈100 bytes) so even repos with 100k+
+// builds stay well under a few MB.
+//
+// ctx cancellation is honored between page requests so Ctrl-C is
+// responsive on long histories.
 func (c *Client) ListAllBuilds(ctx context.Context, slug string) ([]build.Build, error) {
 	var (
 		out    []build.Build
 		offset = 0
 	)
 
-	for range maxBuildPages {
+	for {
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
+
 		batch, err := c.fetchBuildsPage(ctx, slug, offset, defaultLimit)
 		if err != nil {
 			return nil, err
@@ -78,7 +82,6 @@ func (c *Client) ListAllBuilds(ctx context.Context, slug string) ([]build.Build,
 		}
 		offset += defaultLimit
 	}
-	return out, fmt.Errorf("travis: ListAllBuilds exceeded %d pages for %s", maxBuildPages, slug)
 }
 
 // fetchBuildsPage returns one page of builds in id-desc order.
