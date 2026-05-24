@@ -6,8 +6,13 @@
 #   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
 #   docker compose -f docker-compose.yml -f docker-compose.mysql.yml    up -d
 #
-# Multiple overlays can be combined, e.g. to run Postgres and MySQL
-# side-by-side for cross-dialect testing.
+# Multiple overlays can be combined, e.g. to run Postgres and Metabase
+# side-by-side so you can browse metrics against the freshly-synced
+# data:
+#
+#   docker compose -f docker-compose.yml \
+#       -f docker-compose.postgres.yml \
+#       -f docker-compose.metabase.yml up -d
 services: {}
 
 networks:
@@ -16,3 +21,4 @@ networks:
 volumes:
   postgres-data:
   mysql-data:
+  metabase-data:

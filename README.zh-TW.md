@@ -81,6 +81,36 @@ devpulse pr sync MilesChou/devpulse 42
 devpulse worker
 ```
 
+## 用 Metabase 在本地探索指標
+
+如要在本地以圖形介面瀏覽 metric view（見
+`migrations/*views_failure_rate.up.sql`），可掛上選用的 Metabase overlay：
+
+```bash
+docker compose \
+    -f docker-compose.yml \
+    -f docker-compose.postgres.yml \
+    -f docker-compose.metabase.yml up -d --wait
+```
+
+`metabase-init` sidecar 會自動完成這些設定：
+
+- Admin 帳號：`admin@devpulse.local` / `changeme1!`（僅限本地 dev）
+- 資料來源：DevPulse PostgreSQL，預設以 **DevPulse** 名稱掛好
+
+`up -d --wait` 跑完即可——不需 first-run wizard、不需手填資料來源。接著開啟
+[http://localhost:3000](http://localhost:3000) 登入。
+
+若 init container 失敗結束（非零 exit code），用以下指令查看原因：
+
+```bash
+docker compose -f docker-compose.metabase.yml logs metabase-init
+```
+
+要重置 Metabase 從乾淨狀態開始：`docker compose down`，然後
+`docker volume rm devpulse_metabase-data`，再 `up -d --wait`。Postgres 內的
+資料（已同步的 PR、build、review）放在另一個 volume，不受影響。
+
 ## 指令一覽
 
 指令採 noun-on-verb 結構（`repo` / `pr` 兩個 resource group，動詞掛在
