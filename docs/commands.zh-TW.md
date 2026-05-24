@@ -86,6 +86,40 @@ devpulse repo add MilesChou/devpulse
 
 ---
 
+### `repo config set` / `repo config get`
+
+```
+devpulse repo config set <owner/name> <key> <value>
+devpulse repo config get <owner/name> [key]
+```
+
+讀取或設定指定儲存庫的操作設定（per-repo operator settings）。設定屬於 operator 擁有，**不會**被 `repo sync` 覆寫——一旦寫入即生效，直到下次 `config set` 才會變動。
+
+**可用設定**
+
+| 設定名稱 | 型別 | 說明 |
+|---|---|---|
+| `pr-start` | 整數（>= 1） | PR 同步起點（floor）——`devpulse repo sync` 在 by-number 模式下會從這個 PR number 開始往上掃描。預設 `1`（抓全部歷史）。當早期 PR 未接 CI、不具觀測價值時將起點調高即可節省 GitHub API 配額。 |
+
+該儲存庫必須已透過 `devpulse repo add` 註冊。`repo config get` 若不帶 `key` 引數，會列出所有已知設定值。
+
+**範例**
+
+```sh
+# 跳過 PR #1 到 #499（例如尚未接 CI 的早期歷史），從 #500 開始抓
+devpulse repo config set MilesChou/devpulse pr-start 500
+
+# 讀回單一設定
+devpulse repo config get MilesChou/devpulse pr-start
+# → 500
+
+# 或一次列出所有設定
+devpulse repo config get MilesChou/devpulse
+# → pr-start=500
+```
+
+---
+
 ### `repo sync`
 
 ```
@@ -253,6 +287,10 @@ devpulse migrate up
 
 # 2. 註冊目標儲存庫
 devpulse repo add MilesChou/devpulse
+
+# 2'. （選用）跳過尚未接 CI 的早期歷史，將 PR 同步起點設高。
+#     未設定時，首次同步會從 PR #1 開始往上抓。
+devpulse repo config set MilesChou/devpulse pr-start 500
 
 # 3. 同步該 repo 的所有 Pull Request（含 enrichment）與 CI 建置記錄
 devpulse repo sync MilesChou/devpulse

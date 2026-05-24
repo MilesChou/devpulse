@@ -86,6 +86,40 @@ devpulse repo add MilesChou/devpulse
 
 ---
 
+### `repo config set` / `repo config get`
+
+```
+devpulse repo config set <owner/name> <key> <value>
+devpulse repo config get <owner/name> [key]
+```
+
+Read or write per-repo operator settings. Settings are operator-owned and are **not** overwritten by `repo sync` — once set they persist until the next `config set`.
+
+**Available keys**
+
+| Key | Type | Description |
+|---|---|---|
+| `pr-start` | integer (>= 1) | Minimum PR number the by-number sync will probe. Default `1` (full history). Bump it to skip early PRs that predate CI on a repo, saving GitHub API quota. |
+
+The repo must already be registered with `devpulse repo add`. With no key argument, `repo config get` prints every known setting.
+
+**Example**
+
+```sh
+# Skip PRs #1..#499 (e.g. early no-CI history) and start syncing at #500.
+devpulse repo config set MilesChou/devpulse pr-start 500
+
+# Read it back.
+devpulse repo config get MilesChou/devpulse pr-start
+# → 500
+
+# Or print every setting.
+devpulse repo config get MilesChou/devpulse
+# → pr-start=500
+```
+
+---
+
 ### `repo sync`
 
 ```
@@ -253,6 +287,10 @@ devpulse migrate up
 
 # 2. Register the target repository
 devpulse repo add MilesChou/devpulse
+
+# 2'. (Optional) Skip early no-CI history by setting the PR floor.
+#     Without this the first sync walks PR #1 onward.
+devpulse repo config set MilesChou/devpulse pr-start 500
 
 # 3. Back-fill pull requests (with enrichment) and CI builds for that
 #    one repo

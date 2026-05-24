@@ -14,6 +14,20 @@ func setEnv(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
 }
 
+// setEnvSharedSQLite points DEVPULSE_DSN at a temp-file SQLite so
+// multiple runCmd calls in the same test see the same DB. Use this when
+// a test needs to chain commands (e.g. `repo add` then
+// `repo set-pr-start`) — the bare "memory" DSN gives each connection
+// its own in-process DB, which doesn't survive across runCmd. Memory
+// DSN auto-migrates; the file DSN does not, so the caller must run
+// `migrate up` first.
+func setEnvSharedSQLite(t *testing.T) {
+	t.Helper()
+	t.Setenv("DEVPULSE_DSN", "sqlite://"+t.TempDir()+"/devpulse.db")
+	t.Setenv("LOG_LEVEL", "error")
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+}
+
 func runCmd(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	var buf bytes.Buffer
