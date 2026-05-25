@@ -2,6 +2,7 @@ package travis
 
 import (
 	"context"
+	"time"
 
 	"github.com/mileschou/devpulse/internal/build"
 	"github.com/mileschou/devpulse/internal/fetching"
@@ -16,9 +17,10 @@ func NewProvider(c *Client) *Provider { return &Provider{client: c} }
 // Compile-time assertion.
 var _ fetching.CIProvider = (*Provider)(nil)
 
-func (p *Provider) ListAllBuilds(
+func (p *Provider) ListBuildsSince(
 	ctx context.Context,
 	repoName repo.FullName,
+	since time.Time,
 ) ([]build.Build, error) {
-	return p.client.ListAllBuilds(ctx, repoName.String())
+	return p.client.ListBuildsSince(ctx, repoName.String(), since)
 }

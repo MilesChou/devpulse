@@ -3,6 +3,7 @@ package persistence
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/mileschou/devpulse/internal/build"
 	"github.com/mileschou/devpulse/internal/x/commitsha"
@@ -69,6 +70,81 @@ func (b *BuildPersister) UpsertMany(ctx context.Context, repoID string, builds [
 		return written, fmt.Errorf("build upsert commit: %w", err)
 	}
 	return written, nil
+}
+
+// MaxStartedAt returns the largest started_at persisted for the repo,
+// along with a `has` flag distinguishing "empty store" from a stored
+// MAX that happens to be the zero time.
+//
+// The query is index-only on (repo_id, started_at) — see the
+// `builds_repo_started_idx` declared in 20260518000002_builds.up.sql —
+// so this is cheap enough for the orchestrator to call before every
+// incremental sync.
+//
+// Returns (zero, false, nil) when the repo has no builds yet; the
+// orchestrator treats that as a cold-start signal and back-fills the
+// full upstream history.
+func (b *BuildPersister) MaxStartedAt(ctx context.Context, repoID string) (time.Time, bool, error) {
+	const q = `SELECT MAX(started_at) FROM builds WHERE repo_id = ?`
+
+	// MAX() is an aggregate so different drivers return the value with
+	// different concrete types:
+	//   - pgx (PostgreSQL): time.Time
+	//   - go-sql-driver/mysql: time.Time (with parseTime=true) or []byte
+	//   - modernc.org/sqlite: string, because the aggregate result has
+	//     no declared TIMESTAMP affinity to trigger its auto-parser
+	// Scanning into `any` lets us handle each via a type switch instead
+	// of dialect-specific SELECT casts. NULL becomes the nil case, which
+	// is the cold-start signal.
+	var raw any
+	if err := b.QueryRowCtx(ctx, q, repoID).Scan(&raw); err != nil {
+		return time.Time{}, false, fmt.Errorf("build max started_at: %w", err)
+	}
+	switch v := raw.(type) {
+	case nil:
+		return time.Time{}, false, nil
+	case time.Time:
+		return v.UTC(), true, nil
+	case string:
+		t, err := parseDBTimestamp(v)
+		if err != nil {
+			return time.Time{}, false, fmt.Errorf("build max started_at parse %q: %w", v, err)
+		}
+		return t, true, nil
+	case []byte:
+		t, err := parseDBTimestamp(string(v))
+		if err != nil {
+			return time.Time{}, false, fmt.Errorf("build max started_at parse %q: %w", string(v), err)
+		}
+		return t, true, nil
+	default:
+		return time.Time{}, false, fmt.Errorf("build max started_at: unexpected driver type %T", v)
+	}
+}
+
+// parseDBTimestamp accepts the wire formats every driver we support
+// emits for a TIMESTAMP column. RFC3339 covers PostgreSQL's text
+// fallback and most JDBC-style outputs; the `-0700 MST` variant is
+// what modernc.org/sqlite stores when given a Go time.Time (it falls
+// back to fmt.Sprint, i.e. time.Time.String()); the bare
+// `2006-01-02 15:04:05` variants are MySQL DATETIME / TIMESTAMP.
+func parseDBTimestamp(s string) (time.Time, error) {
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC(), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("no matching layout")
 }
 
 // ListMissingAuthorSHAs returns SHAs whose author_account is NULL,

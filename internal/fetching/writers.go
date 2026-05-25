@@ -2,6 +2,7 @@ package fetching
 
 import (
 	"context"
+	"time"
 
 	"github.com/mileschou/devpulse/internal/build"
 	"github.com/mileschou/devpulse/internal/pullrequest"
@@ -12,6 +13,18 @@ import (
 // written (UpsertMany dedupes by (repo_id, commit_sha, number)).
 type BuildWriter interface {
 	UpsertMany(ctx context.Context, repoID string, builds []build.Build) (int, error)
+
+	// MaxStartedAt returns the largest started_at timestamp persisted for
+	// the repo, along with a `has` flag distinguishing "empty store" from
+	// "stored MAX is a zero-ish time". It is the build sync's derived
+	// cursor: the next incremental fetch resumes from this watermark
+	// (with a small retry margin applied by the caller), so the call
+	// MUST stay cheap and side-effect-free.
+	//
+	// Returns (zero, false, nil) when the repo has no builds yet — the
+	// caller treats this as a cold-start signal and back-fills the full
+	// upstream history.
+	MaxStartedAt(ctx context.Context, repoID string) (time.Time, bool, error)
 
 	// ListMissingAuthorSHAs returns commit SHAs for the repo whose
 	// author_account is still NULL. Used to drive incremental author

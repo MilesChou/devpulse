@@ -42,19 +42,30 @@ type buildsResponse struct {
 	Builds []rawBuild `json:"builds"`
 }
 
-// ListAllBuilds pages through every build for the slug and returns the
-// full slice. There is no hard page cap — the loop stops when Travis
-// returns a short page (the last page) or an empty one. Per-build
-// memory footprint is small (≈100 bytes) so even repos with 100k+
-// builds stay well under a few MB.
+// ListBuildsSince pages through builds for the slug in id-desc order
+// (which is approximately newest-first by started_at) and stops as
+// soon as a page contains a build at or before the `since` watermark.
+// The boundary page is returned in full — callers dedupe by
+// (repo_id, external_id) so the small overlap is harmless and covers
+// retried builds whose started_at landed slightly behind the
+// watermark.
+//
+// When since.IsZero() the loop has no watermark: it back-fills the
+// full upstream history, stopping only on a short page (last page) or
+// an empty page. This is the cold-start path used the first time a
+// repo is synced.
+//
+// Per-build memory footprint is small (≈100 bytes) so even repos with
+// 100k+ builds on a cold start stay well under a few MB.
 //
 // ctx cancellation is honored between page requests so Ctrl-C is
 // responsive on long histories.
-func (c *Client) ListAllBuilds(ctx context.Context, slug string) ([]build.Build, error) {
+func (c *Client) ListBuildsSince(ctx context.Context, slug string, since time.Time) ([]build.Build, error) {
 	var (
 		out    []build.Build
 		offset = 0
 	)
+	hasWatermark := !since.IsZero()
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -69,14 +80,21 @@ func (c *Client) ListAllBuilds(ctx context.Context, slug string) ([]build.Build,
 			return out, nil
 		}
 
+		reachedWatermark := false
 		for _, raw := range batch {
 			b, ok := buildFromRaw(raw)
 			if !ok {
 				continue
 			}
 			out = append(out, b)
+			if hasWatermark && !b.StartedAt.After(since) {
+				reachedWatermark = true
+			}
 		}
 
+		if reachedWatermark {
+			return out, nil
+		}
 		if len(batch) < defaultLimit {
 			return out, nil
 		}
