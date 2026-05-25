@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,11 +19,14 @@ import (
 
 // fakeCIProvider returns canned builds and records the cursor it was
 // called with, so tests can assert how the orchestrator derived the
-// incremental watermark.
+// incremental watermark. The recorder is guarded by a mutex so a
+// future test that runs orchestrator calls under t.Parallel() does
+// not turn this fake into a data race.
 type fakeCIProvider struct {
 	builds []build.Build
 	err    error
 
+	mu       sync.Mutex
 	calls    int
 	gotSince time.Time
 }
@@ -32,9 +36,19 @@ func (f *fakeCIProvider) ListBuildsSince(
 	_ repo.FullName,
 	since time.Time,
 ) ([]build.Build, error) {
+	f.mu.Lock()
 	f.calls++
 	f.gotSince = since
+	f.mu.Unlock()
 	return f.builds, f.err
+}
+
+// snapshot returns the recorded invocation state in a race-safe way
+// so tests don't need to reach into the fake's fields directly.
+func (f *fakeCIProvider) snapshot() (calls int, gotSince time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls, f.gotSince
 }
 
 // fakeVCSProvider stubs out every method the orchestrator calls. The PR
@@ -668,11 +682,12 @@ func TestFetchAllBuilds_ColdStart_PassesZeroSince(t *testing.T) {
 	if written != 1 {
 		t.Fatalf("written: %d (expected 1)", written)
 	}
-	if ci.calls != 1 {
-		t.Fatalf("provider calls: %d (expected 1)", ci.calls)
+	calls, gotSince := ci.snapshot()
+	if calls != 1 {
+		t.Fatalf("provider calls: %d (expected 1)", calls)
 	}
-	if !ci.gotSince.IsZero() {
-		t.Fatalf("cold start should pass zero since, got %v", ci.gotSince)
+	if !gotSince.IsZero() {
+		t.Fatalf("cold start should pass zero since, got %v", gotSince)
 	}
 }
 
@@ -714,8 +729,9 @@ func TestFetchAllBuilds_Incremental_PassesWatermarkMinusOverlap(t *testing.T) {
 		t.Fatalf("written: %d (expected 1)", written)
 	}
 	wantSince := seedStarted.Add(-5 * time.Minute)
-	if !ci.gotSince.Equal(wantSince) {
-		t.Fatalf("since: got %v, want %v (watermark - 5min overlap)", ci.gotSince, wantSince)
+	_, gotSince := ci.snapshot()
+	if !gotSince.Equal(wantSince) {
+		t.Fatalf("since: got %v, want %v (watermark - 5min overlap)", gotSince, wantSince)
 	}
 }
 

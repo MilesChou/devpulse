@@ -94,10 +94,13 @@ func (o *Orchestrator) FetchAllBuilds(ctx context.Context, r repo.Repo) (int, er
 	if hasWatermark {
 		since = watermark.Add(-buildRetryOverlap)
 	}
-	span.SetAttributes(
-		attribute.Bool("watermark.has", hasWatermark),
-		attribute.String("watermark.since", since.Format(time.RFC3339)),
-	)
+	span.SetAttributes(attribute.Bool("watermark.has", hasWatermark))
+	if hasWatermark {
+		// Only emit the cursor when it is meaningful; on cold start the
+		// zero time would render as 0001-01-01T00:00:00Z on traces and
+		// look like a real value to anyone scanning the span.
+		span.SetAttributes(attribute.String("watermark.since", since.Format(time.RFC3339)))
+	}
 
 	builds, err := o.ci.ListBuildsSince(ctx, r.Name, since)
 	if err != nil {

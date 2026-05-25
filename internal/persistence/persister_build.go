@@ -123,15 +123,20 @@ func (b *BuildPersister) MaxStartedAt(ctx context.Context, repoID string) (time.
 }
 
 // parseDBTimestamp accepts the wire formats every driver we support
-// emits for a TIMESTAMP column. RFC3339 covers PostgreSQL's text
-// fallback and most JDBC-style outputs; the `-0700 MST` variant is
-// what modernc.org/sqlite stores when given a Go time.Time (it falls
-// back to fmt.Sprint, i.e. time.Time.String()); the bare
+// emits for a TIMESTAMP column. RFC3339Nano covers PostgreSQL's text
+// fallback and most JDBC-style outputs — `.999999999` is variable
+// length so it also matches strings with no fractional seconds, which
+// is why plain RFC3339 is not listed separately. The `-0700 MST`
+// variant is what modernc.org/sqlite stores when given a Go time.Time
+// (it falls back to fmt.Sprint, i.e. time.Time.String()); the bare
 // `2006-01-02 15:04:05` variants are MySQL DATETIME / TIMESTAMP.
+//
+// TODO: this helper has nothing build-specific in it — promote it to
+// a package-level timex helper as soon as a second SELECT MAX(<ts>)
+// caller shows up (e.g. PR sync gaining a started_at watermark).
 func parseDBTimestamp(s string) (time.Time, error) {
 	layouts := []string{
 		time.RFC3339Nano,
-		time.RFC3339,
 		"2006-01-02 15:04:05.999999999 -0700 MST",
 		"2006-01-02 15:04:05 -0700 MST",
 		"2006-01-02 15:04:05.999999999-07:00",
