@@ -42,24 +42,12 @@ type buildsResponse struct {
 	Builds []rawBuild `json:"builds"`
 }
 
-// ListBuildsSince pages through builds for the slug in id-desc order
-// (which is approximately newest-first by started_at) and stops as
-// soon as a page contains a build at or before the `since` watermark.
-// The boundary page is returned in full — callers dedupe by
-// (repo_id, external_id) so the small overlap is harmless and covers
-// retried builds whose started_at landed slightly behind the
-// watermark.
-//
-// When since.IsZero() the loop has no watermark: it back-fills the
-// full upstream history, stopping only on a short page (last page) or
-// an empty page. This is the cold-start path used the first time a
-// repo is synced.
-//
-// Per-build memory footprint is small (≈100 bytes) so even repos with
-// 100k+ builds on a cold start stay well under a few MB.
-//
-// ctx cancellation is honored between page requests so Ctrl-C is
-// responsive on long histories.
+// ListBuildsSince pages builds in id-desc order and stops once a page
+// contains a build at-or-before `since`. The boundary page is returned
+// in full so callers can rely on DB-side dedupe to absorb the overlap.
+// A zero `since` walks the full history (cold start). ctx cancellation
+// is checked between pages. Per-build memory footprint is ~100 bytes
+// so even 100k+ histories stay under a few MB.
 func (c *Client) ListBuildsSince(ctx context.Context, slug string, since time.Time) ([]build.Build, error) {
 	var (
 		out    []build.Build

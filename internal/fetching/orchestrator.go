@@ -18,17 +18,11 @@ import (
 
 const tracerName = "github.com/mileschou/devpulse/internal/fetching"
 
-// buildRetryOverlap is how far behind the DB watermark we keep looking
-// when paging Travis. Travis allows a build to be retried — the new
-// build gets a fresh id but its started_at may sit slightly before the
-// previous max we have on file. Pulling a small overlap window covers
-// those without giving up the incremental property. The retry build
-// itself has a new external_id, so the (repo_id, external_id) unique
-// constraint silently dedupes everything that was already stored.
-//
-// Five minutes was picked to cover routine retry latency (typically
-// sub-minute) with comfortable headroom; bump it later if a real-world
-// retry is observed to land further out.
+// buildRetryOverlap widens the incremental window to cover Travis
+// retry builds whose started_at lands slightly behind the watermark.
+// The (repo_id, external_id) unique on the row dedupes anything
+// already on file, so a wider overlap is harmless. Five minutes is
+// headroom over observed sub-minute retry latency.
 const buildRetryOverlap = 5 * time.Minute
 
 // Orchestrator coordinates CI + VCS fetch and enrichment for one repo.
@@ -58,26 +52,13 @@ func NewOrchestrator(
 	}
 }
 
-// FetchAllBuilds pulls CI builds for one repo and upserts them, then
-// back-fills GitHub commit-author logins for any rows that still lack
-// one.
+// FetchAllBuilds incrementally pulls Travis builds for one repo,
+// upserts them, then back-fills any commit-author logins still NULL.
 //
-// Incremental sync: the fetch is bounded by a DB-derived watermark.
-// On every call we read MAX(started_at) for the repo, subtract a small
-// retry overlap, and pass that as the `since` cursor to
-// CIProvider.ListBuildsSince. Travis is paged in id-desc order and
-// stops once a page reaches the watermark, so a routine sync on a
-// quiet repo costs ~one page even if the full history has 10k+
-// builds. The retry overlap window covers Travis "retry build"
-// objects whose started_at lands slightly behind the previous max.
-//
-// First run: when the DB has no builds for the repo, MaxStartedAt
-// returns (_, false, _) and we pass a zero time, which the provider
-// treats as cold-start — walk the full upstream history (the only
-// path that pays the linear page cost).
-//
-// Safe to re-run: upserts dedupe writes via (repo_id, external_id)
-// unique, so the overlap window cannot create duplicates.
+// The cursor is `MAX(started_at) - buildRetryOverlap`, passed to
+// ListBuildsSince as `since`. An empty store yields a zero `since`,
+// which the provider treats as cold start and walks the full history.
+// Safe to re-run.
 func (o *Orchestrator) FetchAllBuilds(ctx context.Context, r repo.Repo) (int, error) {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, "Orchestrator.FetchAllBuilds",
@@ -96,9 +77,7 @@ func (o *Orchestrator) FetchAllBuilds(ctx context.Context, r repo.Repo) (int, er
 	}
 	span.SetAttributes(attribute.Bool("watermark.has", hasWatermark))
 	if hasWatermark {
-		// Only emit the cursor when it is meaningful; on cold start the
-		// zero time would render as 0001-01-01T00:00:00Z on traces and
-		// look like a real value to anyone scanning the span.
+		// Skip on cold start; zero would render as 0001-01-01 on traces.
 		span.SetAttributes(attribute.String("watermark.since", since.Format(time.RFC3339)))
 	}
 

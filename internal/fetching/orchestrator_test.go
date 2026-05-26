@@ -17,11 +17,9 @@ import (
 	"github.com/mileschou/devpulse/internal/x/commitsha"
 )
 
-// fakeCIProvider returns canned builds and records the cursor it was
-// called with, so tests can assert how the orchestrator derived the
-// incremental watermark. The recorder is guarded by a mutex so a
-// future test that runs orchestrator calls under t.Parallel() does
-// not turn this fake into a data race.
+// fakeCIProvider returns canned builds and records the cursor it
+// was called with. The recorder is mutex-guarded so future
+// t.Parallel() tests do not race.
 type fakeCIProvider struct {
 	builds []build.Build
 	err    error
@@ -43,8 +41,6 @@ func (f *fakeCIProvider) ListBuildsSince(
 	return f.builds, f.err
 }
 
-// snapshot returns the recorded invocation state in a race-safe way
-// so tests don't need to reach into the fake's fields directly.
 func (f *fakeCIProvider) snapshot() (calls int, gotSince time.Time) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
