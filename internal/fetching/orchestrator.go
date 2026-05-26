@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -16,6 +17,13 @@ import (
 )
 
 const tracerName = "github.com/mileschou/devpulse/internal/fetching"
+
+// buildRetryOverlap widens the incremental window to cover Travis
+// retry builds whose started_at lands slightly behind the watermark.
+// The (repo_id, external_id) unique on the row dedupes anything
+// already on file, so a wider overlap is harmless. Five minutes is
+// headroom over observed sub-minute retry latency.
+const buildRetryOverlap = 5 * time.Minute
 
 // Orchestrator coordinates CI + VCS fetch and enrichment for one repo.
 type Orchestrator struct {
@@ -44,16 +52,36 @@ func NewOrchestrator(
 	}
 }
 
-// FetchAllBuilds pulls all CI builds for one repo, upserts them, and
-// back-fills GitHub commit-author logins for any rows that still lack one.
-// Safe to re-run: upserts dedupe writes.
+// FetchAllBuilds incrementally pulls Travis builds for one repo,
+// upserts them, then back-fills any commit-author logins still NULL.
+//
+// The cursor is `MAX(started_at) - buildRetryOverlap`, passed to
+// ListBuildsSince as `since`. An empty store yields a zero `since`,
+// which the provider treats as cold start and walks the full history.
+// Safe to re-run.
 func (o *Orchestrator) FetchAllBuilds(ctx context.Context, r repo.Repo) (int, error) {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, "Orchestrator.FetchAllBuilds",
 		trace.WithAttributes(attribute.String("repo", r.Name.String())))
 	defer span.End()
 
-	builds, err := o.ci.ListAllBuilds(ctx, r.Name)
+	watermark, hasWatermark, err := o.builds.MaxStartedAt(ctx, r.ID)
+	if err != nil {
+		span.RecordError(err)
+		return 0, fmt.Errorf("get build watermark: %w", err)
+	}
+
+	var since time.Time
+	if hasWatermark {
+		since = watermark.Add(-buildRetryOverlap)
+	}
+	span.SetAttributes(attribute.Bool("watermark.has", hasWatermark))
+	if hasWatermark {
+		// Skip on cold start; zero would render as 0001-01-01 on traces.
+		span.SetAttributes(attribute.String("watermark.since", since.Format(time.RFC3339)))
+	}
+
+	builds, err := o.ci.ListBuildsSince(ctx, r.Name, since)
 	if err != nil {
 		span.RecordError(err)
 		return 0, err

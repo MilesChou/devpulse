@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,17 +17,34 @@ import (
 	"github.com/mileschou/devpulse/internal/x/commitsha"
 )
 
-// fakeCIProvider returns canned builds.
+// fakeCIProvider returns canned builds and records the cursor it
+// was called with. The recorder is mutex-guarded so future
+// t.Parallel() tests do not race.
 type fakeCIProvider struct {
 	builds []build.Build
 	err    error
+
+	mu       sync.Mutex
+	calls    int
+	gotSince time.Time
 }
 
-func (f *fakeCIProvider) ListAllBuilds(
+func (f *fakeCIProvider) ListBuildsSince(
 	_ context.Context,
 	_ repo.FullName,
+	since time.Time,
 ) ([]build.Build, error) {
+	f.mu.Lock()
+	f.calls++
+	f.gotSince = since
+	f.mu.Unlock()
 	return f.builds, f.err
+}
+
+func (f *fakeCIProvider) snapshot() (calls int, gotSince time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls, f.gotSince
 }
 
 // fakeVCSProvider stubs out every method the orchestrator calls. The PR
@@ -632,5 +650,142 @@ func TestFetch_BuildAuthorEnrichmentFailureDoesNotAbortPRFetch(t *testing.T) {
 	}
 	if prsWritten != 1 {
 		t.Fatalf("PR not written: %d", prsWritten)
+	}
+}
+
+// TestFetchAllBuilds_ColdStart_PassesZeroSince asserts the first sync
+// on an empty store calls the provider with a zero `since`, which the
+// provider treats as cold-start (walk the full upstream history). This
+// is the no-watermark branch of the incremental logic.
+func TestFetchAllBuilds_ColdStart_PassesZeroSince(t *testing.T) {
+	ctx := context.Background()
+	p, r := setup(t)
+	bp := persistence.NewBuildPersister(p)
+	pp := persistence.NewPullRequestPersister(p)
+	rvp := persistence.NewReviewPersister(p)
+
+	sha, _ := commitsha.Parse("aaa1234567890abcdef1234567890abcdef12345")
+	ci := &fakeCIProvider{builds: []build.Build{
+		{ExternalID: "1", CommitSHA: sha, Status: build.StatusPassed, Trigger: build.TriggerPush, Branch: "main",
+			StartedAt: time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)},
+	}}
+	orch := fetching.NewOrchestrator(ci, &fakeVCSProvider{}, bp, pp, rvp, nil)
+
+	written, err := orch.FetchAllBuilds(ctx, r)
+	if err != nil {
+		t.Fatalf("FetchAllBuilds: %v", err)
+	}
+	if written != 1 {
+		t.Fatalf("written: %d (expected 1)", written)
+	}
+	calls, gotSince := ci.snapshot()
+	if calls != 1 {
+		t.Fatalf("provider calls: %d (expected 1)", calls)
+	}
+	if !gotSince.IsZero() {
+		t.Fatalf("cold start should pass zero since, got %v", gotSince)
+	}
+}
+
+// TestFetchAllBuilds_Incremental_PassesWatermarkMinusOverlap asserts
+// the second-and-onward sync derives the watermark from MAX(started_at)
+// and subtracts the 5-minute retry overlap before handing it to the
+// provider. This locks in the contract between the orchestrator and
+// the persister so a future change to the overlap constant has to
+// land in lock-step with this assertion.
+func TestFetchAllBuilds_Incremental_PassesWatermarkMinusOverlap(t *testing.T) {
+	ctx := context.Background()
+	p, r := setup(t)
+	bp := persistence.NewBuildPersister(p)
+	pp := persistence.NewPullRequestPersister(p)
+	rvp := persistence.NewReviewPersister(p)
+
+	shaSeed, _ := commitsha.Parse("aaa1234567890abcdef1234567890abcdef12345")
+	seedStarted := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
+	if _, err := bp.UpsertMany(ctx, r.ID, []build.Build{
+		{ExternalID: "100", CommitSHA: shaSeed, Status: build.StatusPassed, Trigger: build.TriggerPush, Branch: "main",
+			StartedAt: seedStarted},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// Provider returns one fresh build past the watermark.
+	shaNew, _ := commitsha.Parse("bbb1234567890abcdef1234567890abcdef12345")
+	ci := &fakeCIProvider{builds: []build.Build{
+		{ExternalID: "200", CommitSHA: shaNew, Status: build.StatusPassed, Trigger: build.TriggerPush, Branch: "main",
+			StartedAt: seedStarted.Add(2 * time.Hour)},
+	}}
+	orch := fetching.NewOrchestrator(ci, &fakeVCSProvider{}, bp, pp, rvp, nil)
+
+	written, err := orch.FetchAllBuilds(ctx, r)
+	if err != nil {
+		t.Fatalf("FetchAllBuilds: %v", err)
+	}
+	if written != 1 {
+		t.Fatalf("written: %d (expected 1)", written)
+	}
+	wantSince := seedStarted.Add(-5 * time.Minute)
+	_, gotSince := ci.snapshot()
+	if !gotSince.Equal(wantSince) {
+		t.Fatalf("since: got %v, want %v (watermark - 5min overlap)", gotSince, wantSince)
+	}
+}
+
+// TestFetchAllBuilds_RetryWithinOverlap_DedupedByDB exercises the
+// safety net that the 5-minute overlap window buys us: when the
+// provider returns a build whose external_id was already stored
+// (e.g. the same row resurfaces because the page boundary fell inside
+// the overlap), UpsertMany silently dedupes it via the
+// (repo_id, external_id) unique constraint, while a genuinely new
+// retry build with a fresh external_id is still written even though
+// its started_at lands before the watermark. The net `written` count
+// is the count of truly new rows.
+func TestFetchAllBuilds_RetryWithinOverlap_DedupedByDB(t *testing.T) {
+	ctx := context.Background()
+	p, r := setup(t)
+	bp := persistence.NewBuildPersister(p)
+	pp := persistence.NewPullRequestPersister(p)
+	rvp := persistence.NewReviewPersister(p)
+
+	shaSeed, _ := commitsha.Parse("aaa1234567890abcdef1234567890abcdef12345")
+	watermark := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
+	if _, err := bp.UpsertMany(ctx, r.ID, []build.Build{
+		{ExternalID: "100", CommitSHA: shaSeed, Status: build.StatusPassed, Trigger: build.TriggerPush, Branch: "main",
+			StartedAt: watermark},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// Provider replays: ID 100 (already in DB; resurfaces because the
+	// overlap window made the page include it) and ID 101 (a retry
+	// build that started 2 minutes before the watermark — within the
+	// 5-minute overlap, so it survives the page-level stop).
+	shaRetry, _ := commitsha.Parse("bbb1234567890abcdef1234567890abcdef12345")
+	ci := &fakeCIProvider{builds: []build.Build{
+		{ExternalID: "100", CommitSHA: shaSeed, Status: build.StatusPassed, Trigger: build.TriggerPush, Branch: "main",
+			StartedAt: watermark},
+		{ExternalID: "101", CommitSHA: shaRetry, Status: build.StatusPassed, Trigger: build.TriggerPush, Branch: "main",
+			StartedAt: watermark.Add(-2 * time.Minute)},
+	}}
+	orch := fetching.NewOrchestrator(ci, &fakeVCSProvider{}, bp, pp, rvp, nil)
+
+	written, err := orch.FetchAllBuilds(ctx, r)
+	if err != nil {
+		t.Fatalf("FetchAllBuilds: %v", err)
+	}
+	if written != 1 {
+		t.Fatalf("written: %d (expected 1 — the retry build only; ID 100 is a no-op via ON CONFLICT)", written)
+	}
+
+	// The watermark should NOT have moved backward — even though we
+	// upserted a row with started_at before it, MAX(started_at) stays
+	// at the original watermark (the retry started earlier than the
+	// previous max).
+	maxStarted, has, err := bp.MaxStartedAt(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("MaxStartedAt: %v", err)
+	}
+	if !has || !maxStarted.Equal(watermark) {
+		t.Fatalf("watermark after retry: has=%v got=%v want=%v", has, maxStarted, watermark)
 	}
 }
