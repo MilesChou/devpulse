@@ -3,6 +3,7 @@ package persistence
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/mileschou/devpulse/internal/build"
@@ -39,7 +40,7 @@ func (b *BuildPersister) UpsertMany(ctx context.Context, repoID string, builds [
 		}
 		now := b.Now()
 
-		res, err := tx.ExecContext(ctx, insert,
+		args := []any{
 			id,
 			repoID,
 			row.ExternalID,
@@ -58,7 +59,9 @@ func (b *BuildPersister) UpsertMany(ctx context.Context, repoID string, builds [
 			"{}", // raw_payload placeholder until upstream wires it through
 			now,
 			now,
-		)
+		}
+		b.Logger.Debug("sql.exec", slog.String("query", b.buildInsertSQL()), slog.Any("args", args))
+		res, err := tx.ExecContext(ctx, insert, args...)
 		if err != nil {
 			return written, fmt.Errorf("build upsert row: %w", err)
 		}
