@@ -64,16 +64,19 @@ func (p *Persister) NewID() string {
 
 // ExecCtx wraps DB.ExecContext with placeholder rebinding.
 func (p *Persister) ExecCtx(ctx context.Context, q string, args ...any) (sql.Result, error) {
+	p.Logger.Debug("sql.exec", slog.String("query", q), slog.Any("args", args))
 	return p.DB.ExecContext(ctx, p.Rebind(q), args...)
 }
 
 // QueryCtx wraps DB.QueryContext with placeholder rebinding.
 func (p *Persister) QueryCtx(ctx context.Context, q string, args ...any) (*sql.Rows, error) {
+	p.Logger.Debug("sql.query", slog.String("query", q), slog.Any("args", args))
 	return p.DB.QueryContext(ctx, p.Rebind(q), args...)
 }
 
 // QueryRowCtx wraps DB.QueryRowContext with placeholder rebinding.
 func (p *Persister) QueryRowCtx(ctx context.Context, q string, args ...any) *sql.Row {
+	p.Logger.Debug("sql.query_row", slog.String("query", q), slog.Any("args", args))
 	return p.DB.QueryRowContext(ctx, p.Rebind(q), args...)
 }
 

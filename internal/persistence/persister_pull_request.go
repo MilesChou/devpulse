@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/mileschou/devpulse/internal/pullrequest"
 )
@@ -58,7 +59,7 @@ func (r *PullRequestPersister) UpsertMany(ctx context.Context, prs []pullrequest
 		}
 		now := r.Now()
 
-		res, err := tx.ExecContext(ctx, insert,
+		args := []any{
 			p.ID, "github", p.RepoID, p.Number, p.Author, p.Status.String(),
 			p.Additions, p.Deletions, p.TotalChangedLines,
 			p.IsDraft, p.CreatedAt, p.ReadyAt,
@@ -66,7 +67,9 @@ func (r *PullRequestPersister) UpsertMany(ctx context.Context, prs []pullrequest
 			p.TimeToApproval, p.TimeToMerge,
 			p.MergedAt, p.ClosedAt,
 			now, now,
-		)
+		}
+		r.Logger.Debug("sql.exec", slog.String("query", r.upsertSQL()), slog.Any("args", args))
+		res, err := tx.ExecContext(ctx, insert, args...)
 		if err != nil {
 			return written, fmt.Errorf("pr upsert row: %w", err)
 		}
@@ -80,6 +83,7 @@ func (r *PullRequestPersister) UpsertMany(ctx context.Context, prs []pullrequest
 		// was ignored; load the persisted one so the caller can drive
 		// follow-up writes against the canonical row.
 		var existingID string
+		r.Logger.Debug("sql.query_row", slog.String("query", `SELECT id FROM pull_requests WHERE repo_id = ? AND number = ?`), slog.Any("args", []any{p.RepoID, p.Number}))
 		if err := tx.QueryRowContext(ctx, lookup, p.RepoID, p.Number).Scan(&existingID); err != nil {
 			return written, fmt.Errorf("pr upsert lookup id: %w", err)
 		}
