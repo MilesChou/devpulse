@@ -2,6 +2,7 @@ package fetching
 
 import (
 	"context"
+	"time"
 
 	"github.com/mileschou/devpulse/internal/build"
 	"github.com/mileschou/devpulse/internal/pullrequest"
@@ -12,6 +13,12 @@ import (
 // written (UpsertMany dedupes by (repo_id, commit_sha, number)).
 type BuildWriter interface {
 	UpsertMany(ctx context.Context, repoID string, builds []build.Build) (int, error)
+
+	// MaxStartedAt returns the largest started_at for the repo. The
+	// `has` flag is false when the store is empty — that is the
+	// cold-start signal the orchestrator branches on. Must stay cheap;
+	// called before every sync.
+	MaxStartedAt(ctx context.Context, repoID string) (time.Time, bool, error)
 
 	// ListMissingAuthorSHAs returns commit SHAs for the repo whose
 	// author_account is still NULL. Used to drive incremental author

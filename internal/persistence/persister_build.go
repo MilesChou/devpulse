@@ -3,6 +3,7 @@ package persistence
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/mileschou/devpulse/internal/build"
 	"github.com/mileschou/devpulse/internal/x/commitsha"
@@ -69,6 +70,67 @@ func (b *BuildPersister) UpsertMany(ctx context.Context, repoID string, builds [
 		return written, fmt.Errorf("build upsert commit: %w", err)
 	}
 	return written, nil
+}
+
+// MaxStartedAt returns the largest started_at for the repo (UTC).
+// Index-only on builds_repo_started_idx. Returns (zero, false, nil)
+// when the store is empty — the orchestrator's cold-start signal.
+func (b *BuildPersister) MaxStartedAt(ctx context.Context, repoID string) (time.Time, bool, error) {
+	const q = `SELECT MAX(started_at) FROM builds WHERE repo_id = ?`
+
+	// MAX() has no declared TIMESTAMP affinity so drivers disagree on
+	// the return type: time.Time for pgx and mysql (with parseTime),
+	// string for modernc.org/sqlite, []byte for some MySQL configs.
+	// Scan into `any` and dispatch.
+	var raw any
+	if err := b.QueryRowCtx(ctx, q, repoID).Scan(&raw); err != nil {
+		return time.Time{}, false, fmt.Errorf("build max started_at: %w", err)
+	}
+	switch v := raw.(type) {
+	case nil:
+		return time.Time{}, false, nil
+	case time.Time:
+		return v.UTC(), true, nil
+	case string:
+		t, err := parseDBTimestamp(v)
+		if err != nil {
+			return time.Time{}, false, fmt.Errorf("build max started_at parse %q: %w", v, err)
+		}
+		return t, true, nil
+	case []byte:
+		t, err := parseDBTimestamp(string(v))
+		if err != nil {
+			return time.Time{}, false, fmt.Errorf("build max started_at parse %q: %w", string(v), err)
+		}
+		return t, true, nil
+	default:
+		return time.Time{}, false, fmt.Errorf("build max started_at: unexpected driver type %T", v)
+	}
+}
+
+// parseDBTimestamp tries the wire formats each driver emits for
+// TIMESTAMP: RFC3339Nano (PostgreSQL / JDBC; the `.999999999` also
+// matches strings with no fractional), Go's time.String() form
+// (modernc.org/sqlite), and bare datetime (MySQL).
+//
+// TODO: promote to a package-level timex helper once a second
+// SELECT MAX(<timestamp>) caller appears.
+func parseDBTimestamp(s string) (time.Time, error) {
+	layouts := []string{
+		time.RFC3339Nano,
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC(), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("no matching layout")
 }
 
 // ListMissingAuthorSHAs returns SHAs whose author_account is NULL,

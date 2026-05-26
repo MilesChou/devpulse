@@ -273,6 +273,53 @@ func TestBuildPersister_UpdateAuthorBySHA(t *testing.T) {
 	}
 }
 
+// TestBuildPersister_MaxStartedAt round-trips the watermark query for
+// both branches: empty store → (zero, false, nil) is the cold-start
+// signal the orchestrator depends on; populated store → MAX(started_at)
+// over the rows, in UTC. The driver-type switch in MaxStartedAt is
+// exercised end-to-end here because the seeded rows are written via
+// UpsertMany using the real driver path.
+func TestBuildPersister_MaxStartedAt(t *testing.T) {
+	p := setup(t)
+	rp := persistence.NewRepoPersister(p)
+	bp := persistence.NewBuildPersister(p)
+	ctx := context.Background()
+
+	r, _ := rp.EnsureID(ctx, "github", mustFullName(t, "MilesChou/devpulse"))
+
+	// Empty store: cold-start signal.
+	zero, has, err := bp.MaxStartedAt(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("max on empty: %v", err)
+	}
+	if has {
+		t.Fatalf("expected has=false on empty store, got max=%v", zero)
+	}
+
+	sha, _ := commitsha.Parse("aaa1234567890abcdef1234567890abcdef12345")
+	earlier := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
+	later := time.Date(2026, 5, 1, 18, 0, 0, 0, time.UTC)
+
+	_, err = bp.UpsertMany(ctx, r.ID, []build.Build{
+		{ExternalID: "1", RepoID: r.ID, CommitSHA: sha, Status: build.StatusPassed, StartedAt: earlier},
+		{ExternalID: "2", RepoID: r.ID, CommitSHA: sha, Status: build.StatusPassed, StartedAt: later},
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	got, has, err := bp.MaxStartedAt(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("max: %v", err)
+	}
+	if !has {
+		t.Fatalf("expected has=true after seed")
+	}
+	if !got.Equal(later) {
+		t.Fatalf("max: got %v, want %v", got, later)
+	}
+}
+
 // TestPullRequestPersister_Upsert_RoundTripsAllFields asserts every
 // column the sync flow writes (basic + change stats + enrichment) is
 // readable via FindByNumber. With the by-number sync, UpsertMany is the

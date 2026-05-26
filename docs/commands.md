@@ -133,7 +133,7 @@ Syncs the repository in two steps, in order:
 
 The PR step runs first; if it fails, the build step is skipped and the command exits non-zero. Both `GITHUB_TOKEN` and `TRAVIS_TOKEN` are required.
 
-> The first run is the expensive one: PR sync walks PR numbers ascending from `pr_sync_start_number` (default 1) up to the upstream max, fetching detail + reviews per PR; build sync walks the full Travis history with no page cap. Subsequent runs are incremental — PRs resume from `MAX(number) + 1`, builds dedupe by `(repo_id, external_id)`, and author back-fill only touches commit SHAs whose author is still NULL.
+> The first run is the expensive one: PR sync walks PR numbers ascending from `pr_sync_start_number` (default 1) up to the upstream max, fetching detail + reviews per PR; build sync walks the full Travis history with no page cap (cold-start path triggered when the local store is empty). Subsequent runs are incremental — PRs resume from `MAX(number) + 1`, builds resume from `MAX(started_at) - 5min` (the 5-minute overlap absorbs Travis retry builds whose `started_at` lands slightly behind the watermark, while `(repo_id, external_id)` unique dedupes anything already on file), and author back-fill only touches commit SHAs whose author is still NULL. A routine sync on a quiet repo costs about one Travis page even when the full history is in the tens of thousands.
 
 **Arguments**
 
