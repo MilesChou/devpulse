@@ -81,10 +81,9 @@ devpulse pr sync MilesChou/devpulse 42
 devpulse worker
 ```
 
-## 用 Metabase 在本地探索指標
+## 用 Metabase 在本地探索資料
 
-如要在本地以圖形介面瀏覽 metric view（見
-`migrations/*views_failure_rate.up.sql`），可掛上選用的 Metabase overlay：
+如要在本地以圖形介面瀏覽已同步的 build、PR、review 資料，可掛上選用的 Metabase overlay：
 
 ```bash
 docker compose \
