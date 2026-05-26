@@ -90,9 +90,8 @@ devpulse worker
 
 ## Local exploration with Metabase
 
-For interactive browsing of the metric views (see
-`migrations/*views_failure_rate.up.sql`), an optional Metabase overlay
-ships with the repository:
+For interactive browsing of the synced build, PR, and review data,
+an optional Metabase overlay ships with the repository:
 
 ```bash
 docker compose \
