@@ -14,6 +14,7 @@ package repo
 type Repo struct {
 	ID                string
 	Name              FullName
+	Provider          string  // VCS host: "github", "gitlab", etc.
 	Description       *string // nullable
 	DefaultBranch     string
 	Disabled          bool

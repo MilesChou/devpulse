@@ -27,17 +27,20 @@ const buildRetryOverlap = 5 * time.Minute
 
 // Orchestrator coordinates CI + VCS fetch and enrichment for one repo.
 type Orchestrator struct {
-	ci      CIProvider
-	vcs     VCSProvider
-	builds  BuildWriter
-	prs     PullRequestWriter
-	reviews ReviewWriter
-	logger  *slog.Logger
+	ciProviders []CIProvider
+	vcs         VCSProvider
+	builds      BuildWriter
+	prs         PullRequestWriter
+	reviews     ReviewWriter
+	logger      *slog.Logger
 }
 
-// NewOrchestrator wires the dependencies.
+// NewOrchestrator wires the dependencies. ciProviders may contain
+// multiple CI backends (e.g. Travis + GitHub Actions); FetchAllBuilds
+// queries all of them and merges the results — the DB-level unique
+// constraint on (repo_id, external_id) deduplicates any overlap.
 func NewOrchestrator(
-	ci CIProvider,
+	ciProviders []CIProvider,
 	vcs VCSProvider,
 	builds BuildWriter,
 	prs PullRequestWriter,
@@ -48,17 +51,19 @@ func NewOrchestrator(
 		logger = slog.Default()
 	}
 	return &Orchestrator{
-		ci: ci, vcs: vcs, builds: builds, prs: prs, reviews: reviews, logger: logger,
+		ciProviders: ciProviders, vcs: vcs, builds: builds, prs: prs, reviews: reviews, logger: logger,
 	}
 }
 
-// FetchAllBuilds incrementally pulls Travis builds for one repo,
-// upserts them, then back-fills any commit-author logins still NULL.
+// FetchAllBuilds incrementally pulls CI builds from every registered
+// provider for one repo, upserts them, then back-fills any commit-author
+// logins still NULL.
 //
-// The cursor is `MAX(started_at) - buildRetryOverlap`, passed to
-// ListBuildsSince as `since`. An empty store yields a zero `since`,
-// which the provider treats as cold start and walks the full history.
-// Safe to re-run.
+// The cursor is `MAX(started_at) - buildRetryOverlap`, shared across
+// providers. The DB-level unique on (repo_id, external_id) deduplicates;
+// different providers use non-overlapping external ID spaces so there is
+// no collision. A per-provider failure is logged but does not abort the
+// remaining providers — partial progress is still committed.
 func (o *Orchestrator) FetchAllBuilds(ctx context.Context, r repo.Repo) (int, error) {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, "Orchestrator.FetchAllBuilds",
@@ -77,20 +82,27 @@ func (o *Orchestrator) FetchAllBuilds(ctx context.Context, r repo.Repo) (int, er
 	}
 	span.SetAttributes(attribute.Bool("watermark.has", hasWatermark))
 	if hasWatermark {
-		// Skip on cold start; zero would render as 0001-01-01 on traces.
 		span.SetAttributes(attribute.String("watermark.since", since.Format(time.RFC3339)))
 	}
 
-	builds, err := o.ci.ListBuildsSince(ctx, r.Name, since)
-	if err != nil {
-		span.RecordError(err)
-		return 0, err
-	}
+	var totalWritten int
+	for _, ci := range o.ciProviders {
+		builds, err := ci.ListBuildsSince(ctx, r.Name, since)
+		if err != nil {
+			o.logger.Warn("ci provider fetch failed, skipping",
+				slog.String("repo", r.Name.String()),
+				slog.String("err", err.Error()),
+			)
+			span.RecordError(err)
+			continue
+		}
 
-	written, err := o.builds.UpsertMany(ctx, r.ID, builds)
-	if err != nil {
-		span.RecordError(err)
-		return 0, err
+		written, err := o.builds.UpsertMany(ctx, r.ID, builds)
+		if err != nil {
+			span.RecordError(err)
+			return totalWritten, err
+		}
+		totalWritten += written
 	}
 
 	if err := o.enrichBuildAuthors(ctx, r); err != nil {
@@ -100,7 +112,7 @@ func (o *Orchestrator) FetchAllBuilds(ctx context.Context, r repo.Repo) (int, er
 		)
 	}
 
-	return written, nil
+	return totalWritten, nil
 }
 
 // BackfillPullRequestsByNumber syncs every PR number from
@@ -229,6 +241,7 @@ func (o *Orchestrator) syncOnePullRequestByNumber(
 	// `detail` was constructed (e.g. an alternate VCSProvider or test
 	// fake that doesn't go through toDomain).
 	detail.TotalChangedLines = detail.Additions + detail.Deletions
+	detail.SizeBucket = pullrequest.SizeBucket(detail.TotalChangedLines)
 	agg := pullrequest.AggregateReviews(reviews, detail.ReadyAt)
 	detail.FirstReviewAt = agg.FirstReviewAt
 	detail.FirstApprovedAt = agg.FirstApprovedAt

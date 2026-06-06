@@ -25,12 +25,13 @@ const (
 
 // Config controls the Travis client.
 type Config struct {
-	BaseURL   string
-	Token     string
-	UserAgent string
-	Timeout   time.Duration
-	RetryMax  int
-	Logger    *slog.Logger
+	BaseURL       string
+	Token         string
+	UserAgent     string
+	Timeout       time.Duration
+	RetryMax      int
+	Logger        *slog.Logger
+	BaseTransport http.RoundTripper // optional; passed through to httpx
 }
 
 // Client is the Travis HTTP plumbing. Higher-level operations live in
@@ -58,11 +59,12 @@ func NewClient(cfg Config) *Client {
 	}
 
 	hc := httpx.New(httpx.Config{
-		RetryMax:   cfg.RetryMax,
-		Timeout:    cfg.Timeout,
-		UserAgent:  cfg.UserAgent,
-		SpanPrefix: "travis",
-		Logger:     cfg.Logger,
+		RetryMax:      cfg.RetryMax,
+		Timeout:       cfg.Timeout,
+		UserAgent:     cfg.UserAgent,
+		SpanPrefix:    "travis",
+		Logger:        cfg.Logger,
+		BaseTransport: cfg.BaseTransport,
 	})
 
 	return &Client{

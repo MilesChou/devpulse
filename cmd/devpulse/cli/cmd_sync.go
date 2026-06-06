@@ -34,7 +34,7 @@ func newSyncCmd() *cobra.Command {
 		Long: "Runs the equivalent of `devpulse repo sync` against every " +
 			"repository in the store, sequentially. Disabled repos are " +
 			"skipped. Per-repo failures are aggregated into a final summary " +
-			"but do not stop the loop. Requires GITHUB_TOKEN and TRAVIS_TOKEN.",
+			"but do not stop the loop. Requires GITHUB_TOKEN.",
 		Example: "  devpulse sync",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -57,9 +57,6 @@ func runSync(ctx context.Context) error {
 	// working without them.
 	if strings.TrimSpace(os.Getenv("GITHUB_TOKEN")) == "" {
 		return errors.New("sync: GITHUB_TOKEN is required")
-	}
-	if strings.TrimSpace(os.Getenv("TRAVIS_TOKEN")) == "" {
-		return errors.New("sync: TRAVIS_TOKEN is required")
 	}
 
 	d, err := buildDeps(ctx)

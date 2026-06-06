@@ -3,6 +3,9 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"strings"
+	"time"
 
 	"github.com/mileschou/devpulse/internal/config"
 	"github.com/mileschou/devpulse/internal/fetching"
@@ -11,6 +14,7 @@ import (
 	"github.com/mileschou/devpulse/internal/persistence/dsn"
 	"github.com/mileschou/devpulse/internal/persistence/migrator"
 	"github.com/mileschou/devpulse/internal/travis"
+	"github.com/mileschou/devpulse/internal/x/httpcache"
 	"github.com/mileschou/devpulse/internal/x/logx"
 	"github.com/mileschou/devpulse/internal/x/otelx"
 	"github.com/mileschou/devpulse/migrations"
@@ -77,32 +81,58 @@ func buildDeps(ctx context.Context) (*deps, error) {
 	prs := persistence.NewPullRequestPersister(pers)
 	reviews := persistence.NewReviewPersister(pers)
 
+	// Build an optional cache transport shared by all API clients.
+	// When CACHE_ENABLED=true, successful responses are stored on
+	// disk so DB rebuilds can replay without hitting the remote API.
+	// CacheDir is already resolved by config.Load (defaults to
+	// os.UserCacheDir()/devpulse when empty).
+	var cacheTransport http.RoundTripper
+	if cfg.CacheEnabled {
+		store := httpcache.NewDiskStore(cfg.CacheDir)
+		ct := httpcache.NewTransport(store, cfg.CacheTTL, logger)
+		ct.TTLFunc = stableTTLFunc(cfg.CacheTTL)
+		cacheTransport = ct
+		logger.Info("http cache enabled",
+			"dir", cfg.CacheDir,
+			"ttl", cfg.CacheTTL.String(),
+		)
+	}
+
 	// HTTPRetry is not plumbed through to the GitHub client. go-gh's
 	// pkg/api does not implement retries, so the GitHub client currently
 	// does not retry on any failure; adding retry is tracked separately.
 	// Travis still honors HTTPRetry via internal/x/httpx.
 	ghClient, err := github.NewClient(github.Config{
-		BaseURL: cfg.GitHubBase,
-		Token:   cfg.GitHubToken,
-		Timeout: cfg.HTTPTimeout,
-		Logger:  logger,
+		BaseURL:       cfg.GitHubBase,
+		Token:         cfg.GitHubToken,
+		Timeout:       cfg.HTTPTimeout,
+		Logger:        logger,
+		BaseTransport: cacheTransport,
 	})
 	if err != nil {
 		_ = conn.DB.Close()
 		_ = tp.Shutdown(ctx)
 		return nil, fmt.Errorf("github client: %w", err)
 	}
-	travisClient := travis.NewClient(travis.Config{
-		BaseURL:  cfg.TravisBase,
-		Token:    cfg.TravisToken,
-		Timeout:  cfg.HTTPTimeout,
-		RetryMax: cfg.HTTPRetry,
-		Logger:   logger,
-	})
-
 	vcs := github.NewProvider(ghClient)
+
+	ciProviders := []fetching.CIProvider{
+		github.NewActionsProvider(ghClient),
+	}
+	if cfg.TravisToken != "" {
+		travisClient := travis.NewClient(travis.Config{
+			BaseURL:       cfg.TravisBase,
+			Token:         cfg.TravisToken,
+			Timeout:       cfg.HTTPTimeout,
+			RetryMax:      cfg.HTTPRetry,
+			Logger:        logger,
+			BaseTransport: cacheTransport,
+		})
+		ciProviders = append(ciProviders, travis.NewProvider(travisClient))
+	}
+
 	orch := fetching.NewOrchestrator(
-		travis.NewProvider(travisClient),
+		ciProviders,
 		vcs,
 		builds, prs, reviews,
 		logger,
@@ -128,6 +158,51 @@ func (d *deps) close(ctx context.Context) {
 	}
 	if d.tp != nil {
 		_ = d.tp.Shutdown(ctx)
+	}
+}
+
+// stableTTLFunc returns a per-request TTL function that classifies
+// API resources into two buckets:
+//
+//   - Stable (TTL=0, never expire): resources whose response is
+//     immutable for the given URL + query params + body. Includes
+//     individual PR detail, CI build listings (watermarked), GraphQL
+//     queries (commit authors, reviews), and Travis builds.
+//   - Volatile (TTL=defaultTTL): the PR listing used to discover
+//     the latest PR number — this is the only endpoint whose
+//     response genuinely changes across syncs with the same params.
+func stableTTLFunc(defaultTTL time.Duration) func(*http.Request) time.Duration {
+	return func(req *http.Request) time.Duration {
+		path := req.URL.Path
+
+		// GraphQL POST: commit-author bulk lookup and PR reviews
+		// are both keyed on specific SHAs / PR numbers; results
+		// are immutable for those inputs.
+		if req.Method == http.MethodPost && strings.HasSuffix(path, "/graphql") {
+			return 0
+		}
+
+		parts := strings.Split(path, "/")
+
+		// /repos/{owner}/{name}/pulls/{number} — PR detail
+		// /repos/{owner}/{name}/actions/runs   — CI builds (watermarked)
+		if len(parts) == 6 {
+			switch parts[4] {
+			case "pulls":
+				return 0
+			case "actions":
+				if parts[5] == "runs" {
+					return 0
+				}
+			}
+		}
+
+		// /repo/{slug}/builds — Travis builds (same watermark logic)
+		if len(parts) == 4 && parts[3] == "builds" {
+			return 0
+		}
+
+		return defaultTTL
 	}
 }
 

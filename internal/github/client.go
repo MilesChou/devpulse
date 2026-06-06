@@ -41,11 +41,12 @@ const (
 
 // Config controls the GitHub client.
 type Config struct {
-	BaseURL   string // override for tests / GitHub Enterprise
-	Token     string // personal access token or App installation token
-	UserAgent string
-	Timeout   time.Duration
-	Logger    *slog.Logger
+	BaseURL       string // override for tests / GitHub Enterprise
+	Token         string // personal access token or App installation token
+	UserAgent     string
+	Timeout       time.Duration
+	Logger        *slog.Logger
+	BaseTransport http.RoundTripper // optional; wraps this instead of http.DefaultTransport
 }
 
 // Client wraps the HTTP plumbing. Methods on it issue REST or GraphQL
@@ -93,8 +94,13 @@ func NewClient(cfg Config) (*Client, error) {
 		cfg.Timeout = DefaultTimeout
 	}
 
+	baseTransport := http.RoundTripper(http.DefaultTransport)
+	if cfg.BaseTransport != nil {
+		baseTransport = cfg.BaseTransport
+	}
+
 	transport := otelhttp.NewTransport(
-		http.DefaultTransport,
+		baseTransport,
 		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
 			return "github." + r.Method + " " + r.URL.Path
 		}),

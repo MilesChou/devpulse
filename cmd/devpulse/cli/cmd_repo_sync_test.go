@@ -17,23 +17,9 @@ func TestRepoSync_RequiresGitHubToken(t *testing.T) {
 	}
 }
 
-func TestRepoSync_RequiresTravisToken(t *testing.T) {
-	setEnv(t)
-	t.Setenv("GITHUB_TOKEN", "fake-gh-token")
-	// TRAVIS_TOKEN intentionally unset.
-	out, err := runCmd(t, "repo", "sync", "MilesChou/devpulse")
-	if err == nil {
-		t.Fatalf("expected error when TRAVIS_TOKEN missing, got output: %q", out)
-	}
-	if !strings.Contains(err.Error(), "TRAVIS_TOKEN") {
-		t.Fatalf("expected TRAVIS_TOKEN in error, got: %v", err)
-	}
-}
-
 func TestRepoSync_RejectsInvalidRepoName(t *testing.T) {
 	setEnv(t)
 	t.Setenv("GITHUB_TOKEN", "fake-gh-token")
-	t.Setenv("TRAVIS_TOKEN", "fake-travis-token")
 	_, err := runCmd(t, "repo", "sync", "not-a-slug")
 	if err == nil {
 		t.Fatalf("expected error for invalid repo name")

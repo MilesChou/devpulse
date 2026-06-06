@@ -42,6 +42,7 @@ func NewRootCmd() *cobra.Command {
 		newSyncCmd(),
 		newRepoCmd(),
 		newPRCmd(),
+		newMetricsCmd(),
 		newMigrateCmd(),
 		newWorkerCmd(),
 		newServeCmd(),
