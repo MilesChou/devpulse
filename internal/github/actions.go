@@ -117,9 +117,9 @@ func buildFromRun(r workflowRun) (build.Build, bool) {
 		prNumber = r.PullRequests[0].Number
 	}
 
-	var finishedAt *time.Time
-	finishedAt = timex.PtrUTC(r.UpdatedAt)
-
+	// The Actions runs API has no dedicated finished_at; updated_at on
+	// a completed run is its closest proxy. Only feeds build duration,
+	// not a PR lead-time denominator, so the approximation is contained.
 	return build.Build{
 		ExternalID: strconv.FormatInt(r.ID, 10),
 		PRNumber:   prNumber,
@@ -128,7 +128,7 @@ func buildFromRun(r workflowRun) (build.Build, bool) {
 		Status:     resolveRunStatus(r.Conclusion),
 		Trigger:    resolveRunTrigger(r.Event),
 		StartedAt:  r.RunStartedAt.UTC(),
-		FinishedAt: finishedAt,
+		FinishedAt: timex.PtrUTC(r.UpdatedAt),
 	}, true
 }
 

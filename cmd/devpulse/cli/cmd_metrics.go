@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mileschou/devpulse/internal/persistence"
+	"github.com/mileschou/devpulse/internal/pullrequest"
 	"github.com/mileschou/devpulse/internal/repo"
 )
 
@@ -121,9 +122,8 @@ func printMetrics(ctx context.Context, m *persistence.MetricsPersister, repoID, 
 }
 
 func formatSizeDist(dist map[string]int) string {
-	buckets := []string{"XS", "S", "M", "L", "XL"}
 	var parts []string
-	for _, b := range buckets {
+	for _, b := range pullrequest.SizeBuckets() {
 		if n, ok := dist[b]; ok {
 			parts = append(parts, fmt.Sprintf("%s:%d", b, n))
 		}
