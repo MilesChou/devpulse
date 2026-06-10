@@ -141,9 +141,14 @@ func resolveRunStatus(conclusion *string) build.Status {
 		return build.StatusPassed
 	case "failure":
 		return build.StatusFailed
+	case "timed_out", "startup_failure":
+		// Infra-level failures; must count toward the failure-rate
+		// metric — see build.StatusErrored.
+		return build.StatusErrored
 	case "cancelled":
 		return build.StatusCanceled
 	default:
+		// neutral / skipped / stale / action_required are not failures.
 		return build.StatusUnknown
 	}
 }

@@ -34,16 +34,25 @@ func (b Build) DurationSeconds() any {
 	return int(b.FinishedAt.Sub(b.StartedAt).Seconds())
 }
 
-// Status is the CI build outcome. Unknown covers in-progress / unmapped values.
+// Status is the CI build outcome. The failure-rate metric counts a build
+// iff IsFailure reports true, so provider adapters must map any provider
+// state that should count toward that metric to StatusFailed or StatusErrored.
 type Status int
 
 const (
+	// StatusUnknown covers in-progress runs and unmapped provider values.
 	StatusUnknown Status = iota
 	StatusPassed
+	// StatusFailed is a script/test failure: the build ran and its work failed.
 	StatusFailed
+	// StatusErrored is an infra-level failure: the build could not run to
+	// completion (Travis `errored`, Actions `timed_out` / `startup_failure`).
 	StatusErrored
 	StatusCanceled
 )
+
+// IsFailure reports whether the build counts toward the failure-rate metric.
+func (s Status) IsFailure() bool { return s == StatusFailed || s == StatusErrored }
 
 func (s Status) String() string {
 	switch s {
