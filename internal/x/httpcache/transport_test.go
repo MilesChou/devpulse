@@ -212,56 +212,6 @@ func TestTransport_NonSuccessNotCached(t *testing.T) {
 	}
 }
 
-func TestTransport_TTLFuncOverride(t *testing.T) {
-	dir := t.TempDir()
-	store := httpcache.NewDiskStore(dir)
-	calls := 0
-
-	upstream := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		calls++
-		rec := httptest.NewRecorder()
-		rec.WriteHeader(http.StatusOK)
-		rec.WriteString(`ok`)
-		return rec.Result(), nil
-	})
-
-	tr := &httpcache.Transport{
-		Base:  upstream,
-		Store: store,
-		TTL:   time.Nanosecond, // global: expire immediately
-		TTLFunc: func(req *http.Request) time.Duration {
-			if strings.Contains(req.URL.Path, "/stable") {
-				return 0 // never expire
-			}
-			return time.Nanosecond // expire immediately
-		},
-	}
-
-	stable := must(http.NewRequest("GET", "https://api.example.com/stable", nil))
-	volatile := must(http.NewRequest("GET", "https://api.example.com/volatile", nil))
-
-	// Populate both caches.
-	mustDo(t, tr, stable)
-	mustDo(t, tr, volatile)
-	if calls != 2 {
-		t.Fatalf("expected 2, got %d", calls)
-	}
-
-	time.Sleep(2 * time.Millisecond)
-
-	// /stable → TTLFunc returns 0 (never expire) → still cached.
-	mustDo(t, tr, stable)
-	if calls != 2 {
-		t.Fatalf("expected still 2 (stable cached forever), got %d", calls)
-	}
-
-	// /volatile → TTLFunc returns nanosecond → stale → upstream call.
-	mustDo(t, tr, volatile)
-	if calls != 3 {
-		t.Fatalf("expected 3 (volatile expired), got %d", calls)
-	}
-}
-
 // --- helpers ---
 
 func must[T any](v T, err error) T {

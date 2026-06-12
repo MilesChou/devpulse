@@ -14,7 +14,15 @@ devpulse <名詞> <動詞> [引數] [旗標]
 |---|---|
 | `DEVPULSE_DSN` | 資料庫連線字串（支援 PostgreSQL、MySQL、SQLite 或 `memory`） |
 | `GITHUB_TOKEN` | GitHub 個人存取權杖（需要 `repo` + `read:user` 範圍） |
-| `TRAVIS_TOKEN` | Travis CI API 權杖（`sync` 與 `repo sync` 需要） |
+| `TRAVIS_TOKEN` | *（選填）* Travis CI API 權杖。設定後 `sync` / `repo sync` 除了 GitHub Actions runs 之外也會抓取 Travis builds |
+
+選用的 HTTP 回應快取（預設關閉）：
+
+| 變數 | 說明 |
+|---|---|
+| `CACHE_ENABLED` | 設為 `true` 時將成功的 API 回應快取到磁碟 |
+| `CACHE_DIR` | 快取目錄（預設：`os.UserCacheDir()/devpulse`） |
+| `CACHE_TTL` | 新鮮度時間窗（預設 `24h`）。超過 TTL 的快取會以 ETag / If-Modified-Since 重新驗證——304 不消耗 GitHub rate limit。**`CACHE_TTL=0` 為 replay 模式**：快取永不過期，可在不連網的情況下重建資料庫——但上游的任何變動都看不到。例行同步切勿設為 `0` |
 
 ## 指令參考
 
@@ -31,7 +39,7 @@ devpulse sync
 - **任何 repo 失敗時，整體 exit code 非零**，cron / CI 可直接用回傳碼判斷整批健康度。
 - **循序執行，不並行。** GitHub 與 Travis 都對單一 token 做 rate limit，並行只會讓配額集中爆掉、沒有明顯吞吐量收益。若要對單一 repo 即時同步，直接用 `repo sync`。
 
-`GITHUB_TOKEN` 與 `TRAVIS_TOKEN` 都是必要參數，且會在開啟資料庫之前先檢查（fail-fast）。
+`GITHUB_TOKEN` 為必要參數，且會在開啟資料庫之前先檢查（fail-fast）。`TRAVIS_TOKEN` 為選填——未設定時只同步 GitHub Actions builds。
 
 **引數**
 
@@ -129,11 +137,11 @@ devpulse repo sync <owner/name>
 依序執行兩個步驟同步指定儲存庫：
 
 1. **Pull Request**：從 GitHub 抓取所有 PR（含審查與 commit 細節），寫入資料庫並執行 enrichment。
-2. **CI builds**：從 Travis CI 抓取所有建置記錄並寫入資料庫。
+2. **CI builds**：從每一個已註冊的 CI provider（GitHub Actions 必有；設定 `TRAVIS_TOKEN` 時加上 Travis CI）抓取建置記錄並寫入資料庫。
 
-PR 步驟先跑；若失敗則跳過 build 步驟並以非零狀態結束。需要同時設定 `GITHUB_TOKEN` 與 `TRAVIS_TOKEN`。
+PR 步驟先跑；若失敗則跳過 build 步驟並以非零狀態結束。`GITHUB_TOKEN` 為必要；`TRAVIS_TOKEN` 為選填。
 
-> 首次執行最耗時：PR 同步會從 `pr_sync_start_number`（預設 1）開始往上、逐個 PR number 抓 detail + reviews，跑到 GitHub 當前最大 PR number 為止；build 同步則會走完整個 Travis 歷史，無頁數上限（本地 store 為空時才走這條 cold-start 路徑）。後續執行為增量——PR 從 `MAX(number) + 1` 接著抓、build 從 `MAX(started_at) - 5 分鐘` 開始翻頁（5 分鐘 overlap 用來吸收 Travis retry build 那種 `started_at` 略落後 watermark 的狀況，已寫入的列由 `(repo_id, external_id)` unique constraint 靜默去重）、author backfill 只會處理 author 仍為 NULL 的 commit SHA。對於低活動量的 repo，例行同步通常只會打到 Travis 一頁，即使整個歷史有幾萬筆 build。
+> 首次執行最耗時：PR 同步會從 `pr_sync_start_number`（預設 1）開始往上、逐個 PR number 抓 detail + reviews，跑到 GitHub 當前最大 PR number 為止；build 同步則會走完該 provider 的完整歷史，無頁數上限（該 provider 尚無任何資料列時才走這條 cold-start 路徑）。後續執行為增量——PR 從 `MAX(number) + 1` 接著抓，每個 CI provider 各自從**自己的** `MAX(started_at) - 6 小時` watermark 開始翻頁（per-provider 游標確保落後或新加入的 provider 不會繼承別人的進度；6 小時 overlap 用來吸收 retry build 與上次同步時還在執行中的 run——6 小時即 GitHub Actions 單一 job 的硬上限——已寫入的列由 `(repo_id, ci_provider, external_id)` unique constraint 靜默去重）、author backfill 只會處理 author 仍為 NULL 的 commit SHA。
 
 **引數**
 
@@ -183,6 +191,53 @@ Synced MilesChou/devpulse#42
 
 ```sh
 devpulse pr sync MilesChou/devpulse 42
+```
+
+---
+
+### `metrics`
+
+```
+devpulse metrics <owner/name> [--from YYYY-MM] [--to YYYY-MM]
+```
+
+印出指定 repo 在月份區間內的工程效率指標：CI 失敗率（僅計 PR builds）、每 PR 平均建置次數、PR lead time（平均 / p50 / p90）、review 等待時間、PR 大小分布、每日平均建置時長。
+
+`--from` 預設為當前月份；`--to` 為排除上界，預設為 `--from` 的下一個月。
+
+**引數**
+
+| 引數 | 說明 |
+|---|---|
+| `owner/name` | GitHub 儲存庫識別名稱 |
+
+**旗標**
+
+| 旗標 | 說明 |
+|---|---|
+| `--from` | 起始月份，包含（`YYYY-MM`；預設：當前月份） |
+| `--to` | 結束月份，排除（`YYYY-MM`；預設：`--from` + 1 個月） |
+
+**輸出**
+
+```
+Metrics for MilesChou/devpulse (2026-05)
+────────────────────────────────────────
+CI Failure Rate:        12.5% (3/24 PR builds)
+Avg Builds per PR:      2.4
+PR Lead Time:           avg 18.2h  p50 6.1h  p90 52.0h  (10 PRs)
+Review Wait Time:       avg 3.4h (8 PRs)
+PR Size Distribution:   XS:4  S:3  M:2  L:1
+
+Daily Build Duration (avg seconds):
+  2026-05-02: 74s (6 builds)
+  2026-05-03: 81s (4 builds)
+```
+
+**範例**
+
+```sh
+devpulse metrics MilesChou/devpulse --from 2026-05 --to 2026-06
 ```
 
 ---

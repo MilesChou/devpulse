@@ -72,7 +72,14 @@ func runMetrics(ctx context.Context, repoArg, fromFlag, toFlag string) error {
 
 func printMetrics(ctx context.Context, m *persistence.MetricsPersister, repoID, repoName string, from, to time.Time) error {
 	w := stdout()
+
+	// Single-month windows render as "2026-01"; anything wider shows
+	// the inclusive month range so a multi-month aggregate is not
+	// mistaken for one month's numbers.
 	label := from.Format("2006-01")
+	if lastMonth := to.AddDate(0, -1, 0); lastMonth.After(from) {
+		label = fmt.Sprintf("%s ~ %s", from.Format("2006-01"), lastMonth.Format("2006-01"))
+	}
 
 	fmt.Fprintf(w, "Metrics for %s (%s)\n", repoName, label)
 	fmt.Fprintf(w, "%s\n", strings.Repeat("─", 40))
@@ -81,7 +88,7 @@ func printMetrics(ctx context.Context, m *persistence.MetricsPersister, repoID, 
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(w, "CI Failure Rate:        %.1f%% (%d/%d builds)\n", rate*100, failed, total)
+	fmt.Fprintf(w, "CI Failure Rate:        %.1f%% (%d/%d PR builds)\n", rate*100, failed, total)
 
 	avg, err := m.AverageBuildsPerPR(ctx, repoID, from, to)
 	if err != nil {

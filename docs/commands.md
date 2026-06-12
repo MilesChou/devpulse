@@ -14,7 +14,15 @@ All commands except `migrate` require the following environment variables to be 
 |---|---|
 | `DEVPULSE_DSN` | Database connection string (PostgreSQL, MySQL, SQLite, or `memory`) |
 | `GITHUB_TOKEN` | GitHub personal access token (`repo` + `read:user` scopes) |
-| `TRAVIS_TOKEN` | Travis CI API token (required by `sync` and `repo sync`) |
+| `TRAVIS_TOKEN` | *(optional)* Travis CI API token. When set, `sync` / `repo sync` also pull Travis builds in addition to GitHub Actions runs |
+
+Optional HTTP response cache (off by default):
+
+| Variable | Description |
+|---|---|
+| `CACHE_ENABLED` | `true` to cache successful API responses on disk |
+| `CACHE_DIR` | Cache directory (default: `os.UserCacheDir()/devpulse`) |
+| `CACHE_TTL` | Freshness window (default `24h`). Entries past the TTL revalidate with ETag / If-Modified-Since — a 304 costs no GitHub rate limit. **`CACHE_TTL=0` is replay mode**: entries never expire, so a DB rebuild can re-ingest everything without network access — but upstream changes are invisible. Never use `0` for routine syncing |
 
 ## Command Reference
 
@@ -31,7 +39,7 @@ Runs `repo sync` against every repository in the store, sequentially. This is th
 - **Exit code is non-zero if any repo failed**, so cron and CI can treat the command's status as the batch's overall health.
 - **Sequential, not parallel.** GitHub and Travis both rate-limit per-token; parallelism would bunch the burn without buying meaningful throughput. To sync a single repo on demand, use `repo sync` directly.
 
-Both `GITHUB_TOKEN` and `TRAVIS_TOKEN` are required and validated before the database is opened (fail-fast).
+`GITHUB_TOKEN` is required and validated before the database is opened (fail-fast). `TRAVIS_TOKEN` is optional — without it only GitHub Actions builds are synced.
 
 **Arguments**
 
@@ -129,11 +137,11 @@ devpulse repo sync <owner/name>
 Syncs the repository in two steps, in order:
 
 1. **Pull requests** — fetches all PRs from GitHub (including reviews and commit details), upserts them, and runs enrichment.
-2. **CI builds** — fetches all CI build records from Travis CI and upserts them.
+2. **CI builds** — fetches build records from every registered CI provider (GitHub Actions always; Travis CI when `TRAVIS_TOKEN` is set) and upserts them.
 
-The PR step runs first; if it fails, the build step is skipped and the command exits non-zero. Both `GITHUB_TOKEN` and `TRAVIS_TOKEN` are required.
+The PR step runs first; if it fails, the build step is skipped and the command exits non-zero. `GITHUB_TOKEN` is required; `TRAVIS_TOKEN` is optional.
 
-> The first run is the expensive one: PR sync walks PR numbers ascending from `pr_sync_start_number` (default 1) up to the upstream max, fetching detail + reviews per PR; build sync walks the full Travis history with no page cap (cold-start path triggered when the local store is empty). Subsequent runs are incremental — PRs resume from `MAX(number) + 1`, builds resume from `MAX(started_at) - 5min` (the 5-minute overlap absorbs Travis retry builds whose `started_at` lands slightly behind the watermark, while `(repo_id, external_id)` unique dedupes anything already on file), and author back-fill only touches commit SHAs whose author is still NULL. A routine sync on a quiet repo costs about one Travis page even when the full history is in the tens of thousands.
+> The first run is the expensive one: PR sync walks PR numbers ascending from `pr_sync_start_number` (default 1) up to the upstream max, fetching detail + reviews per PR; build sync walks each provider's full history with no page cap (cold-start path triggered when that provider has no rows yet). Subsequent runs are incremental — PRs resume from `MAX(number) + 1`, and each CI provider resumes from its **own** `MAX(started_at) - 6h` watermark (per-provider cursors keep a lagging or newly added provider from inheriting another's progress; the 6-hour overlap absorbs retry builds and runs that were still executing at the previous sync — 6h is the GitHub Actions per-job hard timeout — while the `(repo_id, ci_provider, external_id)` unique dedupes anything already on file). Author back-fill only touches commit SHAs whose author is still NULL.
 
 **Arguments**
 
@@ -183,6 +191,53 @@ Synced MilesChou/devpulse#42
 
 ```sh
 devpulse pr sync MilesChou/devpulse 42
+```
+
+---
+
+### `metrics`
+
+```
+devpulse metrics <owner/name> [--from YYYY-MM] [--to YYYY-MM]
+```
+
+Prints the engineering-efficiency metrics for a repo over a month window: CI failure rate (PR builds only), average builds per PR, PR lead time (avg / p50 / p90), review wait time, PR size distribution, and daily average build duration.
+
+`--from` defaults to the current month; `--to` is exclusive and defaults to one month after `--from`.
+
+**Arguments**
+
+| Argument | Description |
+|---|---|
+| `owner/name` | GitHub repository slug |
+
+**Flags**
+
+| Flag | Description |
+|---|---|
+| `--from` | Start month, inclusive (`YYYY-MM`; default: current month) |
+| `--to` | End month, exclusive (`YYYY-MM`; default: `--from` + 1 month) |
+
+**Output**
+
+```
+Metrics for MilesChou/devpulse (2026-05)
+────────────────────────────────────────
+CI Failure Rate:        12.5% (3/24 PR builds)
+Avg Builds per PR:      2.4
+PR Lead Time:           avg 18.2h  p50 6.1h  p90 52.0h  (10 PRs)
+Review Wait Time:       avg 3.4h (8 PRs)
+PR Size Distribution:   XS:4  S:3  M:2  L:1
+
+Daily Build Duration (avg seconds):
+  2026-05-02: 74s (6 builds)
+  2026-05-03: 81s (4 builds)
+```
+
+**Example**
+
+```sh
+devpulse metrics MilesChou/devpulse --from 2026-05 --to 2026-06
 ```
 
 ---

@@ -35,7 +35,7 @@ func (m *MetricsPersister) AverageBuildsPerPR(ctx context.Context, repoID string
 	             WHERE repo_id = ? AND started_at >= ? AND started_at < ?
 	               AND pr_number IS NOT NULL AND pr_number > 0
 	             GROUP BY pr_number
-	           )`
+	           ) AS per_pr`
 
 	var avg sql.NullFloat64
 	if err := m.QueryRowCtx(ctx, q, repoID, from, to).Scan(&avg); err != nil {
@@ -163,13 +163,15 @@ type DayDuration struct {
 	Count      int
 }
 
+// DailyBuildDuration groups in Go rather than via SQL DATE():
+// each driver encodes TIMESTAMP differently on the wire (the SQLite
+// driver stores Go's time.String() form, which SQLite's DATE()
+// cannot parse and silently maps to NULL), so day-bucketing on the
+// raw started_at is the only rendering that works on every dialect.
 func (m *MetricsPersister) DailyBuildDuration(ctx context.Context, repoID string, from, to time.Time) ([]DayDuration, error) {
-	const q = `SELECT DATE(started_at), AVG(duration_seconds), COUNT(*)
-	           FROM builds
+	const q = `SELECT started_at, duration_seconds FROM builds
 	           WHERE repo_id = ? AND started_at >= ? AND started_at < ?
-	             AND duration_seconds IS NOT NULL
-	           GROUP BY DATE(started_at)
-	           ORDER BY DATE(started_at)`
+	             AND duration_seconds IS NOT NULL`
 
 	rows, err := m.QueryCtx(ctx, q, repoID, from, to)
 	if err != nil {
@@ -177,15 +179,48 @@ func (m *MetricsPersister) DailyBuildDuration(ctx context.Context, repoID string
 	}
 	defer rows.Close()
 
-	var out []DayDuration
+	type agg struct {
+		total float64
+		count int
+	}
+	byDay := make(map[string]*agg)
 	for rows.Next() {
-		var d DayDuration
-		if err := rows.Scan(&d.Day, &d.AvgSeconds, &d.Count); err != nil {
+		var startedRaw any
+		var seconds float64
+		if err := rows.Scan(&startedRaw, &seconds); err != nil {
 			return nil, fmt.Errorf("daily build duration scan: %w", err)
 		}
-		out = append(out, d)
+		started, err := anyToTime(startedRaw)
+		if err != nil {
+			return nil, fmt.Errorf("daily build duration parse: %w", err)
+		}
+		day := started.Format("2006-01-02")
+		if byDay[day] == nil {
+			byDay[day] = &agg{}
+		}
+		byDay[day].total += seconds
+		byDay[day].count++
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("daily build duration rows: %w", err)
+	}
+
+	days := make([]string, 0, len(byDay))
+	for day := range byDay {
+		days = append(days, day)
+	}
+	sort.Strings(days)
+
+	out := make([]DayDuration, 0, len(days))
+	for _, day := range days {
+		a := byDay[day]
+		out = append(out, DayDuration{
+			Day:        day,
+			AvgSeconds: a.total / float64(a.count),
+			Count:      a.count,
+		})
+	}
+	return out, nil
 }
 
 func percentile(sorted []float64, p float64) float64 {

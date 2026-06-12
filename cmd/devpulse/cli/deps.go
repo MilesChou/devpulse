@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/mileschou/devpulse/internal/config"
 	"github.com/mileschou/devpulse/internal/fetching"
@@ -83,15 +82,25 @@ func buildDeps(ctx context.Context) (*deps, error) {
 
 	// Build an optional cache transport shared by all API clients.
 	// When CACHE_ENABLED=true, successful responses are stored on
-	// disk so DB rebuilds can replay without hitting the remote API.
+	// disk. One TTL governs every request — no per-endpoint
+	// classification. Most synced resources mutate (open PRs merge,
+	// reviews land, watermarked build listings answer the same URL
+	// with new content), so a "never expire" bucket silently freezes
+	// data; entries past the TTL revalidate with ETag /
+	// If-Modified-Since instead, and a 304 costs no GitHub rate limit.
+	// Set CACHE_TTL=0 explicitly for replay mode (entries never
+	// expire) — intended only for rebuilding the DB from previously
+	// fetched responses without network access.
 	// CacheDir is already resolved by config.Load (defaults to
 	// os.UserCacheDir()/devpulse when empty).
 	var cacheTransport http.RoundTripper
 	if cfg.CacheEnabled {
 		store := httpcache.NewDiskStore(cfg.CacheDir)
-		ct := httpcache.NewTransport(store, cfg.CacheTTL, logger)
-		ct.TTLFunc = stableTTLFunc(cfg.CacheTTL)
-		cacheTransport = ct
+		cacheTransport = httpcache.NewTransport(store, cfg.CacheTTL, logger)
+		if cfg.CacheTTL == 0 {
+			logger.Warn("http cache in replay mode (CACHE_TTL=0): " +
+				"cached responses never expire and upstream changes are invisible")
+		}
 		logger.Info("http cache enabled",
 			"dir", cfg.CacheDir,
 			"ttl", cfg.CacheTTL.String(),
@@ -119,7 +128,7 @@ func buildDeps(ctx context.Context) (*deps, error) {
 	ciProviders := []fetching.CIProvider{
 		github.NewActionsProvider(ghClient),
 	}
-	if cfg.TravisToken != "" {
+	if strings.TrimSpace(cfg.TravisToken) != "" {
 		travisClient := travis.NewClient(travis.Config{
 			BaseURL:       cfg.TravisBase,
 			Token:         cfg.TravisToken,
@@ -158,51 +167,6 @@ func (d *deps) close(ctx context.Context) {
 	}
 	if d.tp != nil {
 		_ = d.tp.Shutdown(ctx)
-	}
-}
-
-// stableTTLFunc returns a per-request TTL function that classifies
-// API resources into two buckets:
-//
-//   - Stable (TTL=0, never expire): resources whose response is
-//     immutable for the given URL + query params + body. Includes
-//     individual PR detail, CI build listings (watermarked), GraphQL
-//     queries (commit authors, reviews), and Travis builds.
-//   - Volatile (TTL=defaultTTL): the PR listing used to discover
-//     the latest PR number — this is the only endpoint whose
-//     response genuinely changes across syncs with the same params.
-func stableTTLFunc(defaultTTL time.Duration) func(*http.Request) time.Duration {
-	return func(req *http.Request) time.Duration {
-		path := req.URL.Path
-
-		// GraphQL POST: commit-author bulk lookup and PR reviews
-		// are both keyed on specific SHAs / PR numbers; results
-		// are immutable for those inputs.
-		if req.Method == http.MethodPost && strings.HasSuffix(path, "/graphql") {
-			return 0
-		}
-
-		parts := strings.Split(path, "/")
-
-		// /repos/{owner}/{name}/pulls/{number} — PR detail
-		// /repos/{owner}/{name}/actions/runs   — CI builds (watermarked)
-		if len(parts) == 6 {
-			switch parts[4] {
-			case "pulls":
-				return 0
-			case "actions":
-				if parts[5] == "runs" {
-					return 0
-				}
-			}
-		}
-
-		// /repo/{slug}/builds — Travis builds (same watermark logic)
-		if len(parts) == 4 && parts[3] == "builds" {
-			return 0
-		}
-
-		return defaultTTL
 	}
 }
 
