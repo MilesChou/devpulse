@@ -53,6 +53,7 @@ type PullRequest struct {
 	Additions         int
 	Deletions         int
 	TotalChangedLines int
+	SizeBucket        string
 	IsDraft           bool
 
 	CreatedAt       time.Time

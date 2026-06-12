@@ -4,7 +4,9 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -35,6 +37,12 @@ type Config struct {
 	// HTTP client tuning.
 	HTTPTimeout time.Duration
 	HTTPRetry   int
+
+	// HTTP response cache. When enabled, successful API responses
+	// are stored on disk so DB rebuilds can replay without network.
+	CacheEnabled bool
+	CacheDir     string        // empty → os.UserCacheDir()/devpulse
+	CacheTTL     time.Duration // 0 means entries never expire
 }
 
 // Load reads environment variables and returns Config.
@@ -54,6 +62,9 @@ func Load() (Config, error) {
 		HTTPTimeout:    getenvDuration("HTTP_TIMEOUT", 30*time.Second),
 		HTTPRetry:      getenvInt("HTTP_RETRY_MAX", 3),
 		OTELSample:     getenvFloat("OTEL_SAMPLE_RATE", 1.0),
+		CacheEnabled:   getenvBool("CACHE_ENABLED", false),
+		CacheDir:       os.Getenv("CACHE_DIR"),
+		CacheTTL:       getenvDuration("CACHE_TTL", 24*time.Hour), // 0 = never expire (always fresh)
 	}
 	return cfg.validate()
 }
@@ -65,6 +76,18 @@ func (c Config) validate() (Config, error) {
 	if c.LogFormat != "json" && c.LogFormat != "text" {
 		return c, errors.New("config: LOG_FORMAT must be json or text")
 	}
+
+	// Resolve the default cache directory so every consumer of
+	// Config.CacheDir gets a fully resolved path — no caller needs
+	// to re-implement the os.UserCacheDir fallback.
+	if c.CacheEnabled && c.CacheDir == "" {
+		userCache, err := os.UserCacheDir()
+		if err != nil {
+			return c, fmt.Errorf("config: resolve cache dir: %w", err)
+		}
+		c.CacheDir = filepath.Join(userCache, "devpulse")
+	}
+
 	return c, nil
 }
 
@@ -91,6 +114,14 @@ func getenvInt(key string, def int) int {
 		}
 	}
 	return def
+}
+
+func getenvBool(key string, def bool) bool {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	return v == "1" || strings.EqualFold(v, "true")
 }
 
 func getenvFloat(key string, def float64) float64 {

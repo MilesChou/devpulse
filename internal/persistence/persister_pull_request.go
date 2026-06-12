@@ -61,7 +61,7 @@ func (r *PullRequestPersister) UpsertMany(ctx context.Context, prs []pullrequest
 
 		args := []any{
 			p.ID, "github", p.RepoID, p.Number, p.Author, p.Status.String(),
-			p.Additions, p.Deletions, p.TotalChangedLines,
+			p.Additions, p.Deletions, p.TotalChangedLines, p.SizeBucket,
 			p.IsDraft, p.CreatedAt, p.ReadyAt,
 			p.FirstReviewAt, p.FirstApprovedAt,
 			p.TimeToApproval, p.TimeToMerge,
@@ -119,7 +119,7 @@ func (r *PullRequestPersister) MaxNumber(ctx context.Context, repoID string) (in
 // FindByNumber returns the PR by (repo_id, number).
 func (r *PullRequestPersister) FindByNumber(ctx context.Context, repoID string, number int) (pullrequest.PullRequest, error) {
 	const q = `SELECT id, repo_id, number, author_account, status,
-	                  additions, deletions, total_changed_lines, is_draft,
+	                  additions, deletions, total_changed_lines, size_bucket, is_draft,
 	                  pr_created_at, ready_at, first_review_at, first_approved_at,
 	                  time_to_approval, time_to_merge, merged_at, closed_at
 	             FROM pull_requests WHERE repo_id = ? AND number = ?`
@@ -143,7 +143,7 @@ func (r *PullRequestPersister) FindByNumber(ctx context.Context, repoID string, 
 //   - created_at — row insertion time, distinct from updated_at
 func (r *PullRequestPersister) upsertSQL() string {
 	cols := `id, platform, repo_id, number, author_account, status,
-	         additions, deletions, total_changed_lines,
+	         additions, deletions, total_changed_lines, size_bucket,
 	         is_draft, pr_created_at, ready_at,
 	         first_review_at, first_approved_at,
 	         time_to_approval, time_to_merge,
@@ -151,7 +151,7 @@ func (r *PullRequestPersister) upsertSQL() string {
 	         created_at, updated_at`
 
 	values := `?, ?, ?, ?, ?, ?,
-	           ?, ?, ?,
+	           ?, ?, ?, ?,
 	           ?, ?, ?,
 	           ?, ?,
 	           ?, ?,
@@ -165,6 +165,7 @@ func (r *PullRequestPersister) upsertSQL() string {
 		            additions           = VALUES(additions),
 		            deletions           = VALUES(deletions),
 		            total_changed_lines = VALUES(total_changed_lines),
+		            size_bucket         = VALUES(size_bucket),
 		            is_draft            = VALUES(is_draft),
 		            ready_at            = VALUES(ready_at),
 		            first_review_at     = VALUES(first_review_at),
@@ -181,6 +182,7 @@ func (r *PullRequestPersister) upsertSQL() string {
 	            additions           = EXCLUDED.additions,
 	            deletions           = EXCLUDED.deletions,
 	            total_changed_lines = EXCLUDED.total_changed_lines,
+	            size_bucket         = EXCLUDED.size_bucket,
 	            is_draft            = EXCLUDED.is_draft,
 	            ready_at            = EXCLUDED.ready_at,
 	            first_review_at     = EXCLUDED.first_review_at,
@@ -199,7 +201,7 @@ func scanPullRequest(s rowScanner) (pullrequest.PullRequest, error) {
 
 	err := s.Scan(
 		&p.ID, &p.RepoID, &p.Number, &p.Author, &statusStr,
-		&p.Additions, &p.Deletions, &p.TotalChangedLines, &p.IsDraft,
+		&p.Additions, &p.Deletions, &p.TotalChangedLines, &p.SizeBucket, &p.IsDraft,
 		&p.CreatedAt, &p.ReadyAt, &p.FirstReviewAt, &p.FirstApprovedAt,
 		&p.TimeToApproval, &p.TimeToMerge, &p.MergedAt, &p.ClosedAt,
 	)

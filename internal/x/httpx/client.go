@@ -12,13 +12,14 @@ import (
 
 // Config controls outbound HTTP client construction.
 type Config struct {
-	RetryMax     int           // 0 disables retry
-	RetryWaitMin time.Duration // default 1s
-	RetryWaitMax time.Duration // default 30s
-	Timeout      time.Duration // default 30s
-	UserAgent    string
-	SpanPrefix   string // OTel span name prefix, e.g. "github" or "travis"
-	Logger       *slog.Logger
+	RetryMax      int           // 0 disables retry
+	RetryWaitMin  time.Duration // default 1s
+	RetryWaitMax  time.Duration // default 30s
+	Timeout       time.Duration // default 30s
+	UserAgent     string
+	SpanPrefix    string // OTel span name prefix, e.g. "github" or "travis"
+	Logger        *slog.Logger
+	BaseTransport http.RoundTripper // optional; wraps this instead of http.DefaultTransport
 }
 
 // New returns a configured *http.Client whose transport stack is:
@@ -28,6 +29,9 @@ type Config struct {
 // otelhttp goes outermost so retries are folded into a single client span.
 func New(cfg Config) *http.Client {
 	retryClient := retryablehttp.NewClient()
+	if cfg.BaseTransport != nil {
+		retryClient.HTTPClient.Transport = cfg.BaseTransport
+	}
 	retryClient.RetryMax = cfg.RetryMax
 	retryClient.RetryWaitMin = orDefault(cfg.RetryWaitMin, time.Second)
 	retryClient.RetryWaitMax = orDefault(cfg.RetryWaitMax, 30*time.Second)

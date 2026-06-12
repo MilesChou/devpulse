@@ -53,7 +53,7 @@ func (b *BuildPersister) UpsertMany(ctx context.Context, repoID string, builds [
 			false, // is_post_merge — populated later by post-processing
 			row.Trigger == build.TriggerPullRequest,
 			false, // is_deploy_event
-			row.Status == build.StatusFailed || row.Status == build.StatusErrored,
+			row.Status.IsFailure(),
 			row.Started(),
 			row.DurationSeconds(),
 			"{}", // raw_payload placeholder until upstream wires it through
@@ -89,26 +89,16 @@ func (b *BuildPersister) MaxStartedAt(ctx context.Context, repoID string) (time.
 	if err := b.QueryRowCtx(ctx, q, repoID).Scan(&raw); err != nil {
 		return time.Time{}, false, fmt.Errorf("build max started_at: %w", err)
 	}
-	switch v := raw.(type) {
-	case nil:
+	// nil is the "empty store" signal (no rows); every other driver
+	// type is dispatched by the shared anyToTime helper.
+	if raw == nil {
 		return time.Time{}, false, nil
-	case time.Time:
-		return v.UTC(), true, nil
-	case string:
-		t, err := parseDBTimestamp(v)
-		if err != nil {
-			return time.Time{}, false, fmt.Errorf("build max started_at parse %q: %w", v, err)
-		}
-		return t, true, nil
-	case []byte:
-		t, err := parseDBTimestamp(string(v))
-		if err != nil {
-			return time.Time{}, false, fmt.Errorf("build max started_at parse %q: %w", string(v), err)
-		}
-		return t, true, nil
-	default:
-		return time.Time{}, false, fmt.Errorf("build max started_at: unexpected driver type %T", v)
 	}
+	t, err := anyToTime(raw)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("build max started_at: %w", err)
+	}
+	return t, true, nil
 }
 
 // parseDBTimestamp tries the wire formats each driver emits for

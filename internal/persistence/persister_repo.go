@@ -98,6 +98,7 @@ func scanRepoRow(s rowScanner) (repo.Repo, error) {
 	}
 
 	got.Name = repo.FullName{Owner: owner, Name: repoName}
+	got.Provider = provider
 	if description.Valid {
 		s := description.String
 		got.Description = &s

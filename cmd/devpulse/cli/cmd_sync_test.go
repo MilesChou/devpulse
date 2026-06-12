@@ -22,19 +22,6 @@ func TestSync_RequiresGitHubToken(t *testing.T) {
 	}
 }
 
-func TestSync_RequiresTravisToken(t *testing.T) {
-	setEnv(t)
-	t.Setenv("GITHUB_TOKEN", "fake-gh-token")
-	// TRAVIS_TOKEN intentionally unset.
-	out, err := runCmd(t, "sync")
-	if err == nil {
-		t.Fatalf("expected error when TRAVIS_TOKEN missing, got output: %q", out)
-	}
-	if !strings.Contains(err.Error(), "TRAVIS_TOKEN") {
-		t.Fatalf("expected TRAVIS_TOKEN in error, got: %v", err)
-	}
-}
-
 // TestSync_EmptyStoreIsNoop verifies that running `devpulse sync` on a
 // fresh store does NOT try to contact GitHub / Travis (so it does not
 // fail just because tokens are fake). This pins the "no repos → graceful
@@ -43,7 +30,6 @@ func TestSync_RequiresTravisToken(t *testing.T) {
 func TestSync_EmptyStoreIsNoop(t *testing.T) {
 	setEnv(t)
 	t.Setenv("GITHUB_TOKEN", "fake-gh-token")
-	t.Setenv("TRAVIS_TOKEN", "fake-travis-token")
 
 	out, err := runCmd(t, "sync")
 	if err != nil {
@@ -74,7 +60,6 @@ func TestSync_RejectsExtraArgs(t *testing.T) {
 func TestSyncRepos_StopsOnCancelledContext(t *testing.T) {
 	setEnv(t)
 	t.Setenv("GITHUB_TOKEN", "fake-gh-token")
-	t.Setenv("TRAVIS_TOKEN", "fake-travis-token")
 
 	ctx := context.Background()
 	d, err := buildDeps(ctx)

@@ -21,8 +21,8 @@ func newRepoSyncCmd() *cobra.Command {
 		Use:   "sync <owner/name>",
 		Short: "Sync PRs (with enrichment) then CI builds for a repo",
 		Long: "Pulls all pull requests (with reviews and enrichment) from GitHub, " +
-			"then all CI builds from Travis, for the given repository. " +
-			"Requires GITHUB_TOKEN and TRAVIS_TOKEN. PRs are synced first; if " +
+			"then all CI builds from GitHub Actions, for the given repository. " +
+			"Requires GITHUB_TOKEN. PRs are synced first; if " +
 			"that step fails the build step is skipped.",
 		Example: "  devpulse repo sync MilesChou/devpulse",
 		Args:    cobra.ExactArgs(1),
@@ -41,12 +41,9 @@ func runRepoSync(ctx context.Context, repoArg string) error {
 	// Validate required tokens before buildDeps to truly fail-fast: no DB
 	// open, no OTel exporter started, no HTTP client built. config.Load
 	// does not require them so commands like migrate/repo add still work
-	// without them; repo sync enforces both at the entry point.
+	// without them; repo sync enforces the token at the entry point.
 	if strings.TrimSpace(os.Getenv("GITHUB_TOKEN")) == "" {
 		return errors.New("repo sync: GITHUB_TOKEN is required")
-	}
-	if strings.TrimSpace(os.Getenv("TRAVIS_TOKEN")) == "" {
-		return errors.New("repo sync: TRAVIS_TOKEN is required")
 	}
 
 	d, err := buildDeps(ctx)
