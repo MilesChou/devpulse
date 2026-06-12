@@ -10,15 +10,18 @@ import (
 )
 
 // BuildWriter persists CI builds. Returned int is the row count actually
-// written (UpsertMany dedupes by (repo_id, commit_sha, number)).
+// written (UpsertMany dedupes by (repo_id, ci_provider, external_id)).
 type BuildWriter interface {
-	UpsertMany(ctx context.Context, repoID string, builds []build.Build) (int, error)
+	UpsertMany(ctx context.Context, repoID, ciProvider string, builds []build.Build) (int, error)
 
-	// MaxStartedAt returns the largest started_at for the repo. The
-	// `has` flag is false when the store is empty — that is the
-	// cold-start signal the orchestrator branches on. Must stay cheap;
-	// called before every sync.
-	MaxStartedAt(ctx context.Context, repoID string) (time.Time, bool, error)
+	// MaxStartedAt returns the largest started_at for the repo and
+	// CI provider. Scoping the watermark per provider keeps one
+	// provider's progress from advancing another's cursor — a lagging
+	// or newly added provider must still walk its own backlog. The
+	// `has` flag is false when that provider has no rows yet — that is
+	// the cold-start signal the orchestrator branches on. Must stay
+	// cheap; called before every sync.
+	MaxStartedAt(ctx context.Context, repoID, ciProvider string) (time.Time, bool, error)
 
 	// ListMissingAuthorSHAs returns commit SHAs for the repo whose
 	// author_account is still NULL. Used to drive incremental author

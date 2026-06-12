@@ -15,10 +15,12 @@ type BuildPersister struct{ *Persister }
 
 func NewBuildPersister(p *Persister) *BuildPersister { return &BuildPersister{Persister: p} }
 
-// UpsertMany inserts each build, ignoring duplicates by (repo_id, external_id).
+// UpsertMany inserts each build, ignoring duplicates by
+// (repo_id, ci_provider, external_id) — external IDs are only unique
+// within one provider, so the provider name is part of the dedupe key.
 // Returns the number of rows actually inserted. Updates are not currently
 // performed — builds are immutable once recorded by the upstream CI provider.
-func (b *BuildPersister) UpsertMany(ctx context.Context, repoID string, builds []build.Build) (int, error) {
+func (b *BuildPersister) UpsertMany(ctx context.Context, repoID, ciProvider string, builds []build.Build) (int, error) {
 	if len(builds) == 0 {
 		return 0, nil
 	}
@@ -43,6 +45,7 @@ func (b *BuildPersister) UpsertMany(ctx context.Context, repoID string, builds [
 		args := []any{
 			id,
 			repoID,
+			ciProvider,
 			row.ExternalID,
 			row.CommitSHA.String(),
 			nullStr(row.Author),
@@ -75,18 +78,21 @@ func (b *BuildPersister) UpsertMany(ctx context.Context, repoID string, builds [
 	return written, nil
 }
 
-// MaxStartedAt returns the largest started_at for the repo (UTC).
-// Index-only on builds_repo_started_idx. Returns (zero, false, nil)
-// when the store is empty — the orchestrator's cold-start signal.
-func (b *BuildPersister) MaxStartedAt(ctx context.Context, repoID string) (time.Time, bool, error) {
-	const q = `SELECT MAX(started_at) FROM builds WHERE repo_id = ?`
+// MaxStartedAt returns the largest started_at for the repo and CI
+// provider (UTC). The watermark is scoped per provider so one
+// provider's progress never advances another's cursor.
+// Index-only on builds_repo_provider_started_idx. Returns
+// (zero, false, nil) when the provider has no rows yet — the
+// orchestrator's cold-start signal.
+func (b *BuildPersister) MaxStartedAt(ctx context.Context, repoID, ciProvider string) (time.Time, bool, error) {
+	const q = `SELECT MAX(started_at) FROM builds WHERE repo_id = ? AND ci_provider = ?`
 
 	// MAX() has no declared TIMESTAMP affinity so drivers disagree on
 	// the return type: time.Time for pgx and mysql (with parseTime),
 	// string for modernc.org/sqlite, []byte for some MySQL configs.
 	// Scan into `any` and dispatch.
 	var raw any
-	if err := b.QueryRowCtx(ctx, q, repoID).Scan(&raw); err != nil {
+	if err := b.QueryRowCtx(ctx, q, repoID, ciProvider).Scan(&raw); err != nil {
 		return time.Time{}, false, fmt.Errorf("build max started_at: %w", err)
 	}
 	// nil is the "empty store" signal (no rows); every other driver
@@ -170,13 +176,13 @@ func (b *BuildPersister) UpdateAuthorBySHA(ctx context.Context, repoID string, s
 // PostgreSQL/SQLite support ON CONFLICT; MySQL uses INSERT IGNORE.
 // All three skip duplicates by (repo_id, external_id).
 func (b *BuildPersister) buildInsertSQL() string {
-	cols := `id, repo_id, external_id, commit_sha, author_account, pr_number,
+	cols := `id, repo_id, ci_provider, external_id, commit_sha, author_account, pr_number,
 	         status, trigger_event, branch,
 	         is_post_merge, is_pull_request, is_deploy_event, is_failure,
 	         started_at, duration_seconds, raw_payload,
 	         created_at, updated_at`
 
-	values := `?, ?, ?, ?, ?, ?,
+	values := `?, ?, ?, ?, ?, ?, ?,
 	           ?, ?, ?,
 	           ?, ?, ?, ?,
 	           ?, ?, ?,
@@ -186,7 +192,7 @@ func (b *BuildPersister) buildInsertSQL() string {
 		return `INSERT IGNORE INTO builds (` + cols + `) VALUES (` + values + `)`
 	}
 	return `INSERT INTO builds (` + cols + `) VALUES (` + values + `)
-	        ON CONFLICT (repo_id, external_id) DO NOTHING`
+	        ON CONFLICT (repo_id, ci_provider, external_id) DO NOTHING`
 }
 
 func nullStr(s string) any {

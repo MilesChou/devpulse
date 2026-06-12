@@ -121,7 +121,14 @@ func getenvBool(key string, def bool) bool {
 	if v == "" {
 		return def
 	}
-	return v == "1" || strings.EqualFold(v, "true")
+	// strconv.ParseBool accepts 1/t/T/TRUE/true/True and the false
+	// equivalents; anything else ("yes", "on") falls back to def
+	// rather than silently meaning false.
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return def
+	}
+	return b
 }
 
 func getenvFloat(key string, def float64) float64 {

@@ -18,12 +18,25 @@ import (
 
 const tracerName = "github.com/mileschou/devpulse/internal/fetching"
 
-// buildRetryOverlap widens the incremental window to cover Travis
-// retry builds whose started_at lands slightly behind the watermark.
-// The (repo_id, external_id) unique on the row dedupes anything
-// already on file, so a wider overlap is harmless. Five minutes is
-// headroom over observed sub-minute retry latency.
-const buildRetryOverlap = 5 * time.Minute
+// buildOverlap widens the incremental window behind the per-provider
+// watermark. It must absorb two kinds of late arrivals:
+//
+//   - Retry builds whose started_at lands slightly behind the
+//     watermark (observed sub-minute on Travis).
+//   - Builds that were still running at the previous sync. The GitHub
+//     Actions adapter skips non-completed runs entirely, and its
+//     `created > since` query filter is server-side — once `since`
+//     passes a run's creation time the run is unreachable forever. The
+//     overlap is therefore the upper bound on how long a build may run
+//     (relative to newer builds starting) and still be picked up after
+//     it completes. Six hours matches the GitHub Actions per-job hard
+//     timeout; builds running longer than that AND overlapping 6h of
+//     newer builds are accepted as lost.
+//
+// The (repo_id, ci_provider, external_id) unique on the row dedupes
+// anything already on file, so a wide overlap costs only re-fetched
+// pages, not duplicate rows.
+const buildOverlap = 6 * time.Hour
 
 // Orchestrator coordinates CI + VCS fetch and enrichment for one repo.
 type Orchestrator struct {
@@ -38,7 +51,8 @@ type Orchestrator struct {
 // NewOrchestrator wires the dependencies. ciProviders may contain
 // multiple CI backends (e.g. Travis + GitHub Actions); FetchAllBuilds
 // queries all of them and merges the results — the DB-level unique
-// constraint on (repo_id, external_id) deduplicates any overlap.
+// constraint on (repo_id, ci_provider, external_id) deduplicates any
+// overlap within one provider.
 func NewOrchestrator(
 	ciProviders []CIProvider,
 	vcs VCSProvider,
@@ -59,45 +73,47 @@ func NewOrchestrator(
 // provider for one repo, upserts them, then back-fills any commit-author
 // logins still NULL.
 //
-// The cursor is `MAX(started_at) - buildRetryOverlap`, shared across
-// providers. The DB-level unique on (repo_id, external_id) deduplicates;
-// different providers use non-overlapping external ID spaces so there is
-// no collision. A per-provider failure is logged but does not abort the
-// remaining providers — partial progress is still committed.
+// Each provider has its own cursor: `MAX(started_at) - buildOverlap`
+// over that provider's rows only. Scoping the watermark per provider is
+// what makes the multi-provider loop safe — a newly registered provider
+// starts from its own cold start (full history walk) instead of
+// inheriting another provider's cursor, and one provider's failure or
+// lag never advances past builds another provider still has to fetch.
+// A per-provider failure is logged but does not abort the remaining
+// providers — partial progress is still committed.
 func (o *Orchestrator) FetchAllBuilds(ctx context.Context, r repo.Repo) (int, error) {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, "Orchestrator.FetchAllBuilds",
 		trace.WithAttributes(attribute.String("repo", r.Name.String())))
 	defer span.End()
 
-	watermark, hasWatermark, err := o.builds.MaxStartedAt(ctx, r.ID)
-	if err != nil {
-		span.RecordError(err)
-		return 0, fmt.Errorf("get build watermark: %w", err)
-	}
-
-	var since time.Time
-	if hasWatermark {
-		since = watermark.Add(-buildRetryOverlap)
-	}
-	span.SetAttributes(attribute.Bool("watermark.has", hasWatermark))
-	if hasWatermark {
-		span.SetAttributes(attribute.String("watermark.since", since.Format(time.RFC3339)))
-	}
-
 	var totalWritten int
 	for _, ci := range o.ciProviders {
+		watermark, hasWatermark, err := o.builds.MaxStartedAt(ctx, r.ID, ci.Name())
+		if err != nil {
+			span.RecordError(err)
+			return totalWritten, fmt.Errorf("get build watermark (%s): %w", ci.Name(), err)
+		}
+
+		var since time.Time
+		if hasWatermark {
+			since = watermark.Add(-buildOverlap)
+			span.SetAttributes(attribute.String(
+				"watermark.since."+ci.Name(), since.Format(time.RFC3339)))
+		}
+
 		builds, err := ci.ListBuildsSince(ctx, r.Name, since)
 		if err != nil {
 			o.logger.Warn("ci provider fetch failed, skipping",
 				slog.String("repo", r.Name.String()),
+				slog.String("provider", ci.Name()),
 				slog.String("err", err.Error()),
 			)
 			span.RecordError(err)
 			continue
 		}
 
-		written, err := o.builds.UpsertMany(ctx, r.ID, builds)
+		written, err := o.builds.UpsertMany(ctx, r.ID, ci.Name(), builds)
 		if err != nil {
 			span.RecordError(err)
 			return totalWritten, err
