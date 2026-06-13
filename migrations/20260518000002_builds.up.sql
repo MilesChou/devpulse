@@ -1,6 +1,7 @@
 CREATE TABLE builds (
     id               CHAR(26) NOT NULL PRIMARY KEY,
     repo_id          CHAR(26) NOT NULL,
+    ci_provider      VARCHAR(32) NOT NULL,
     external_id      VARCHAR(64) NOT NULL,
     commit_sha       VARCHAR(64) NOT NULL,
     author_account   VARCHAR(64) NULL,
@@ -17,10 +18,11 @@ CREATE TABLE builds (
     raw_payload      TEXT NOT NULL,
     created_at       TIMESTAMP NULL,
     updated_at       TIMESTAMP NULL,
-    CONSTRAINT builds_repo_external_uniq UNIQUE (repo_id, external_id)
+    CONSTRAINT builds_repo_external_uniq UNIQUE (repo_id, ci_provider, external_id)
 );
 
 CREATE INDEX builds_repo_started_idx           ON builds (repo_id, started_at);
+CREATE INDEX builds_repo_provider_started_idx  ON builds (repo_id, ci_provider, started_at);
 CREATE INDEX builds_repo_author_started_idx    ON builds (repo_id, author_account, started_at);
 CREATE INDEX builds_repo_pr_idx                ON builds (repo_id, pr_number);
 

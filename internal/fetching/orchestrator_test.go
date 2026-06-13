@@ -21,12 +21,20 @@ import (
 // was called with. The recorder is mutex-guarded so future
 // t.Parallel() tests do not race.
 type fakeCIProvider struct {
+	name   string // Name() falls back to "fake-ci" when empty
 	builds []build.Build
 	err    error
 
 	mu       sync.Mutex
 	calls    int
 	gotSince time.Time
+}
+
+func (f *fakeCIProvider) Name() string {
+	if f.name == "" {
+		return "fake-ci"
+	}
+	return f.name
 }
 
 func (f *fakeCIProvider) ListBuildsSince(
@@ -688,11 +696,11 @@ func TestFetchAllBuilds_ColdStart_PassesZeroSince(t *testing.T) {
 }
 
 // TestFetchAllBuilds_Incremental_PassesWatermarkMinusOverlap asserts
-// the second-and-onward sync derives the watermark from MAX(started_at)
-// and subtracts the 5-minute retry overlap before handing it to the
-// provider. This locks in the contract between the orchestrator and
-// the persister so a future change to the overlap constant has to
-// land in lock-step with this assertion.
+// the second-and-onward sync derives the watermark from the provider's
+// own MAX(started_at) and subtracts the overlap window before handing
+// it to the provider. This locks in the contract between the
+// orchestrator and the persister so a future change to the overlap
+// constant has to land in lock-step with this assertion.
 func TestFetchAllBuilds_Incremental_PassesWatermarkMinusOverlap(t *testing.T) {
 	ctx := context.Background()
 	p, r := setup(t)
@@ -702,7 +710,7 @@ func TestFetchAllBuilds_Incremental_PassesWatermarkMinusOverlap(t *testing.T) {
 
 	shaSeed, _ := commitsha.Parse("aaa1234567890abcdef1234567890abcdef12345")
 	seedStarted := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
-	if _, err := bp.UpsertMany(ctx, r.ID, []build.Build{
+	if _, err := bp.UpsertMany(ctx, r.ID, "fake-ci", []build.Build{
 		{ExternalID: "100", CommitSHA: shaSeed, Status: build.StatusPassed, Trigger: build.TriggerPush, Branch: "main",
 			StartedAt: seedStarted},
 	}); err != nil {
@@ -724,19 +732,96 @@ func TestFetchAllBuilds_Incremental_PassesWatermarkMinusOverlap(t *testing.T) {
 	if written != 1 {
 		t.Fatalf("written: %d (expected 1)", written)
 	}
-	wantSince := seedStarted.Add(-5 * time.Minute)
+	wantSince := seedStarted.Add(-6 * time.Hour) // watermark - buildOverlap
 	_, gotSince := ci.snapshot()
 	if !gotSince.Equal(wantSince) {
-		t.Fatalf("since: got %v, want %v (watermark - 5min overlap)", gotSince, wantSince)
+		t.Fatalf("since: got %v, want %v (watermark - 6h overlap)", gotSince, wantSince)
+	}
+}
+
+// TestFetchAllBuilds_PerProviderWatermark asserts that each provider
+// gets its own cursor: rows already stored for one provider must not
+// advance another provider past its cold start. This is the regression
+// guard for the multi-provider data-loss scenario — enabling a second
+// CI provider on a store that already has history from the first one
+// must walk the new provider's full history.
+func TestFetchAllBuilds_PerProviderWatermark(t *testing.T) {
+	ctx := context.Background()
+	p, r := setup(t)
+	bp := persistence.NewBuildPersister(p)
+	pp := persistence.NewPullRequestPersister(p)
+	rvp := persistence.NewReviewPersister(p)
+
+	shaSeed, _ := commitsha.Parse("aaa1234567890abcdef1234567890abcdef12345")
+	seedStarted := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
+	if _, err := bp.UpsertMany(ctx, r.ID, "travis", []build.Build{
+		{ExternalID: "100", CommitSHA: shaSeed, Status: build.StatusPassed, Trigger: build.TriggerPush, Branch: "main",
+			StartedAt: seedStarted},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	travisCI := &fakeCIProvider{name: "travis"}
+	actionsCI := &fakeCIProvider{name: "github-actions"}
+	orch := fetching.NewOrchestrator(
+		[]fetching.CIProvider{travisCI, actionsCI}, &fakeVCSProvider{}, bp, pp, rvp, nil)
+
+	if _, err := orch.FetchAllBuilds(ctx, r); err != nil {
+		t.Fatalf("FetchAllBuilds: %v", err)
+	}
+
+	_, travisSince := travisCI.snapshot()
+	wantTravis := seedStarted.Add(-6 * time.Hour) // its own watermark - overlap
+	if !travisSince.Equal(wantTravis) {
+		t.Fatalf("travis since: got %v, want %v", travisSince, wantTravis)
+	}
+
+	_, actionsSince := actionsCI.snapshot()
+	if !actionsSince.IsZero() {
+		t.Fatalf("github-actions has no rows; expected zero since (cold start), got %v", actionsSince)
+	}
+}
+
+// TestFetchAllBuilds_SameExternalIDAcrossProviders asserts that two
+// providers may emit the same external ID without colliding — the
+// dedupe key is (repo_id, ci_provider, external_id), not
+// (repo_id, external_id). Travis build IDs and Actions run IDs are
+// both plain integers, so cross-provider collisions are plausible.
+func TestFetchAllBuilds_SameExternalIDAcrossProviders(t *testing.T) {
+	ctx := context.Background()
+	p, r := setup(t)
+	bp := persistence.NewBuildPersister(p)
+	pp := persistence.NewPullRequestPersister(p)
+	rvp := persistence.NewReviewPersister(p)
+
+	sha, _ := commitsha.Parse("aaa1234567890abcdef1234567890abcdef12345")
+	started := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
+	mk := func(name string) *fakeCIProvider {
+		return &fakeCIProvider{name: name, builds: []build.Build{
+			{ExternalID: "42", CommitSHA: sha, Status: build.StatusPassed, Trigger: build.TriggerPush, Branch: "main",
+				StartedAt: started},
+		}}
+	}
+
+	orch := fetching.NewOrchestrator(
+		[]fetching.CIProvider{mk("travis"), mk("github-actions")},
+		&fakeVCSProvider{}, bp, pp, rvp, nil)
+
+	written, err := orch.FetchAllBuilds(ctx, r)
+	if err != nil {
+		t.Fatalf("FetchAllBuilds: %v", err)
+	}
+	if written != 2 {
+		t.Fatalf("written: %d (expected 2 — same external ID, different providers)", written)
 	}
 }
 
 // TestFetchAllBuilds_RetryWithinOverlap_DedupedByDB exercises the
-// safety net that the 5-minute overlap window buys us: when the
+// safety net that the overlap window buys us: when the
 // provider returns a build whose external_id was already stored
 // (e.g. the same row resurfaces because the page boundary fell inside
 // the overlap), UpsertMany silently dedupes it via the
-// (repo_id, external_id) unique constraint, while a genuinely new
+// (repo_id, ci_provider, external_id) unique constraint, while a genuinely new
 // retry build with a fresh external_id is still written even though
 // its started_at lands before the watermark. The net `written` count
 // is the count of truly new rows.
@@ -749,7 +834,7 @@ func TestFetchAllBuilds_RetryWithinOverlap_DedupedByDB(t *testing.T) {
 
 	shaSeed, _ := commitsha.Parse("aaa1234567890abcdef1234567890abcdef12345")
 	watermark := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
-	if _, err := bp.UpsertMany(ctx, r.ID, []build.Build{
+	if _, err := bp.UpsertMany(ctx, r.ID, "fake-ci", []build.Build{
 		{ExternalID: "100", CommitSHA: shaSeed, Status: build.StatusPassed, Trigger: build.TriggerPush, Branch: "main",
 			StartedAt: watermark},
 	}); err != nil {
@@ -758,8 +843,7 @@ func TestFetchAllBuilds_RetryWithinOverlap_DedupedByDB(t *testing.T) {
 
 	// Provider replays: ID 100 (already in DB; resurfaces because the
 	// overlap window made the page include it) and ID 101 (a retry
-	// build that started 2 minutes before the watermark — within the
-	// 5-minute overlap, so it survives the page-level stop).
+	// build that started 2 minutes before the watermark — within the 	// overlap window, so it survives the page-level stop).
 	shaRetry, _ := commitsha.Parse("bbb1234567890abcdef1234567890abcdef12345")
 	ci := &fakeCIProvider{builds: []build.Build{
 		{ExternalID: "100", CommitSHA: shaSeed, Status: build.StatusPassed, Trigger: build.TriggerPush, Branch: "main",
@@ -781,7 +865,7 @@ func TestFetchAllBuilds_RetryWithinOverlap_DedupedByDB(t *testing.T) {
 	// upserted a row with started_at before it, MAX(started_at) stays
 	// at the original watermark (the retry started earlier than the
 	// previous max).
-	maxStarted, has, err := bp.MaxStartedAt(ctx, r.ID)
+	maxStarted, has, err := bp.MaxStartedAt(ctx, r.ID, "fake-ci")
 	if err != nil {
 		t.Fatalf("MaxStartedAt: %v", err)
 	}

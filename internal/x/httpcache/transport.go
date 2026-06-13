@@ -19,9 +19,10 @@ import (
 // conditional requests (ETag / If-Modified-Since) when stale.
 //
 // A TTL of zero means entries never expire — they are always
-// served from cache when present. This is useful for replaying
-// previously fetched data (e.g. rebuilding a DB from cached API
-// responses without making any network calls).
+// served from cache when present. This is replay mode: useful for
+// rebuilding a DB from cached API responses without any network
+// calls, and wrong everywhere else, because upstream changes are
+// never observed.
 type Transport struct {
 	// Base is the underlying transport for cache-miss requests.
 	// Defaults to http.DefaultTransport when nil.
@@ -30,16 +31,9 @@ type Transport struct {
 	// Store is the disk-backed cache store.
 	Store *DiskStore
 
-	// TTL controls the default freshness window for cached entries.
-	// Zero means entries never expire (always fresh).
+	// TTL controls the freshness window for cached entries. Zero
+	// means entries never expire (replay mode — see the type doc).
 	TTL time.Duration
-
-	// TTLFunc, if non-nil, returns the TTL for a specific request,
-	// overriding the global TTL. Use it to give stable resources
-	// (e.g. a closed PR's detail, commit author lookups) a longer —
-	// or infinite (0) — lifetime than volatile ones (e.g. latest PR
-	// number). When nil, every request uses TTL.
-	TTLFunc func(req *http.Request) time.Duration
 
 	// Logger receives cache hit/miss diagnostics. Nil disables logging.
 	Logger *slog.Logger
@@ -79,10 +73,8 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	entry, body, getErr := t.Store.Get(key)
 
-	ttl := t.ttlFor(req)
-
 	// Fresh cache hit: return directly without network I/O.
-	if getErr == nil && isFresh(entry, ttl) {
+	if getErr == nil && isFresh(entry, t.TTL) {
 		t.log(req.Context(), slog.LevelDebug, "cache hit (fresh)", req, key)
 		return toResponse(req, entry, body), nil
 	}
@@ -156,15 +148,6 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	return resp, nil
-}
-
-// ttlFor returns the TTL to apply for this request. TTLFunc takes
-// precedence; if nil, the global TTL is used.
-func (t *Transport) ttlFor(req *http.Request) time.Duration {
-	if t.TTLFunc != nil {
-		return t.TTLFunc(req)
-	}
-	return t.TTL
 }
 
 // isFresh returns true when the entry should be served directly.

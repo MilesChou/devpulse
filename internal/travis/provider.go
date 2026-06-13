@@ -17,6 +17,9 @@ func NewProvider(c *Client) *Provider { return &Provider{client: c} }
 // Compile-time assertion.
 var _ fetching.CIProvider = (*Provider)(nil)
 
+// Name implements fetching.CIProvider.
+func (p *Provider) Name() string { return "travis" }
+
 func (p *Provider) ListBuildsSince(
 	ctx context.Context,
 	repoName repo.FullName,

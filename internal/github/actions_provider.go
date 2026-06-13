@@ -17,6 +17,9 @@ func NewActionsProvider(c *Client) *ActionsProvider { return &ActionsProvider{cl
 
 var _ fetching.CIProvider = (*ActionsProvider)(nil)
 
+// Name implements fetching.CIProvider.
+func (p *ActionsProvider) Name() string { return "github-actions" }
+
 func (p *ActionsProvider) ListBuildsSince(
 	ctx context.Context,
 	repoName repo.FullName,

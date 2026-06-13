@@ -70,10 +70,11 @@ devpulse migrate up
 devpulse repo add MilesChou/devpulse
 
 # Sync one repo: PRs (with reviews and enrichment) first, then CI
-# builds. The first run touches the full GitHub and Travis histories and
+# builds from every provider (GitHub Actions always; Travis CI when
+# TRAVIS_TOKEN is set). The first run touches the full histories and
 # consumes a significant share of the REST/GraphQL quota; subsequent
-# runs are incremental (upserts dedupe and author back-fill skips
-# populated rows).
+# runs are incremental (per-provider watermarks, upsert dedupe, and
+# author back-fill skips populated rows).
 devpulse repo sync MilesChou/devpulse
 
 # Or sync every tracked repo in one go (sequential; disabled repos are
@@ -84,9 +85,18 @@ devpulse sync
 # Re-sync a single PR (re-fetch detail and reviews).
 devpulse pr sync MilesChou/devpulse 42
 
+# Show the month's engineering-efficiency metrics.
+devpulse metrics MilesChou/devpulse --from 2026-05
+
 # Process enqueued jobs (long-running).
 devpulse worker
 ```
+
+An optional disk-backed HTTP response cache (`CACHE_ENABLED=true`) can
+replay previously fetched API responses — useful for rebuilding the
+database without burning API quota. See
+[docs/commands.md](docs/commands.md) for the cache variables and the
+`CACHE_TTL=0` replay-mode caveat.
 
 ## Local exploration with Metabase
 
@@ -133,6 +143,7 @@ cron / CI.
 | `devpulse repo add <owner/name>` | Register a repository |
 | `devpulse repo sync <owner/name>` | Sync one repo: all PRs (with enrichment) then all CI builds |
 | `devpulse pr sync <owner/name> <number>` | Re-sync a single PR (detail + reviews) |
+| `devpulse metrics <owner/name>` | Print engineering-efficiency metrics for a month window |
 | `devpulse migrate {up,down,status}` | Schema migration |
 | `devpulse worker` | Run the DB-backed job worker |
 | `devpulse serve` | Placeholder for the v2 HTTP API |

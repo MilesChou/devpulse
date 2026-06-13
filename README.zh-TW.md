@@ -65,9 +65,11 @@ devpulse migrate up
 # 註冊 repo
 devpulse repo add MilesChou/devpulse
 
-# 同步單一 repo：先撈所有 PR（含 review 與 enrichment），再撈所有 CI build。
-# 首次執行會打完整個 GitHub 與 Travis 歷史，會吃掉相當比例的 REST / GraphQL
-# 配額；後續執行為增量（upsert 去重、author backfill 略過已有的列）。
+# 同步單一 repo：先撈所有 PR（含 review 與 enrichment），再從每個 CI provider
+# 撈 build（GitHub Actions 必有；設定 TRAVIS_TOKEN 時加上 Travis CI）。
+# 首次執行會打完整個歷史，會吃掉相當比例的 REST / GraphQL 配額；
+# 後續執行為增量（per-provider watermark、upsert 去重、author backfill
+# 略過已有的列）。
 devpulse repo sync MilesChou/devpulse
 
 # 或者一次跑完所有已註冊的 repo（循序執行；跳過 disabled 的 repo；
@@ -77,9 +79,17 @@ devpulse sync
 # 重新同步單一 PR（重抓 detail 與 reviews）
 devpulse pr sync MilesChou/devpulse 42
 
+# 顯示當月的工程效率指標
+devpulse metrics MilesChou/devpulse --from 2026-05
+
 # 啟動 worker 處理 enqueue 的 job（長時間執行）
 devpulse worker
 ```
+
+選用的磁碟 HTTP 回應快取（`CACHE_ENABLED=true`）可以重播先前抓過的 API
+回應——適合在不消耗 API 配額的情況下重建資料庫。快取相關變數與
+`CACHE_TTL=0` replay 模式的注意事項，見
+[docs/commands.zh-TW.md](docs/commands.zh-TW.md)。
 
 ## 用 Metabase 在本地探索資料
 
@@ -122,6 +132,7 @@ docker compose -f docker-compose.metabase.yml logs metabase-init
 | `devpulse repo add <owner/name>` | 註冊一個 repo |
 | `devpulse repo sync <owner/name>` | 同步單一 repo：所有 PR（含 enrichment）與 CI build |
 | `devpulse pr sync <owner/name> <number>` | 重新同步單一 PR（detail + reviews） |
+| `devpulse metrics <owner/name>` | 印出月份區間的工程效率指標 |
 | `devpulse migrate {up,down,status}` | Schema migration |
 | `devpulse worker` | 啟動 DB-backed job worker |
 | `devpulse serve` | v2 HTTP API 的 placeholder |

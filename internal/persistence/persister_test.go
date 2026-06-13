@@ -204,7 +204,7 @@ func TestBuildPersister_UpsertMany_Idempotent(t *testing.T) {
 		},
 	}
 
-	written, err := bp.UpsertMany(ctx, r.ID, builds)
+	written, err := bp.UpsertMany(ctx, r.ID, "travis", builds)
 	if err != nil {
 		t.Fatalf("first upsert: %v", err)
 	}
@@ -213,7 +213,7 @@ func TestBuildPersister_UpsertMany_Idempotent(t *testing.T) {
 	}
 
 	// Same payload again must not insert duplicates.
-	written2, err := bp.UpsertMany(ctx, r.ID, builds)
+	written2, err := bp.UpsertMany(ctx, r.ID, "travis", builds)
 	if err != nil {
 		t.Fatalf("second upsert: %v", err)
 	}
@@ -234,7 +234,7 @@ func TestBuildPersister_ListMissingAuthorSHAs(t *testing.T) {
 	shaB, _ := commitsha.Parse("bbb1234567890abcdef1234567890abcdef12345")
 
 	now := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
-	_, err := bp.UpsertMany(ctx, r.ID, []build.Build{
+	_, err := bp.UpsertMany(ctx, r.ID, "travis", []build.Build{
 		{ExternalID: "1", RepoID: r.ID, CommitSHA: shaA, Status: build.StatusPassed, StartedAt: now},
 		{ExternalID: "2", RepoID: r.ID, CommitSHA: shaB, Status: build.StatusPassed, StartedAt: now, Author: "alice"},
 	})
@@ -259,7 +259,7 @@ func TestBuildPersister_UpdateAuthorBySHA(t *testing.T) {
 
 	r, _ := rp.EnsureID(ctx, "github", mustFullName(t, "MilesChou/devpulse"))
 	sha, _ := commitsha.Parse("aaa1234567890abcdef1234567890abcdef12345")
-	_, _ = bp.UpsertMany(ctx, r.ID, []build.Build{
+	_, _ = bp.UpsertMany(ctx, r.ID, "travis", []build.Build{
 		{ExternalID: "1", RepoID: r.ID, CommitSHA: sha, Status: build.StatusPassed, StartedAt: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)},
 	})
 
@@ -288,7 +288,7 @@ func TestBuildPersister_MaxStartedAt(t *testing.T) {
 	r, _ := rp.EnsureID(ctx, "github", mustFullName(t, "MilesChou/devpulse"))
 
 	// Empty store: cold-start signal.
-	zero, has, err := bp.MaxStartedAt(ctx, r.ID)
+	zero, has, err := bp.MaxStartedAt(ctx, r.ID, "travis")
 	if err != nil {
 		t.Fatalf("max on empty: %v", err)
 	}
@@ -300,7 +300,7 @@ func TestBuildPersister_MaxStartedAt(t *testing.T) {
 	earlier := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
 	later := time.Date(2026, 5, 1, 18, 0, 0, 0, time.UTC)
 
-	_, err = bp.UpsertMany(ctx, r.ID, []build.Build{
+	_, err = bp.UpsertMany(ctx, r.ID, "travis", []build.Build{
 		{ExternalID: "1", RepoID: r.ID, CommitSHA: sha, Status: build.StatusPassed, StartedAt: earlier},
 		{ExternalID: "2", RepoID: r.ID, CommitSHA: sha, Status: build.StatusPassed, StartedAt: later},
 	})
@@ -308,7 +308,7 @@ func TestBuildPersister_MaxStartedAt(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	got, has, err := bp.MaxStartedAt(ctx, r.ID)
+	got, has, err := bp.MaxStartedAt(ctx, r.ID, "travis")
 	if err != nil {
 		t.Fatalf("max: %v", err)
 	}
