@@ -45,6 +45,7 @@ type Orchestrator struct {
 	builds      BuildWriter
 	prs         PullRequestWriter
 	reviews     ReviewWriter
+	incidents   IncidentWriter
 	logger      *slog.Logger
 }
 
@@ -59,13 +60,15 @@ func NewOrchestrator(
 	builds BuildWriter,
 	prs PullRequestWriter,
 	reviews ReviewWriter,
+	incidents IncidentWriter,
 	logger *slog.Logger,
 ) *Orchestrator {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Orchestrator{
-		ciProviders: ciProviders, vcs: vcs, builds: builds, prs: prs, reviews: reviews, logger: logger,
+		ciProviders: ciProviders, vcs: vcs, builds: builds, prs: prs, reviews: reviews,
+		incidents: incidents, logger: logger,
 	}
 }
 
@@ -202,6 +205,93 @@ func (o *Orchestrator) BackfillPullRequestsByNumber(ctx context.Context, r repo.
 	return written, nil
 }
 
+// RefreshOpenPullRequests re-syncs every PR stored as open. The
+// by-number backfill resumes at MAX(number)+1 and never revisits a
+// stored number, so without this pass a PR that was open at its first
+// sync would never record its merge — and merges are DORA deployments.
+//
+// Run it before BackfillPullRequestsByNumber: PRs the backfill writes
+// in the same run are already fresh and need no second fetch.
+//
+// Error policy differs from the backfill on purpose: a single PR that
+// fails (including an upstream 404 for a deleted PR) is logged and
+// skipped, because it stays open in the store and is retried on the
+// next sync. Only a failure to list open PRs, or ctx cancellation,
+// aborts the pass.
+//
+// Returns the number of PRs refreshed.
+func (o *Orchestrator) RefreshOpenPullRequests(ctx context.Context, r repo.Repo) (int, error) {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, "Orchestrator.RefreshOpenPullRequests",
+		trace.WithAttributes(attribute.String("repo", r.Name.String())))
+	defer span.End()
+
+	numbers, err := o.prs.ListOpenNumbers(ctx, r.ID)
+	if err != nil {
+		span.RecordError(err)
+		return 0, fmt.Errorf("list open prs: %w", err)
+	}
+	span.SetAttributes(attribute.Int("open", len(numbers)))
+
+	var refreshed int
+	for _, n := range numbers {
+		if err := ctx.Err(); err != nil {
+			span.RecordError(err)
+			return refreshed, err
+		}
+
+		ok, err := o.syncOnePullRequestByNumber(ctx, r, n)
+		if err != nil {
+			o.logger.Warn("refresh open pr failed, will retry next sync",
+				slog.String("repo", r.Name.String()),
+				slog.Int("number", n),
+				slog.String("err", err.Error()),
+			)
+			continue
+		}
+		if ok {
+			refreshed++
+		}
+	}
+	span.SetAttributes(attribute.Int("refreshed", refreshed))
+	return refreshed, nil
+}
+
+// SyncIncidents mirrors the repo's incident issues — every issue
+// carrying r.IncidentLabel — into the incident store. The listing is
+// complete or an error, so the replace never truncates the stored set
+// on a partial fetch.
+//
+// Returns the number of incidents stored.
+func (o *Orchestrator) SyncIncidents(ctx context.Context, r repo.Repo) (int, error) {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, "Orchestrator.SyncIncidents",
+		trace.WithAttributes(
+			attribute.String("repo", r.Name.String()),
+			attribute.String("label", r.IncidentLabel),
+		))
+	defer span.End()
+
+	if o.incidents == nil {
+		return 0, errors.New("sync incidents: no incident writer configured")
+	}
+	if r.IncidentLabel == "" {
+		return 0, errors.New("sync incidents: repo has no incident label")
+	}
+
+	incs, err := o.vcs.ListIncidentIssues(ctx, r.Name, r.IncidentLabel)
+	if err != nil {
+		span.RecordError(err)
+		return 0, fmt.Errorf("list incident issues: %w", err)
+	}
+	n, err := o.incidents.ReplaceForRepo(ctx, r.ID, incs)
+	if err != nil {
+		span.RecordError(err)
+		return 0, fmt.Errorf("store incidents: %w", err)
+	}
+	return n, nil
+}
+
 // syncOnePullRequestByNumber fetches PR #n end-to-end and writes it in
 // a single upsert that already carries the computed enrichment fields.
 // This is what makes the by-number backfill resumable from DB MAX
@@ -243,6 +333,16 @@ func (o *Orchestrator) syncOnePullRequestByNumber(
 	reviews, err := o.vcs.ListReviews(ctx, r.Name, number)
 	if err != nil {
 		return false, fmt.Errorf("list reviews: %w", err)
+	}
+
+	// DORA lead time starts at the earliest commit. Only merged PRs need
+	// it; an open PR gets it on the refresh pass that sees it merged.
+	if detail.MergedAt != nil {
+		first, err := o.vcs.GetFirstCommitAt(ctx, r.Name, number)
+		if err != nil {
+			return false, fmt.Errorf("first commit: %w", err)
+		}
+		detail.FirstCommitAt = first
 	}
 
 	// Compute enrichment BEFORE the PR row is written, so the upsert

@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"math"
 	"sort"
 	"time"
+
+	"github.com/mileschou/devpulse/internal/x/statx"
 )
 
 type MetricsPersister struct{ *Persister }
@@ -89,8 +90,8 @@ func (m *MetricsPersister) PRLeadTime(ctx context.Context, repoID string, from, 
 		sum += h
 	}
 	avgHours = sum / float64(count)
-	p50Hours = percentile(durations, 0.5)
-	p90Hours = percentile(durations, 0.9)
+	p50Hours = statx.Percentile(durations, 0.5)
+	p90Hours = statx.Percentile(durations, 0.9)
 
 	return count, avgHours, p50Hours, p90Hours, nil
 }
@@ -221,24 +222,6 @@ func (m *MetricsPersister) DailyBuildDuration(ctx context.Context, repoID string
 		})
 	}
 	return out, nil
-}
-
-func percentile(sorted []float64, p float64) float64 {
-	n := len(sorted)
-	if n == 0 {
-		return 0
-	}
-	if n == 1 {
-		return sorted[0]
-	}
-	idx := p * float64(n-1)
-	lower := int(math.Floor(idx))
-	upper := int(math.Ceil(idx))
-	if lower == upper {
-		return sorted[lower]
-	}
-	frac := idx - float64(lower)
-	return sorted[lower]*(1-frac) + sorted[upper]*frac
 }
 
 func anyToTime(v any) (time.Time, error) {

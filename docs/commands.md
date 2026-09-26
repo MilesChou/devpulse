@@ -108,6 +108,10 @@ Read or write per-repo operator settings. Settings are operator-owned and are **
 | Key | Type | Description |
 |---|---|---|
 | `pr-start` | integer (>= 1) | Minimum PR number the by-number sync will probe. Default `1` (full history). Bump it to skip early PRs that predate CI on a repo, saving GitHub API quota. |
+| `incident-label` | string (non-blank) | Issue label that marks an incident. Default `incident`. Every issue carrying it is mirrored on each sync and feeds DORA recovery time. Takes effect on the next sync. |
+| `hotfix-label` | string (non-blank) | PR label that marks a hotfix. Default `hotfix`. Counts toward DORA change failure rate. Applied at `metrics` time, so no re-sync is needed. |
+
+Labels match case-insensitively.
 
 The repo must already be registered with `devpulse repo add`. With no key argument, `repo config get` prints every known setting.
 
@@ -121,9 +125,15 @@ devpulse repo config set MilesChou/devpulse pr-start 500
 devpulse repo config get MilesChou/devpulse pr-start
 # → 500
 
+# Use your team's labels for DORA.
+devpulse repo config set MilesChou/devpulse incident-label sev-1
+devpulse repo config set MilesChou/devpulse hotfix-label urgent-fix
+
 # Or print every setting.
 devpulse repo config get MilesChou/devpulse
 # → pr-start=500
+# → incident-label=sev-1
+# → hotfix-label=urgent-fix
 ```
 
 ---
@@ -134,12 +144,14 @@ devpulse repo config get MilesChou/devpulse
 devpulse repo sync <owner/name>
 ```
 
-Syncs the repository in two steps, in order:
+Syncs the repository in four steps, in order:
 
-1. **Pull requests** — fetches all PRs from GitHub (including reviews and commit details), upserts them, and runs enrichment.
-2. **CI builds** — fetches build records from every registered CI provider (GitHub Actions always; Travis CI when `TRAVIS_TOKEN` is set) and upserts them.
+1. **Open-PR refresh** — re-fetches every PR stored as open, so merges and closes that happened after its first sync are recorded (merges are DORA deployments). A PR that fails to refresh is logged and retried on the next sync.
+2. **Pull requests** — fetches all new PRs from GitHub (detail, reviews, and — for merged PRs — the earliest commit time), upserts them, and runs enrichment.
+3. **CI builds** — fetches build records from every registered CI provider (GitHub Actions always; Travis CI when `TRAVIS_TOKEN` is set) and upserts them.
+4. **Incidents** — mirrors every issue carrying the repo's `incident-label` (open and closed; pull requests excluded). A failure prints a warning and does not fail the command.
 
-The PR step runs first; if it fails, the build step is skipped and the command exits non-zero. `GITHUB_TOKEN` is required; `TRAVIS_TOKEN` is optional.
+If step 1 or 2 fails, later steps are skipped and the command exits non-zero. `GITHUB_TOKEN` is required; `TRAVIS_TOKEN` is optional.
 
 > The first run is the expensive one: PR sync walks PR numbers ascending from `pr_sync_start_number` (default 1) up to the upstream max, fetching detail + reviews per PR; build sync walks each provider's full history with no page cap (cold-start path triggered when that provider has no rows yet). Subsequent runs are incremental — PRs resume from `MAX(number) + 1`, and each CI provider resumes from its **own** `MAX(started_at) - 6h` watermark (per-provider cursors keep a lagging or newly added provider from inheriting another's progress; the 6-hour overlap absorbs retry builds and runs that were still executing at the previous sync — 6h is the GitHub Actions per-job hard timeout — while the `(repo_id, ci_provider, external_id)` unique dedupes anything already on file). Author back-fill only touches commit SHAs whose author is still NULL.
 
@@ -152,8 +164,10 @@ The PR step runs first; if it fails, the build step is skipped and the command e
 **Output**
 
 ```
-Synced MilesChou/devpulse PRs: written=7
-Synced MilesChou/devpulse builds: written=42
+Refreshed MilesChou/devpulse open pull requests: 3
+Synced MilesChou/devpulse pull requests: written=7
+Synced MilesChou/devpulse ci builds: written=42
+Synced MilesChou/devpulse incidents (label "incident"): 2
 ```
 
 **Example**
@@ -201,7 +215,7 @@ devpulse pr sync MilesChou/devpulse 42
 devpulse metrics <owner/name> [--from YYYY-MM] [--to YYYY-MM]
 ```
 
-Prints the engineering-efficiency metrics for a repo over a month window: CI failure rate (PR builds only), average builds per PR, PR lead time (avg / p50 / p90), review wait time, PR size distribution, and daily average build duration.
+Prints the engineering-efficiency metrics for a repo over a month window: CI failure rate (PR builds only), average builds per PR, PR lead time (avg / p50 / p90), review wait time, PR size distribution, daily average build duration, and the four DORA metrics (see [DORA definitions](#dora-definitions)).
 
 `--from` defaults to the current month; `--to` is exclusive and defaults to one month after `--from`.
 
@@ -232,7 +246,29 @@ PR Size Distribution:   XS:4  S:3  M:2  L:1
 Daily Build Duration (avg seconds):
   2026-05-02: 74s (6 builds)
   2026-05-03: 81s (4 builds)
+
+DORA (deployment = PR merged into default branch)
+────────────────────────────────────────
+Deployment Frequency:   10 deploys into main  (2.26/week, 6 deploy days)
+Lead Time for Changes:  avg 20.5h  p50 8.0h  p90 60.2h  (10 deploys)
+Change Failure Rate:    20.0% (2/10)  reverts=1 hotfixes=1 (label "hotfix")
+Recovery Time:          avg 2.8h  p50 2.8h  p90 3.0h  (2 samples)  from reverts=1 incidents=1 (label "incident")
 ```
+
+#### DORA definitions
+
+Every event is counted in the window its end time falls in.
+
+| Metric | Definition |
+|---|---|
+| Deployment Frequency | PRs merged into the repo's default branch. Also shown per week and as distinct UTC deploy days. |
+| Lead Time for Changes | Earliest commit **author** time in the PR → merge. Author time survives rebases. Only the first 100 commits of a PR are inspected. Negative values (clock skew) count as 0. |
+| Change Failure Rate | (revert + hotfix deployments) ÷ deployments. **Revert**: the title starts with the word "revert". **Hotfix**: carries `hotfix-label`, or the head branch starts with `hotfix/`. A PR that is both counts once. Shows `n/a` when there are no deployments. |
+| Recovery Time | Failed deployment recovery time, from two sources: a revert PR whose body says `Reverts owner/repo#N` (GitHub's revert button), measured from #N's merge to the revert's merge; and an issue carrying `incident-label`, measured from opened to closed. Open incidents are not counted. |
+
+Limitations: pushes straight to the default branch (without a PR) are not seen. A hotfix PR is not linked to the deployment it fixed. If the default branch is unknown, the section asks you to run `devpulse repo refresh`.
+
+> PRs synced before the DORA columns existed have no base branch, so they are not counted as deployments. Rebuild the database, or start with a fresh one, to fill them in. With `CACHE_ENABLED=true` the rebuild replays cached PR responses, which already contain the new fields.
 
 **Example**
 

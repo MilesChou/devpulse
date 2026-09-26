@@ -56,6 +56,19 @@ type PullRequest struct {
 	SizeBucket        string
 	IsDraft           bool
 
+	// DORA facts. Title / Labels / HeadRef drive remediation
+	// classification (revert, hotfix); BaseRef decides whether a merge
+	// is a deployment; FirstCommitAt is the lead-time start and is only
+	// fetched once the PR is merged. RevertsNumber is the PR this one
+	// reverts, parsed from GitHub's "Reverts owner/repo#N" body.
+	Title          string
+	Labels         []string
+	BaseRef        string
+	HeadRef        string
+	MergeCommitSHA string
+	FirstCommitAt  *time.Time
+	RevertsNumber  *int
+
 	CreatedAt       time.Time
 	ReadyAt         *time.Time
 	FirstReviewAt   *time.Time

@@ -2,8 +2,10 @@ package github
 
 import (
 	"context"
+	"time"
 
 	"github.com/mileschou/devpulse/internal/fetching"
+	"github.com/mileschou/devpulse/internal/incident"
 	"github.com/mileschou/devpulse/internal/pullrequest"
 	"github.com/mileschou/devpulse/internal/repo"
 	"github.com/mileschou/devpulse/internal/x/commitsha"
@@ -54,4 +56,20 @@ func (p *Provider) GetCommitAuthorAccountsBulk(
 
 func (p *Provider) GetRepo(ctx context.Context, repoName repo.FullName) (repo.Repo, error) {
 	return p.client.GetRepo(ctx, repoName)
+}
+
+func (p *Provider) GetFirstCommitAt(
+	ctx context.Context,
+	repoName repo.FullName,
+	number int,
+) (*time.Time, error) {
+	return p.client.GetFirstCommitAt(ctx, repoName, number)
+}
+
+func (p *Provider) ListIncidentIssues(
+	ctx context.Context,
+	repoName repo.FullName,
+	label string,
+) ([]incident.Incident, error) {
+	return p.client.ListIncidentIssues(ctx, repoName, label)
 }

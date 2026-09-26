@@ -3,6 +3,7 @@ package github_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -117,6 +118,127 @@ func TestGetPullRequest_DecodesAdditionsDeletions(t *testing.T) {
 	}
 	if pr.Status != pullrequest.StatusMerged {
 		t.Fatalf("status: %v", pr.Status)
+	}
+	if pr.Title != `Revert "Add fetch orchestrator"` {
+		t.Fatalf("title: %q", pr.Title)
+	}
+	if pr.BaseRef != "main" || pr.HeadRef != "revert-40-fetch" {
+		t.Fatalf("refs: base=%q head=%q", pr.BaseRef, pr.HeadRef)
+	}
+	if pr.MergeCommitSHA != "0123456789abcdef0123456789abcdef01234567" {
+		t.Fatalf("merge sha: %q", pr.MergeCommitSHA)
+	}
+	if len(pr.Labels) != 2 || pr.Labels[0] != "bug" || pr.Labels[1] != "hotfix" {
+		t.Fatalf("labels: %v", pr.Labels)
+	}
+	if pr.RevertsNumber == nil || *pr.RevertsNumber != 40 {
+		t.Fatalf("reverts number: %v", pr.RevertsNumber)
+	}
+}
+
+// TestGetFirstCommitAt_MinAuthorDate asserts the lead-time start is the
+// earliest author date on the page, not the first element: rebases can
+// reorder commits relative to their author dates.
+func TestGetFirstCommitAt_MinAuthorDate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/MilesChou/devpulse/pulls/42/commits" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("per_page") != "100" {
+			t.Errorf("per_page: %q", r.URL.Query().Get("per_page"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			{"commit": {"author": {"date": "2026-05-14T11:00:00+08:00"}}},
+			{"commit": {"author": {"date": "2026-05-14T02:00:00Z"}}},
+			{"commit": {"author": null}}
+		]`))
+	}))
+	defer srv.Close()
+
+	c := newClient(t, srv)
+	repoName, _ := repo.ParseFullName("MilesChou/devpulse")
+	got, err := c.GetFirstCommitAt(context.Background(), repoName, 42)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	want := time.Date(2026, 5, 14, 2, 0, 0, 0, time.UTC)
+	if got == nil || !got.Equal(want) || got.Location() != time.UTC {
+		t.Fatalf("got %v, want %v (UTC)", got, want)
+	}
+}
+
+func TestGetFirstCommitAt_NoCommits(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	c := newClient(t, srv)
+	repoName, _ := repo.ParseFullName("MilesChou/devpulse")
+	got, err := c.GetFirstCommitAt(context.Background(), repoName, 42)
+	if err != nil || got != nil {
+		t.Fatalf("want (nil, nil), got (%v, %v)", got, err)
+	}
+}
+
+// TestListIncidentIssues_PaginatesAndDropsPRs walks a full first page and
+// a short second page, and asserts that pull requests carrying the label
+// are dropped.
+func TestListIncidentIssues_PaginatesAndDropsPRs(t *testing.T) {
+	var pages []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/MilesChou/devpulse/issues" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		q := r.URL.Query()
+		if q.Get("labels") != "sev-1" || q.Get("state") != "all" {
+			t.Errorf("query: %s", r.URL.RawQuery)
+		}
+		pages = append(pages, q.Get("page"))
+		w.Header().Set("Content-Type", "application/json")
+
+		if q.Get("page") == "1" {
+			items := make([]string, 0, 100)
+			for i := 1; i <= 100; i++ {
+				if i == 2 {
+					items = append(items, `{"number": 2, "title": "pr", "created_at": "2026-05-01T00:00:00Z", "pull_request": {}}`)
+					continue
+				}
+				items = append(items, fmt.Sprintf(`{"number": %d, "title": "t", "created_at": "2026-05-01T00:00:00Z"}`, i))
+			}
+			_, _ = w.Write([]byte("[" + strings.Join(items, ",") + "]"))
+			return
+		}
+		_, _ = w.Write([]byte(`[{"number": 101, "title": "db down", "created_at": "2026-05-02T08:00:00Z", "closed_at": "2026-05-02T11:00:00Z"}]`))
+	}))
+	defer srv.Close()
+
+	c := newClient(t, srv)
+	repoName, _ := repo.ParseFullName("MilesChou/devpulse")
+	got, err := c.ListIncidentIssues(context.Background(), repoName, "sev-1")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if strings.Join(pages, ",") != "1,2" {
+		t.Fatalf("pages: %v", pages)
+	}
+	if len(got) != 100 {
+		t.Fatalf("want 100 incidents (101 issues minus 1 PR), got %d", len(got))
+	}
+	last := got[len(got)-1]
+	if last.Number != 101 || last.Title != "db down" || last.ResolvedAt == nil ||
+		last.ResolvedAt.Sub(last.OpenedAt) != 3*time.Hour {
+		t.Fatalf("last incident: %+v", last)
+	}
+	if got[0].ResolvedAt != nil {
+		t.Fatalf("open issue has resolved_at: %v", got[0].ResolvedAt)
+	}
+	for _, inc := range got {
+		if inc.Number == 2 {
+			t.Fatal("pull request leaked into incidents")
+		}
 	}
 }
 

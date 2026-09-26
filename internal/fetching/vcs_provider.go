@@ -2,7 +2,9 @@ package fetching
 
 import (
 	"context"
+	"time"
 
+	"github.com/mileschou/devpulse/internal/incident"
 	"github.com/mileschou/devpulse/internal/pullrequest"
 	"github.com/mileschou/devpulse/internal/repo"
 	"github.com/mileschou/devpulse/internal/x/commitsha"
@@ -54,4 +56,21 @@ type VCSProvider interface {
 		ctx context.Context,
 		repoName repo.FullName,
 	) (repo.Repo, error)
+
+	// GetFirstCommitAt returns the earliest commit author time among the
+	// PR's commits (DORA lead-time start), or nil when none is known.
+	GetFirstCommitAt(
+		ctx context.Context,
+		repoName repo.FullName,
+		number int,
+	) (*time.Time, error)
+
+	// ListIncidentIssues returns every issue — open and closed, pull
+	// requests excluded — carrying label. The result is complete or an
+	// error: callers replace the stored set with it.
+	ListIncidentIssues(
+		ctx context.Context,
+		repoName repo.FullName,
+		label string,
+	) ([]incident.Incident, error)
 }

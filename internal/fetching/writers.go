@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/mileschou/devpulse/internal/build"
+	"github.com/mileschou/devpulse/internal/incident"
 	"github.com/mileschou/devpulse/internal/pullrequest"
 	"github.com/mileschou/devpulse/internal/x/commitsha"
 )
@@ -45,10 +46,22 @@ type PullRequestWriter interface {
 	// Orchestrators use it to compute the backfill cursor as
 	// max(repo.PRSyncStartNumber, MaxNumber+1).
 	MaxNumber(ctx context.Context, repoID string) (n int, has bool, err error)
+
+	// ListOpenNumbers returns the numbers of every PR stored as open.
+	// The by-number backfill never revisits a stored number, so these
+	// are refreshed on every sync to record later merges and closes.
+	ListOpenNumbers(ctx context.Context, repoID string) ([]int, error)
 }
 
 // ReviewWriter persists individual PR review submissions. Upsert is keyed
 // on (pull_request_id, reviewer_account, submitted_at).
 type ReviewWriter interface {
 	Upsert(ctx context.Context, prID string, r pullrequest.Review) error
+}
+
+// IncidentWriter persists incidents. ReplaceForRepo makes the stored set
+// for the repo equal to incs (mirror semantics), so an issue that lost
+// the incident label disappears on the next sync.
+type IncidentWriter interface {
+	ReplaceForRepo(ctx context.Context, repoID string, incs []incident.Incident) (int, error)
 }

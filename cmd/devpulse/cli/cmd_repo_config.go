@@ -34,6 +34,14 @@ var repoConfigKeys = []repoConfigKey{
 		name:        "pr-start",
 		description: "minimum PR number the by-number sync will probe (>=1)",
 	},
+	{
+		name:        "incident-label",
+		description: "issue label that marks an incident (DORA recovery time)",
+	},
+	{
+		name:        "hotfix-label",
+		description: "PR label that marks a hotfix (DORA change failure rate)",
+	},
 }
 
 func repoConfigKeyByName(name string) (repoConfigKey, bool) {
@@ -45,14 +53,13 @@ func repoConfigKeyByName(name string) (repoConfigKey, bool) {
 	return repoConfigKey{}, false
 }
 
-// newRepoConfigCmd is the `devpulse repo config` command group. Right
-// now it carries one knob (`pr-start`); adding more is a matter of
-// extending repoConfigKeys + the dispatch below.
+// newRepoConfigCmd is the `devpulse repo config` command group. Adding
+// a knob is a matter of extending repoConfigKeys + the dispatch below.
 func newRepoConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Get or set per-repo operator settings",
-		Long:  "Adjust per-repo settings such as the PR-sync floor. Settings are operator-owned and not overwritten by `repo sync`.",
+		Long:  "Adjust per-repo settings such as the PR-sync floor and the DORA incident / hotfix labels. Settings are operator-owned and not overwritten by `repo sync`.",
 	}
 	cmd.AddCommand(newRepoConfigSetCmd(), newRepoConfigGetCmd())
 	return cmd
@@ -64,7 +71,7 @@ func newRepoConfigSetCmd() *cobra.Command {
 		Use:     "set <owner/name> <key> <value>",
 		Short:   "Set a per-repo setting",
 		Long:    "Set a per-repo operator setting. Available keys: " + keys,
-		Example: "  devpulse repo config set MilesChou/devpulse pr-start 500",
+		Example: "  devpulse repo config set MilesChou/devpulse pr-start 500\n  devpulse repo config set MilesChou/devpulse hotfix-label urgent-fix",
 		Args:    cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRepoConfigSet(cmd.Context(), args[0], args[1], args[2])
@@ -126,6 +133,23 @@ func runRepoConfigSet(ctx context.Context, repoArg, keyArg, valueArg string) err
 		}
 		fmt.Fprintf(stdout(), "%s pr-start=%d\n", name, n)
 		return nil
+
+	case "incident-label", "hotfix-label":
+		label := strings.TrimSpace(valueArg)
+		if label == "" {
+			return fmt.Errorf("invalid value for %s: must not be blank", keyArg)
+		}
+		incidentLabel, hotfixLabel := r.IncidentLabel, r.HotfixLabel
+		if keyArg == "incident-label" {
+			incidentLabel = label
+		} else {
+			hotfixLabel = label
+		}
+		if err := d.repos.UpdateLabels(ctx, r.ID, incidentLabel, hotfixLabel); err != nil {
+			return fmt.Errorf("update %s: %w", keyArg, err)
+		}
+		fmt.Fprintf(stdout(), "%s %s=%s\n", name, keyArg, label)
+		return nil
 	}
 	// Unreachable: repoConfigKeyByName already validated the key.
 	return fmt.Errorf("internal: unhandled key %q", keyArg)
@@ -163,8 +187,8 @@ func runRepoConfigGet(ctx context.Context, repoArg, key string) error {
 		for _, k := range repoConfigKeys {
 			fmt.Fprintf(w, "%s=%s\n", k.name, formatRepoConfigValue(k.name, r))
 		}
-	case "pr-start":
-		fmt.Fprintln(w, formatRepoConfigValue("pr-start", r))
+	default:
+		fmt.Fprintln(w, formatRepoConfigValue(key, r))
 	}
 	return nil
 }
@@ -173,6 +197,10 @@ func formatRepoConfigValue(key string, r repo.Repo) string {
 	switch key {
 	case "pr-start":
 		return strconv.Itoa(r.PRSyncStartNumber)
+	case "incident-label":
+		return r.IncidentLabel
+	case "hotfix-label":
+		return r.HotfixLabel
 	default:
 		return "(unknown)"
 	}

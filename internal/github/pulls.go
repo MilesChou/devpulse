@@ -16,15 +16,20 @@ import (
 // rawPull is the slim subset of GitHub's REST PR JSON we read. Extend as
 // new fields become relevant; unknown JSON keys are tolerated.
 type rawPull struct {
-	Number    int        `json:"number"`
-	State     string     `json:"state"` // open / closed
-	Draft     bool       `json:"draft"`
-	Title     string     `json:"title"`
-	User      *rawUser   `json:"user"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
-	MergedAt  *time.Time `json:"merged_at"`
-	ClosedAt  *time.Time `json:"closed_at"`
+	Number         int        `json:"number"`
+	State          string     `json:"state"` // open / closed
+	Draft          bool       `json:"draft"`
+	Title          string     `json:"title"`
+	Body           string     `json:"body"`
+	User           *rawUser   `json:"user"`
+	Labels         []rawLabel `json:"labels"`
+	Base           rawRef     `json:"base"`
+	Head           rawRef     `json:"head"`
+	MergeCommitSHA string     `json:"merge_commit_sha"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	MergedAt       *time.Time `json:"merged_at"`
+	ClosedAt       *time.Time `json:"closed_at"`
 
 	// PR detail-only fields. Absent from the /pulls list endpoint.
 	Additions    int `json:"additions,omitempty"`
@@ -36,9 +41,18 @@ type rawUser struct {
 	Login string `json:"login"`
 }
 
+type rawLabel struct {
+	Name string `json:"name"`
+}
+
+type rawRef struct {
+	Ref string `json:"ref"`
+}
+
 // toDomain converts a rawPull to the domain model. repoID flows in so
-// the caller can attach the PR to the right repo aggregate.
-func (r rawPull) toDomain(repoID string) pullrequest.PullRequest {
+// the caller can attach the PR to the right repo aggregate; repoName
+// scopes the "Reverts owner/repo#N" body reference to this repo.
+func (r rawPull) toDomain(repoID string, repoName repo.FullName) pullrequest.PullRequest {
 	author := ""
 	if r.User != nil {
 		author = r.User.Login
@@ -64,6 +78,14 @@ func (r rawPull) toDomain(repoID string) pullrequest.PullRequest {
 		CreatedAt:         r.CreatedAt.UTC(),
 		MergedAt:          timex.PtrUTC(r.MergedAt),
 		ClosedAt:          timex.PtrUTC(r.ClosedAt),
+		Title:             r.Title,
+		BaseRef:           r.Base.Ref,
+		HeadRef:           r.Head.Ref,
+		MergeCommitSHA:    r.MergeCommitSHA,
+		RevertsNumber:     pullrequest.ParseRevertedNumber(r.Body, repoName.String()),
+	}
+	for _, l := range r.Labels {
+		pr.Labels = append(pr.Labels, l.Name)
 	}
 
 	// GitHub's REST does not surface ready_at directly. For non-draft PRs,
@@ -116,7 +138,7 @@ func (c *Client) GetPullRequest(
 	if _, err := c.rest(ctx, "GET", path, nil, &raw); err != nil {
 		return pullrequest.PullRequest{}, err
 	}
-	return raw.toDomain(repoID), nil
+	return raw.toDomain(repoID, repoName), nil
 }
 
 // GetLatestPRNumber returns the highest PR number currently in the repo.
@@ -145,4 +167,49 @@ func (c *Client) GetLatestPRNumber(
 		return 0, nil
 	}
 	return batch[0].Number, nil
+}
+
+// prCommitsPerPage is GitHub's maximum page size for PR commits. Only
+// the first page is read: see GetFirstCommitAt.
+const prCommitsPerPage = 100
+
+type rawPRCommit struct {
+	Commit struct {
+		Author *struct {
+			Date *time.Time `json:"date"`
+		} `json:"author"`
+	} `json:"commit"`
+}
+
+// GetFirstCommitAt returns the earliest commit author date among the
+// PR's commits — the DORA lead-time start. Author date (not committer
+// date) is used because it survives rebases. Only the first page (100
+// commits) is inspected; for larger PRs the minimum over that page is
+// returned, which is documented as a known approximation. Returns nil
+// when no commit carries an author date.
+func (c *Client) GetFirstCommitAt(
+	ctx context.Context,
+	repoName repo.FullName,
+	number int,
+) (*time.Time, error) {
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/commits", repoName.Owner, repoName.Name, number)
+	q := url.Values{}
+	q.Set("per_page", strconv.Itoa(prCommitsPerPage))
+
+	var commits []rawPRCommit
+	if _, err := c.rest(ctx, "GET", path, q, &commits); err != nil {
+		return nil, fmt.Errorf("list pr commits: %w", err)
+	}
+
+	var first *time.Time
+	for _, cm := range commits {
+		a := cm.Commit.Author
+		if a == nil || a.Date == nil {
+			continue
+		}
+		if first == nil || a.Date.Before(*first) {
+			first = a.Date
+		}
+	}
+	return timex.PtrUTC(first), nil
 }
