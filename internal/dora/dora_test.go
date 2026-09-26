@@ -148,3 +148,23 @@ func TestCompute_RecoveryTime(t *testing.T) {
 	}
 	approx(t, "avg", r.Recovery.Avg, (2.5+3)/2)
 }
+
+// Spec: "Re-landing a reverted change is not a remediation" — reverting
+// the revert puts the change back. It must neither count as a revert
+// nor yield a recovery sample (revert merge → re-land merge measures
+// the fix, not the recovery).
+func TestCompute_RelandIsNotARevert(t *testing.T) {
+	r := dora.Compute(dora.Input{From: may, To: june, Deployments: []dora.Deployment{
+		{Number: 1, MergedAt: at(10, 10, 0), Title: "feat: x"},
+		{Number: 2, MergedAt: at(10, 12, 0), Title: `Revert "feat: x"`,
+			RevertsNumber: ptr(1), RevertedMergedAt: ptr(at(10, 10, 0))},
+		{Number: 3, MergedAt: at(12, 9, 0), Title: `Revert "Revert "feat: x""`,
+			RevertsNumber: ptr(2), RevertedMergedAt: ptr(at(10, 12, 0))},
+	}})
+
+	if r.Reverts != 1 || r.RecoveryFromReverts != 1 {
+		t.Fatalf("reverts=%d recovery samples=%d, want 1 and 1", r.Reverts, r.RecoveryFromReverts)
+	}
+	approx(t, "recovery avg", r.Recovery.Avg, 2)
+	approx(t, "cfr", *r.ChangeFailureRate, 1.0/3)
+}

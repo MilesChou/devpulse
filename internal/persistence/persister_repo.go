@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/mileschou/devpulse/internal/repo"
 )
@@ -24,7 +25,8 @@ var ErrRepoNotFound = errors.New("persistence: repo not found")
 const defaultPRSyncStart = 1
 
 const repoSelectColumns = `id, provider, owner, repo_name, description,
-	default_branch, disabled, pr_sync_start_number, incident_label, hotfix_label`
+	default_branch, disabled, pr_sync_start_number, incident_label, hotfix_label,
+	pr_updated_watermark`
 
 // FindByID returns the Repo with the given ID, or ErrRepoNotFound.
 func (r *RepoPersister) FindByID(ctx context.Context, id string) (repo.Repo, error) {
@@ -94,7 +96,7 @@ func scanRepoRow(s rowScanner) (repo.Repo, error) {
 	if err := s.Scan(
 		&got.ID, &provider, &owner, &repoName,
 		&description, &defaultBranch, &disabled, &prSyncStartNumber,
-		&got.IncidentLabel, &got.HotfixLabel,
+		&got.IncidentLabel, &got.HotfixLabel, &got.PRUpdatedWatermark,
 	); err != nil {
 		return repo.Repo{}, err
 	}
@@ -236,6 +238,27 @@ func (r *RepoPersister) UpdateLabels(ctx context.Context, id, incidentLabel, hot
 	// MySQL reports 0 affected rows when the new values equal the old
 	// ones, so a zero count is confirmed with a lookup instead of being
 	// treated as "not found" outright.
+	if rows, err := res.RowsAffected(); err == nil && rows == 0 {
+		if _, err := r.FindByID(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// UpdatePRUpdatedWatermark records the upstream updated_at high-water
+// mark reached by a fully successful PR refresh. It is sync state, so
+// unlike the operator settings it does not bump updated_at.
+//
+// Returns ErrRepoNotFound when no row matches `id`.
+func (r *RepoPersister) UpdatePRUpdatedWatermark(ctx context.Context, id string, t time.Time) error {
+	const q = `UPDATE repos SET pr_updated_watermark = ? WHERE id = ?`
+	res, err := r.ExecCtx(ctx, q, t.UTC(), id)
+	if err != nil {
+		return fmt.Errorf("repo update pr watermark: %w", err)
+	}
+	// MySQL reports 0 affected rows when the value is unchanged, so a
+	// zero count is confirmed with a lookup, as in UpdateLabels.
 	if rows, err := res.RowsAffected(); err == nil && rows == 0 {
 		if _, err := r.FindByID(ctx, id); err != nil {
 			return err

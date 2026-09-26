@@ -73,3 +73,11 @@ func (p *Provider) ListIncidentIssues(
 ) ([]incident.Incident, error) {
 	return p.client.ListIncidentIssues(ctx, repoName, label)
 }
+
+func (p *Provider) ListPullRequestsUpdatedSince(
+	ctx context.Context,
+	repoName repo.FullName,
+	since time.Time,
+) ([]pullrequest.Stamp, time.Time, error) {
+	return p.client.ListPullRequestsUpdatedSince(ctx, repoName, since)
+}

@@ -77,6 +77,11 @@ type fakeVCSProvider struct {
 	incidentsErr   error
 	gotLabel       string
 
+	updated       []pullrequest.Stamp
+	updatedNewest time.Time
+	updatedErr    error
+	gotSince      *time.Time
+
 	// gotNumbers records every number GetPullRequest was called with, in
 	// call order, so tests can assert the loop's traversal.
 	gotNumbers []int
@@ -132,6 +137,19 @@ func (f *fakeVCSProvider) GetFirstCommitAt(
 		return nil, nil
 	}
 	return &t, nil
+}
+
+func (f *fakeVCSProvider) ListPullRequestsUpdatedSince(
+	_ context.Context, _ repo.FullName, since time.Time,
+) ([]pullrequest.Stamp, time.Time, error) {
+	f.gotSince = &since
+	if f.updatedErr != nil {
+		return nil, time.Time{}, f.updatedErr
+	}
+	if since.IsZero() {
+		return nil, f.updatedNewest, nil
+	}
+	return f.updated, f.updatedNewest, nil
 }
 
 func (f *fakeVCSProvider) ListIncidentIssues(

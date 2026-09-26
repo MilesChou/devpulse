@@ -21,14 +21,34 @@ The PR sync SHALL record, for every PR: title, labels, base branch, head branch 
 - **WHEN** a PR's body contains `Reverts other/repo#42`
 - **THEN** no reverted PR number is recorded
 
-### Requirement: Open PRs are refreshed on every sync
+### Requirement: Open PRs and PRs updated upstream are refreshed on every sync
 
-Every repo sync SHALL re-fetch each PR that is stored as open, so that a later merge or close is recorded. A PR that can no longer be fetched SHALL NOT abort the sync.
+Every repo sync SHALL re-fetch each stored PR that is stored as open or that the upstream reports as updated at or after the repo's PR watermark, so that a later merge, close or reopen is recorded. The watermark SHALL be the upstream update time of the most recently updated PR in the listing that was used, and SHALL NOT advance when any listed PR failed to refresh. A re-fetched PR whose upstream update time is older than the listing reported SHALL NOT be written and SHALL count as a failed refresh. A PR that can no longer be fetched SHALL NOT abort the sync.
 
 #### Scenario: PR merged after the first sync
 
 - **WHEN** PR #7 was open at the first sync and has since been merged
 - **THEN** after the next sync PR #7 is stored as merged with its merge time
+
+#### Scenario: Closed PR reopened and merged
+
+- **WHEN** PR #2 was stored as closed, and upstream it was later reopened and merged
+- **THEN** after the next sync PR #2 is stored as merged with its merge time
+
+#### Scenario: Unchanged closed PR is not re-fetched
+
+- **WHEN** PR #3 is stored as merged and has not been updated upstream since the last sync
+- **THEN** the next sync does not fetch PR #3
+
+#### Scenario: Stale copy is rejected
+
+- **WHEN** PR #2 is listed as updated at `10:00`, but the fetched PR reports an update time of `09:00`
+- **THEN** PR #2 is not written, and the watermark is not advanced
+
+#### Scenario: Failed refresh is retried
+
+- **WHEN** a listed PR fails to refresh
+- **THEN** the watermark is not advanced, and the next sync lists that PR again
 
 ### Requirement: Fetch incident issues
 

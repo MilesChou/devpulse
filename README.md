@@ -160,7 +160,7 @@ cron / CI.
 |---|---|
 | `devpulse sync` | Sync every tracked repo (sequential; skips disabled; aggregates failures) |
 | `devpulse repo add <owner/name>` | Register a repository |
-| `devpulse repo sync <owner/name>` | Sync one repo: refresh open PRs, new PRs (with enrichment), CI builds, incident issues |
+| `devpulse repo sync <owner/name>` | Sync one repo: refresh open PRs and PRs changed upstream, new PRs (with enrichment), CI builds (linked to their PR), incident issues |
 | `devpulse pr sync <owner/name> <number>` | Re-sync a single PR (detail + reviews) |
 | `devpulse metrics <owner/name>` | Print engineering-efficiency and DORA metrics for a month window |
 | `devpulse migrate {up,down,status}` | Schema migration |

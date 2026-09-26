@@ -149,6 +149,7 @@ func printDORA(ctx context.Context, w io.Writer, m *persistence.MetricsPersister
 		return err
 	}
 	in.HotfixLabel = r.HotfixLabel
+	in.To = elapsedEnd(to, time.Now().UTC())
 	rep := dora.Compute(in)
 
 	fmt.Fprintf(w, "Deployment Frequency:   %d deploys into %s  (%.2f/week, %d deploy days)\n",
@@ -164,6 +165,18 @@ func printDORA(ctx context.Context, w io.Writer, m *persistence.MetricsPersister
 	fmt.Fprintf(w, "Recovery Time:          %s  from reverts=%d incidents=%d (label %q)\n",
 		formatSummary(rep.Recovery, "samples"), rep.RecoveryFromReverts, rep.RecoveryFromIncidents, r.IncidentLabel)
 	return nil
+}
+
+// elapsedEnd clamps a window end to now. A window still in progress —
+// the default, since --from defaults to the current month — is measured
+// only up to now, so the per-week rate is not diluted by days that have
+// not happened yet. Nothing can be merged after now, so the counts are
+// unaffected.
+func elapsedEnd(to, now time.Time) time.Time {
+	if now.Before(to) {
+		return now
+	}
+	return to
 }
 
 // formatSummary renders an hours Summary, or "(no data)" for an empty

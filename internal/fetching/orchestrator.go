@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -74,7 +75,9 @@ func NewOrchestrator(
 
 // FetchAllBuilds incrementally pulls CI builds from every registered
 // provider for one repo, upserts them, then back-fills any commit-author
-// logins still NULL.
+// logins and PR numbers still NULL. PR numbers are linked from the
+// stored PRs, so the PR sync must run first for a build to be linked in
+// the same run; a later sync links it otherwise.
 //
 // Each provider has its own cursor: `MAX(started_at) - buildOverlap`
 // over that provider's rows only. Scoping the watermark per provider is
@@ -129,6 +132,15 @@ func (o *Orchestrator) FetchAllBuilds(ctx context.Context, r repo.Repo) (int, er
 			slog.String("repo", r.Name.String()),
 			slog.String("err", err.Error()),
 		)
+	}
+
+	if linked, err := o.builds.LinkPullRequestsByBranch(ctx, r.ID); err != nil {
+		o.logger.Warn("link builds to pull requests failed",
+			slog.String("repo", r.Name.String()),
+			slog.String("err", err.Error()),
+		)
+	} else {
+		span.SetAttributes(attribute.Int("linked_prs", linked))
 	}
 
 	return totalWritten, nil
@@ -192,7 +204,7 @@ func (o *Orchestrator) BackfillPullRequestsByNumber(ctx context.Context, r repo.
 			return written, err
 		}
 
-		ok, err := o.syncOnePullRequestByNumber(ctx, r, n)
+		ok, err := o.syncOnePullRequestByNumber(ctx, r, n, time.Time{})
 		if err != nil {
 			span.RecordError(err)
 			return written, fmt.Errorf("sync pr #%d: %w", n, err)
@@ -205,44 +217,117 @@ func (o *Orchestrator) BackfillPullRequestsByNumber(ctx context.Context, r repo.
 	return written, nil
 }
 
-// RefreshOpenPullRequests re-syncs every PR stored as open. The
-// by-number backfill resumes at MAX(number)+1 and never revisits a
-// stored number, so without this pass a PR that was open at its first
-// sync would never record its merge — and merges are DORA deployments.
+// PRRefresh is the outcome of RefreshPullRequests.
+type PRRefresh struct {
+	// Refreshed is the number of PRs re-synced.
+	Refreshed int
+
+	// Watermark is the value to store as repo.PRUpdatedWatermark, or nil
+	// when it must not move: a PR failed to refresh (or came back stale)
+	// and has to be listed again next sync, or upstream reported no PRs.
+	Watermark *time.Time
+}
+
+// errStaleDetail marks a PR detail older than the listing that asked for
+// it — typically a response served by the HTTP cache.
+var errStaleDetail = errors.New("stale pr detail")
+
+// RefreshPullRequests re-syncs stored PRs that may have changed
+// upstream. The by-number backfill resumes at MAX(number)+1 and never
+// revisits a stored number, so without this pass a PR's later merge,
+// close, reopen, retitle or relabel would never reach the store — and
+// merges are DORA deployments.
+//
+// Two sets are refreshed, deduplicated, in ascending number order:
+//   - Every PR upstream lists as updated at or after
+//     r.PRUpdatedWatermark (none on the first run, when the listing only
+//     seeds the watermark). This is what catches a closed PR that was
+//     reopened and merged.
+//   - Every PR stored as open. With the HTTP cache on, any PR detail —
+//     including one the backfill wrote — may be a stale copy whose
+//     upstream updated_at is already behind the watermark; refetching
+//     open PRs on every sync lets such a copy heal once its cache entry
+//     expires.
+//
+// Only numbers already stored and at or above r.PRSyncStartNumber are
+// refreshed: newer numbers belong to the backfill, older ones to history
+// the operator chose to skip.
 //
 // Run it before BackfillPullRequestsByNumber: PRs the backfill writes
 // in the same run are already fresh and need no second fetch.
 //
 // Error policy differs from the backfill on purpose: a single PR that
-// fails (including an upstream 404 for a deleted PR) is logged and
-// skipped, because it stays open in the store and is retried on the
-// next sync. Only a failure to list open PRs, or ctx cancellation,
-// aborts the pass.
-//
-// Returns the number of PRs refreshed.
-func (o *Orchestrator) RefreshOpenPullRequests(ctx context.Context, r repo.Repo) (int, error) {
+// fails is logged and skipped, and the returned Watermark is nil so the
+// next sync lists that PR again. A listed PR whose detail comes back
+// older than its listing counts as a failure and is not written. An
+// upstream 404 (deleted PR) counts as done. Only a listing failure, or
+// ctx cancellation, aborts the pass.
+func (o *Orchestrator) RefreshPullRequests(ctx context.Context, r repo.Repo) (PRRefresh, error) {
 	tracer := otel.Tracer(tracerName)
-	ctx, span := tracer.Start(ctx, "Orchestrator.RefreshOpenPullRequests",
+	ctx, span := tracer.Start(ctx, "Orchestrator.RefreshPullRequests",
 		trace.WithAttributes(attribute.String("repo", r.Name.String())))
 	defer span.End()
 
-	numbers, err := o.prs.ListOpenNumbers(ctx, r.ID)
+	var since time.Time
+	if r.PRUpdatedWatermark != nil {
+		since = *r.PRUpdatedWatermark
+		span.SetAttributes(attribute.String("watermark.since", since.Format(time.RFC3339)))
+	}
+
+	// Listing before any PR is refreshed means an update that lands
+	// mid-pass is newer than the stored watermark and gets listed next
+	// sync.
+	updated, newest, err := o.vcs.ListPullRequestsUpdatedSince(ctx, r.Name, since)
 	if err != nil {
 		span.RecordError(err)
-		return 0, fmt.Errorf("list open prs: %w", err)
+		return PRRefresh{}, fmt.Errorf("list updated prs: %w", err)
 	}
-	span.SetAttributes(attribute.Int("open", len(numbers)))
+	open, err := o.prs.ListOpenNumbers(ctx, r.ID)
+	if err != nil {
+		span.RecordError(err)
+		return PRRefresh{}, fmt.Errorf("list open prs: %w", err)
+	}
+	dbMax, hasDBMax, err := o.prs.MaxNumber(ctx, r.ID)
+	if err != nil {
+		span.RecordError(err)
+		return PRRefresh{}, fmt.Errorf("get db max number: %w", err)
+	}
 
-	var refreshed int
+	// notBefore maps each candidate to the updated_at its listing
+	// reported; zero for open PRs that were not listed.
+	notBefore := make(map[int]time.Time, len(updated)+len(open))
+	for _, u := range updated {
+		notBefore[u.Number] = u.UpdatedAt
+	}
+	for _, n := range open {
+		if _, ok := notBefore[n]; !ok {
+			notBefore[n] = time.Time{}
+		}
+	}
+	numbers := make([]int, 0, len(notBefore))
+	for n := range notBefore {
+		if hasDBMax && n <= dbMax && n >= r.PRSyncStartNumber {
+			numbers = append(numbers, n)
+		}
+	}
+	slices.Sort(numbers)
+	span.SetAttributes(
+		attribute.Int("listed", len(updated)),
+		attribute.Int("open", len(open)),
+		attribute.Int("candidates", len(numbers)),
+	)
+
+	var refreshed, failed int
 	for _, n := range numbers {
 		if err := ctx.Err(); err != nil {
 			span.RecordError(err)
-			return refreshed, err
+			return PRRefresh{Refreshed: refreshed}, err
 		}
 
-		ok, err := o.syncOnePullRequestByNumber(ctx, r, n)
+		ok, err := o.syncOnePullRequestByNumber(ctx, r, n, notBefore[n])
 		if err != nil {
-			o.logger.Warn("refresh open pr failed, will retry next sync",
+			failed++
+			o.logger.Warn("refresh pr failed, will retry next sync",
 				slog.String("repo", r.Name.String()),
 				slog.Int("number", n),
 				slog.String("err", err.Error()),
@@ -253,8 +338,13 @@ func (o *Orchestrator) RefreshOpenPullRequests(ctx context.Context, r repo.Repo)
 			refreshed++
 		}
 	}
-	span.SetAttributes(attribute.Int("refreshed", refreshed))
-	return refreshed, nil
+	span.SetAttributes(attribute.Int("refreshed", refreshed), attribute.Int("failed", failed))
+
+	out := PRRefresh{Refreshed: refreshed}
+	if failed == 0 && !newest.IsZero() {
+		out.Watermark = &newest
+	}
+	return out, nil
 }
 
 // SyncIncidents mirrors the repo's incident issues — every issue
@@ -302,6 +392,10 @@ func (o *Orchestrator) SyncIncidents(ctx context.Context, r repo.Repo) (int, err
 // Returns (false, nil) when the number is a 404 (issue / deleted) so
 // the caller can keep advancing without counting it.
 //
+// A non-zero notBefore is the upstream updated_at a listing reported for
+// the PR. A detail older than that is a stale (cached) copy: it is not
+// written, and errStaleDetail is returned.
+//
 // Failure modes:
 //   - detail / reviews fetch failure → returns the wrapped error; no
 //     DB writes happened. Next run probes the same number.
@@ -317,6 +411,7 @@ func (o *Orchestrator) syncOnePullRequestByNumber(
 	ctx context.Context,
 	r repo.Repo,
 	number int,
+	notBefore time.Time,
 ) (bool, error) {
 	detail, err := o.vcs.GetPullRequest(ctx, r.ID, r.Name, number)
 	if err != nil {
@@ -328,6 +423,10 @@ func (o *Orchestrator) syncOnePullRequestByNumber(
 			return false, nil
 		}
 		return false, fmt.Errorf("get detail: %w", err)
+	}
+	if !notBefore.IsZero() && detail.SourceUpdatedAt.Before(notBefore) {
+		return false, fmt.Errorf("%w: updated_at %s, listed %s", errStaleDetail,
+			detail.SourceUpdatedAt.Format(time.RFC3339), notBefore.Format(time.RFC3339))
 	}
 
 	reviews, err := o.vcs.ListReviews(ctx, r.Name, number)
@@ -420,7 +519,7 @@ func (o *Orchestrator) EnrichOnePullRequestByNumber(
 		return false, err
 	}
 
-	ok, err := o.syncOnePullRequestByNumber(ctx, r, number)
+	ok, err := o.syncOnePullRequestByNumber(ctx, r, number, time.Time{})
 	if err != nil {
 		span.RecordError(err)
 		return true, err

@@ -27,12 +27,17 @@ The system SHALL treat every PR merged into the repo's default branch as exactly
 
 ### Requirement: Deployment Frequency
 
-The system SHALL report, for a window, the number of deployments, the average deployments per week (deployments ÷ window days × 7), and the number of distinct UTC calendar days with at least one deployment.
+The system SHALL report, for a window, the number of deployments, the average deployments per week (deployments ÷ window days × 7), and the number of distinct UTC calendar days with at least one deployment. For a window that has not ended yet, window days SHALL count only up to the time of the report.
 
 #### Scenario: Frequency over one month
 
 - **WHEN** May 2026 (31 days) contains 10 deployments on 6 distinct days
 - **THEN** the report shows 10 deployments, 2.26 per week, and 6 deploy days
+
+#### Scenario: Frequency over a month in progress
+
+- **WHEN** the report runs at the start of 5 September 2026 for September 2026, and 10 deployments have happened so far
+- **THEN** the per-week rate is computed over the 4 elapsed days (17.50 per week), not over the 30 days of September
 
 ### Requirement: Lead Time for Changes
 
@@ -50,12 +55,22 @@ The system SHALL report, over deployments in the window, the average, p50 and p9
 
 ### Requirement: Change Failure Rate
 
-The system SHALL report the ratio of remediation deployments to all deployments in the window. A deployment is a remediation when its title starts with the word "revert" (case-insensitive), when it carries the repo's hotfix label, or when its head branch starts with `hotfix/`. Each deployment SHALL count at most once. The report SHALL show the revert and hotfix counts separately.
+The system SHALL report the ratio of remediation deployments to all deployments in the window. A deployment is a remediation when its title starts with the word "revert" (case-insensitive) followed by whitespace, `:`, `(`, `"`, `!` or the end of the title, and the title is not a revert of a revert (GitHub's nested `Revert "Revert "…""` form, an even nesting depth), when it carries the repo's hotfix label, or when its head branch starts with `hotfix/`. Each deployment SHALL count at most once. The report SHALL show the revert and hotfix counts separately.
 
 #### Scenario: Reverts and hotfixes both count
 
 - **WHEN** a window has 20 deployments, of which 1 is titled `Revert "feat: x"` and 1 carries the `hotfix` label
 - **THEN** the change failure rate is 10.0% with reverts=1 and hotfixes=1
+
+#### Scenario: A title that only begins with the letters "revert" is not a revert
+
+- **WHEN** a deployment is titled `Revert-safe migration helper` or `revert/cleanup: tidy`
+- **THEN** it is not counted as a revert
+
+#### Scenario: Re-landing a reverted change is not a remediation
+
+- **WHEN** a deployment is titled `Revert "Revert "feat: x""`, which puts back a change that was reverted earlier
+- **THEN** it is not counted as a revert and contributes no recovery sample
 
 #### Scenario: No deployments
 

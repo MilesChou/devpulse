@@ -1,5 +1,6 @@
 DROP TABLE incidents;
 
+ALTER TABLE repos DROP COLUMN pr_updated_watermark;
 ALTER TABLE repos DROP COLUMN hotfix_label;
 ALTER TABLE repos DROP COLUMN incident_label;
 

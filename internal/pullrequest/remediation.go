@@ -6,18 +6,41 @@ import (
 	"strings"
 )
 
-// revertTitle matches GitHub's revert-button title (`Revert "<title>"`)
-// and the conventional-commit spelling (`revert: ...`).
-var revertTitle = regexp.MustCompile(`(?i)^\s*revert\b`)
+// revertTitle matches GitHub's revert-button title (`Revert "<title>"`),
+// the conventional-commit spellings (`revert: ...`, `revert(scope): ...`,
+// `revert!: ...`) and hand-written titles (`Revert the login change`).
+// The word must be followed by whitespace, one of `:("!`, or the end:
+// `\b` alone would also accept `Revert-safe helper` and `revert/cleanup`,
+// which are ordinary changes.
+var revertTitle = regexp.MustCompile(`(?i)^\s*revert(?:[\s:("!]|$)`)
 
 // revertsRef matches GitHub's revert-button body: "Reverts owner/repo#N".
 // The owner/repo prefix is optional so a hand-written "Reverts #N" also
 // resolves.
 var revertsRef = regexp.MustCompile(`(?i)\breverts\s+(?:([\w.-]+/[\w.-]+))?#(\d+)`)
 
+// revertQuoted matches the quoted prefix GitHub's revert button puts in
+// front of the original title: `Revert "`.
+var revertQuoted = regexp.MustCompile(`(?i)^\s*revert\s+"`)
+
 // IsRevertTitle reports whether a PR title marks a revert.
+//
+// Reverting a revert re-lands the original change, and GitHub's revert
+// button nests the titles: `Revert "Revert "X""` puts X back. The quoted
+// prefixes are peeled one at a time, and the title is a revert only
+// when the nesting depth is odd. The innermost level may use any revert
+// spelling, so `Revert "revert: x"` is a re-land too.
 func IsRevertTitle(title string) bool {
-	return revertTitle.MatchString(title)
+	depth := 0
+	for rest := title; revertTitle.MatchString(rest); {
+		depth++
+		loc := revertQuoted.FindStringIndex(rest)
+		if loc == nil {
+			break
+		}
+		rest = rest[loc[1]:]
+	}
+	return depth%2 == 1
 }
 
 // ParseRevertedNumber extracts the PR number a revert PR body points at.

@@ -24,7 +24,9 @@ type Deployment struct {
 }
 
 // Input is everything Compute reads. The window is [From, To). Rows
-// outside the window are ignored, so callers may over-fetch.
+// outside the window are ignored, so callers may over-fetch. PerWeek
+// divides by the window length, so a caller reporting a window that is
+// still in progress passes now as To.
 type Input struct {
 	From        time.Time
 	To          time.Time

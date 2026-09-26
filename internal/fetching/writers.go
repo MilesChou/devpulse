@@ -32,6 +32,12 @@ type BuildWriter interface {
 	// UpdateAuthorBySHA updates every build row matching (repo_id, sha)
 	// with the resolved login.
 	UpdateAuthorBySHA(ctx context.Context, repoID string, sha commitsha.SHA, login string) error
+
+	// LinkPullRequestsByBranch fills the PR number on PR-triggered
+	// builds the CI provider left unlinked, by matching the build's
+	// branch and start time against the stored PRs. Ambiguous builds
+	// stay unlinked. Returns the number of builds linked.
+	LinkPullRequestsByBranch(ctx context.Context, repoID string) (int, error)
 }
 
 // PullRequestWriter persists PRs. UpsertMany writes every column
@@ -48,8 +54,8 @@ type PullRequestWriter interface {
 	MaxNumber(ctx context.Context, repoID string) (n int, has bool, err error)
 
 	// ListOpenNumbers returns the numbers of every PR stored as open.
-	// The by-number backfill never revisits a stored number, so these
-	// are refreshed on every sync to record later merges and closes.
+	// RefreshPullRequests refetches them on every sync, so a stale
+	// (cached) open copy heals once its cache entry expires.
 	ListOpenNumbers(ctx context.Context, repoID string) ([]int, error)
 }
 

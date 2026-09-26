@@ -77,6 +77,18 @@ type PullRequest struct {
 	TimeToMerge     *int // seconds
 	MergedAt        *time.Time
 	ClosedAt        *time.Time
+
+	// SourceUpdatedAt is the upstream updated_at of the fetched version.
+	// It is not persisted; the sync compares it with the listing that
+	// asked for the refresh, to reject a stale (cached) response.
+	SourceUpdatedAt time.Time
+}
+
+// Stamp identifies one upstream version of a PR: its number and the
+// upstream updated_at of that version.
+type Stamp struct {
+	Number    int
+	UpdatedAt time.Time
 }
 
 func (p PullRequest) ChangeStats() ChangeStats {

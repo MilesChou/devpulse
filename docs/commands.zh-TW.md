@@ -146,9 +146,9 @@ devpulse repo sync <owner/name>
 
 依序執行四個步驟同步指定儲存庫：
 
-1. **重新整理開放中的 PR**：重抓資料庫中所有狀態為 open 的 PR，把首次同步之後才發生的 merge 或 close 記錄下來（merge 就是 DORA 的部署）。單一 PR 重抓失敗只會記錄 log，下次同步再重試。
+1. **重抓有變動的 PR**：重抓資料庫中、GitHub 回報自上次重抓後有更新的 PR，以及所有狀態為 open 的 PR，把首次同步之後才發生的 merge、close、重新開啟、改標題或改 label 記錄下來（merge 就是 DORA 的部署）。水位是已看到的 PR 中最新的 `updated_at`，取自 GitHub 列表本身，所以列表就算來自 cache 也不會跳過更新。抓回來的 PR 比列表上的舊（來自 cache 的舊資料）時不會寫入。單一 PR 重抓失敗只會記錄 log，水位不前進，下次同步會再列到它。open 的 PR 每次都重抓，這樣 cache 裡的舊資料（例如開啟 `CACHE_ENABLED=true` 重建資料庫時寫入的）會在 cache 過期後自動更正。
 2. **Pull Request**：從 GitHub 抓取所有新的 PR（detail、reviews；已 merge 的 PR 另外抓最早的 commit 時間），寫入資料庫並執行 enrichment。
-3. **CI builds**：從每一個已註冊的 CI provider（GitHub Actions 必有；設定 `TRAVIS_TOKEN` 時加上 Travis CI）抓取建置記錄並寫入資料庫。
+3. **CI builds**：從每一個已註冊的 CI provider（GitHub Actions 必有；設定 `TRAVIS_TOKEN` 時加上 Travis CI）抓取建置記錄並寫入資料庫。GitHub Actions 回傳的 run 實際上不帶 PR 清單，所以接著會把每個由 PR 觸發的 build，對應到 head branch 與 build 的 branch 相同、且 build 開始時仍開啟中的 PR。同時符合兩個 PR 的 build（例如兩個同時開啟、branch 都叫 `main` 的 fork PR）不會被對應。
 4. **事故（incidents）**：鏡像所有帶 repo `incident-label` 的 issue（包含 open 與 closed，排除 PR）。失敗時只印出警告，不會讓指令失敗。
 
 步驟 1 或 2 失敗時會跳過後面的步驟，並以非零狀態結束。`GITHUB_TOKEN` 為必要；`TRAVIS_TOKEN` 為選填。
@@ -164,7 +164,7 @@ devpulse repo sync <owner/name>
 **輸出**
 
 ```
-Refreshed MilesChou/devpulse open pull requests: 3
+Refreshed MilesChou/devpulse pull requests: 3
 Synced MilesChou/devpulse pull requests: written=7
 Synced MilesChou/devpulse ci builds: written=42
 Synced MilesChou/devpulse incidents (label "incident"): 2
@@ -261,9 +261,9 @@ Recovery Time:          avg 2.8h  p50 2.8h  p90 3.0h  (2 samples)  from reverts=
 
 | 指標 | 定義 |
 |---|---|
-| Deployment Frequency（部署頻率） | merge 進 repo default branch 的 PR 數量，另外換算成每週次數，並列出有部署的 UTC 日數。 |
+| Deployment Frequency（部署頻率） | merge 進 repo default branch 的 PR 數量，另外換算成每週次數，並列出有部署的 UTC 日數。查詢期間還沒結束時（預設的本月），每週次數只以目前已經過的天數計算。 |
 | Lead Time for Changes（變更前置時間） | PR 中最早的 commit **author** 時間 → merge。author 時間在 rebase 後仍會保留。每個 PR 只看前 100 個 commit。負值（時鐘誤差）視為 0。 |
-| Change Failure Rate（變更失敗率） | （revert + hotfix 部署數）÷ 部署數。**Revert**：標題以 "revert" 這個字開頭。**Hotfix**：帶有 `hotfix-label`，或 head branch 以 `hotfix/` 開頭。同時符合兩者只算一次。沒有部署時顯示 `n/a`。 |
+| Change Failure Rate（變更失敗率） | （revert + hotfix 部署數）÷ 部署數。**Revert**：標題以 "revert" 這個字開頭，後面接空白、`:`、`(`、`"`、`!` 或直接結束（`Revert "x"`、`revert: x`、`revert(api): x` 會算，`Revert-safe helper`、`revert/cleanup` 不算）。revert 一個 revert 等於把變更重新上線，所以 `Revert "Revert "x""` 不算 revert（巢狀 `Revert "…"` 的層數是奇數才算）。**Hotfix**：帶有 `hotfix-label`，或 head branch 以 `hotfix/` 開頭。同時符合兩者只算一次。沒有部署時顯示 `n/a`。 |
 | Recovery Time（失敗部署恢復時間） | 資料來源有兩種：body 寫著 `Reverts owner/repo#N` 的 revert PR（GitHub revert 按鈕產生的格式），計算 #N merge 到 revert merge 的時間；以及帶 `incident-label` 的 issue，計算開啟到關閉的時間。尚未關閉的事故不列入。 |
 
 限制：沒有經過 PR、直接推上 default branch 的 commit 看不到。hotfix PR 不會連結到它修復的那次部署。default branch 未知時，這個區塊會提示先執行 `devpulse repo refresh`。

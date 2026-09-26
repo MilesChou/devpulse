@@ -146,9 +146,9 @@ devpulse repo sync <owner/name>
 
 Syncs the repository in four steps, in order:
 
-1. **Open-PR refresh** — re-fetches every PR stored as open, so merges and closes that happened after its first sync are recorded (merges are DORA deployments). A PR that fails to refresh is logged and retried on the next sync.
+1. **PR refresh** — re-fetches every stored PR that GitHub reports as updated since the previous refresh, plus every PR stored as open, so a merge, close, reopen, retitle or relabel after its first sync is recorded (merges are DORA deployments). The high-water mark is the `updated_at` of the most recently updated PR seen, taken from GitHub's own listing, so a cached listing can never skip updates. A PR whose detail comes back older than the listing (a cached copy) is not written. A PR that fails to refresh is logged, and the mark is not advanced so the next sync lists it again. Open PRs are re-fetched every time so that a stale cached copy, for example one written during a rebuild with `CACHE_ENABLED=true`, heals once its cache entry expires.
 2. **Pull requests** — fetches all new PRs from GitHub (detail, reviews, and — for merged PRs — the earliest commit time), upserts them, and runs enrichment.
-3. **CI builds** — fetches build records from every registered CI provider (GitHub Actions always; Travis CI when `TRAVIS_TOKEN` is set) and upserts them.
+3. **CI builds** — fetches build records from every registered CI provider (GitHub Actions always; Travis CI when `TRAVIS_TOKEN` is set) and upserts them. GitHub Actions leaves a run's PR list empty in practice, so each PR-triggered build is then linked to the stored PR whose head branch matches the build's branch and that was open when the build started. A build that matches two PRs (for example, two fork PRs from branches named `main` open at once) stays unlinked.
 4. **Incidents** — mirrors every issue carrying the repo's `incident-label` (open and closed; pull requests excluded). A failure prints a warning and does not fail the command.
 
 If step 1 or 2 fails, later steps are skipped and the command exits non-zero. `GITHUB_TOKEN` is required; `TRAVIS_TOKEN` is optional.
@@ -164,7 +164,7 @@ If step 1 or 2 fails, later steps are skipped and the command exits non-zero. `G
 **Output**
 
 ```
-Refreshed MilesChou/devpulse open pull requests: 3
+Refreshed MilesChou/devpulse pull requests: 3
 Synced MilesChou/devpulse pull requests: written=7
 Synced MilesChou/devpulse ci builds: written=42
 Synced MilesChou/devpulse incidents (label "incident"): 2
@@ -261,9 +261,9 @@ Every event is counted in the window its end time falls in.
 
 | Metric | Definition |
 |---|---|
-| Deployment Frequency | PRs merged into the repo's default branch. Also shown per week and as distinct UTC deploy days. |
+| Deployment Frequency | PRs merged into the repo's default branch. Also shown per week and as distinct UTC deploy days. For a window that is still in progress (the default, current month), the per-week rate uses the days elapsed so far. |
 | Lead Time for Changes | Earliest commit **author** time in the PR → merge. Author time survives rebases. Only the first 100 commits of a PR are inspected. Negative values (clock skew) count as 0. |
-| Change Failure Rate | (revert + hotfix deployments) ÷ deployments. **Revert**: the title starts with the word "revert". **Hotfix**: carries `hotfix-label`, or the head branch starts with `hotfix/`. A PR that is both counts once. Shows `n/a` when there are no deployments. |
+| Change Failure Rate | (revert + hotfix deployments) ÷ deployments. **Revert**: the title starts with the word "revert", followed by a space, `:`, `(`, `"`, `!` or nothing (so `Revert "x"`, `revert: x` and `revert(api): x` count, while `Revert-safe helper` and `revert/cleanup` do not). Reverting a revert re-lands the change, so `Revert "Revert "x""` is not a revert (an odd number of nested `Revert "…"` is). **Hotfix**: carries `hotfix-label`, or the head branch starts with `hotfix/`. A PR that is both counts once. Shows `n/a` when there are no deployments. |
 | Recovery Time | Failed deployment recovery time, from two sources: a revert PR whose body says `Reverts owner/repo#N` (GitHub's revert button), measured from #N's merge to the revert's merge; and an issue carrying `incident-label`, measured from opened to closed. Open incidents are not counted. |
 
 Limitations: pushes straight to the default branch (without a PR) are not seen. A hotfix PR is not linked to the deployment it fixed. If the default branch is unknown, the section asks you to run `devpulse repo refresh`.

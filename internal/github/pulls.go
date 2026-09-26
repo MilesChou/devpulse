@@ -83,6 +83,7 @@ func (r rawPull) toDomain(repoID string, repoName repo.FullName) pullrequest.Pul
 		HeadRef:           r.Head.Ref,
 		MergeCommitSHA:    r.MergeCommitSHA,
 		RevertsNumber:     pullrequest.ParseRevertedNumber(r.Body, repoName.String()),
+		SourceUpdatedAt:   r.UpdatedAt.UTC(),
 	}
 	for _, l := range r.Labels {
 		pr.Labels = append(pr.Labels, l.Name)
@@ -99,19 +100,19 @@ func (r rawPull) toDomain(repoID string, repoName repo.FullName) pullrequest.Pul
 	return pr
 }
 
-// listPullsPage returns one page worth of PRs. The new by-number sync
-// flow only ever needs the first page to read the latest PR number,
-// so pagination state (Link header) is intentionally not tracked here.
-// Sort=created, direction=desc, state=all.
+// listPullsPage returns one page of the state=all PR list ordered by
+// sort ("created" or "updated"), newest first. Callers that paginate do
+// so by page number; the Link header is not tracked.
 func (c *Client) listPullsPage(
 	ctx context.Context,
 	repoName repo.FullName,
+	sort string,
 	page, perPage int,
 ) ([]rawPull, error) {
 	path := fmt.Sprintf("/repos/%s/%s/pulls", repoName.Owner, repoName.Name)
 	q := url.Values{}
 	q.Set("state", "all")
-	q.Set("sort", "created")
+	q.Set("sort", sort)
 	q.Set("direction", "desc")
 	q.Set("per_page", strconv.Itoa(perPage))
 	q.Set("page", strconv.Itoa(page))
@@ -159,7 +160,7 @@ func (c *Client) GetLatestPRNumber(
 	ctx context.Context,
 	repoName repo.FullName,
 ) (int, error) {
-	batch, err := c.listPullsPage(ctx, repoName, 1, 1)
+	batch, err := c.listPullsPage(ctx, repoName, "created", 1, 1)
 	if err != nil {
 		return 0, fmt.Errorf("get latest pr number: %w", err)
 	}
@@ -167,6 +168,57 @@ func (c *Client) GetLatestPRNumber(
 		return 0, nil
 	}
 	return batch[0].Number, nil
+}
+
+// pullsPerPage is GitHub's maximum page size for the PR list.
+const pullsPerPage = 100
+
+// ListPullRequestsUpdatedSince walks the PR list most-recently-updated
+// first and returns the number and updated_at of every PR whose
+// updated_at is at or after since. newest is the updated_at of the most recently updated PR
+// in the repo (zero when it has none); the caller stores it as the next
+// since, so the watermark comes from upstream's clock and never runs
+// ahead of what was actually listed.
+//
+// A zero since only reads newest from a single one-item page and
+// returns no PRs: it never walks the full history.
+//
+// A PR updated while the walk is in progress moves to the head of the
+// list, past the pages already read. Its new updated_at is later than
+// newest, so the next call picks it up.
+func (c *Client) ListPullRequestsUpdatedSince(
+	ctx context.Context,
+	repoName repo.FullName,
+	since time.Time,
+) (updated []pullrequest.Stamp, newest time.Time, err error) {
+	perPage := pullsPerPage
+	if since.IsZero() {
+		perPage = 1
+	}
+
+	for page := 1; ; page++ {
+		if err := ctx.Err(); err != nil {
+			return nil, time.Time{}, err
+		}
+
+		batch, err := c.listPullsPage(ctx, repoName, "updated", page, perPage)
+		if err != nil {
+			return nil, time.Time{}, fmt.Errorf("list updated pull requests: %w", err)
+		}
+
+		for i, p := range batch {
+			if page == 1 && i == 0 {
+				newest = p.UpdatedAt.UTC()
+			}
+			if since.IsZero() || p.UpdatedAt.Before(since) {
+				return updated, newest, nil
+			}
+			updated = append(updated, pullrequest.Stamp{Number: p.Number, UpdatedAt: p.UpdatedAt.UTC()})
+		}
+		if len(batch) < perPage {
+			return updated, newest, nil
+		}
+	}
 }
 
 // prCommitsPerPage is GitHub's maximum page size for PR commits. Only

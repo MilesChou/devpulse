@@ -7,10 +7,11 @@ import (
 	"github.com/mileschou/devpulse/internal/repo"
 )
 
-// syncOneRepo refreshes stored open PRs, runs PR sync (by ascending
-// number), CI build sync, and incident sync for a single repo, in that
-// order. The open-PR refresh runs first so PRs the backfill writes in
-// this run are not fetched twice. Incident sync failures are reported
+// syncOneRepo refreshes stored PRs that changed upstream, runs PR sync
+// (by ascending number), CI build sync, and incident sync for a single
+// repo, in that order. The refresh runs first so PRs the backfill writes
+// in this run are not fetched twice; its updated_at watermark is stored
+// as soon as the refresh succeeds, independent of the later steps. Incident sync failures are reported
 // but do not fail the repo, mirroring how a failing CI provider is
 // skipped. Identical surface to `devpulse repo sync`
 // but takes a pre-resolved Repo so the top-level `devpulse sync` can
@@ -22,11 +23,16 @@ import (
 // atomically and partial progress is real progress; that count would be
 // lost if we only printed on success.
 func syncOneRepo(ctx context.Context, d *deps, r repo.Repo) error {
-	refreshed, err := d.orch.RefreshOpenPullRequests(ctx, r)
+	refresh, err := d.orch.RefreshPullRequests(ctx, r)
 	if err != nil {
-		return fmt.Errorf("refresh open pull requests: %w", err)
+		return fmt.Errorf("refresh pull requests: %w", err)
 	}
-	fmt.Fprintf(stdout(), "Refreshed %s open pull requests: %d\n", r.Name.String(), refreshed)
+	fmt.Fprintf(stdout(), "Refreshed %s pull requests: %d\n", r.Name.String(), refresh.Refreshed)
+	if refresh.Watermark != nil {
+		if err := d.repos.UpdatePRUpdatedWatermark(ctx, r.ID, *refresh.Watermark); err != nil {
+			return fmt.Errorf("store pr watermark: %w", err)
+		}
+	}
 
 	prsWritten, prsErr := d.orch.BackfillPullRequestsByNumber(ctx, r)
 	fmt.Fprintf(stdout(), "Synced %s pull requests: written=%d\n", r.Name.String(), prsWritten)

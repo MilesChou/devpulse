@@ -13,6 +13,9 @@ CREATE INDEX pull_requests_repo_merged_idx ON pull_requests (repo_id, merged_at)
 
 ALTER TABLE repos ADD COLUMN incident_label VARCHAR(255) NOT NULL DEFAULT 'incident';
 ALTER TABLE repos ADD COLUMN hotfix_label VARCHAR(255) NOT NULL DEFAULT 'hotfix';
+-- Upstream updated_at of the most recently updated PR seen by the last
+-- fully successful PR refresh. NULL until the first refresh completes.
+ALTER TABLE repos ADD COLUMN pr_updated_watermark TIMESTAMP NULL;
 
 CREATE TABLE incidents (
     id          CHAR(26) NOT NULL PRIMARY KEY,

@@ -121,9 +121,8 @@ func (r *PullRequestPersister) MaxNumber(ctx context.Context, repoID string) (in
 }
 
 // ListOpenNumbers returns, ascending, the numbers of every PR stored as
-// open for the repo. The by-number backfill never revisits a stored
-// number, so the orchestrator refreshes these on every sync to catch
-// merges and closes that happened after the first fetch.
+// open for the repo. The orchestrator refreshes these on every sync, so
+// a stale (cached) open copy heals once its cache entry expires.
 func (r *PullRequestPersister) ListOpenNumbers(ctx context.Context, repoID string) ([]int, error) {
 	const q = `SELECT number FROM pull_requests
 	           WHERE repo_id = ? AND status = 'open'
