@@ -368,7 +368,73 @@ devpulse worker --poll 2s
 devpulse serve
 ```
 
-**Placeholder — not implemented in v1.** Prints a notice and exits. The HTTP API surface is planned for a future release.
+Runs the read-only JSON API until `Ctrl-C` (`SIGINT`) or `SIGTERM`. The [desktop dashboard](../desktop/README.md) is its client; anything that speaks HTTP can use it too.
+
+| Variable | Default | Description |
+|---|---|---|
+| `HTTP_ADDR` | `127.0.0.1:8080` | Listen address |
+| `DEVPULSE_API_TOKEN` | *(empty)* | Bearer token every `/api/` request must send. **Required** when `HTTP_ADDR` is not a loopback address; `serve` refuses to start otherwise, because the API exposes every tracked repo's data |
+
+**Endpoints**
+
+| Method + path | Auth | Returns |
+|---|---|---|
+| `GET /healthz` | none | `{"status":"ok"}` |
+| `GET /api/v1/repos` | bearer | `{"repos":[{id, full_name, owner, name, provider, description, default_branch, disabled}]}` |
+| `GET /api/v1/repos/{owner}/{name}` | bearer | One repo, same shape |
+| `GET /api/v1/repos/{owner}/{name}/metrics?from=YYYY-MM&to=YYYY-MM` | bearer | The report for the window (below) |
+| `GET /api/v1/repos/{owner}/{name}/metrics/monthly?from=YYYY-MM&to=YYYY-MM` | bearer | `{repo, from, to, months:[report, ...]}`, one report per month, oldest first |
+
+`from` / `to` behave exactly like the `metrics` command flags: `from` defaults to the current month (UTC), `to` is exclusive and defaults to `from` + 1 month. A window may span at most 36 months. The report is computed by the same code as `devpulse metrics`, so the two never disagree.
+
+**Report**
+
+```json
+{
+  "repo": "MilesChou/devpulse",
+  "from": "2026-05",
+  "to": "2026-06",
+  "build_failure": { "total": 3, "failed": 2, "rate": 0.6666666666666666 },
+  "avg_builds_per_pr": 1.5,
+  "pr_lead_time": { "count": 3, "avg_hours": 20, "p50_hours": 20, "p90_hours": 28 },
+  "review_wait": { "count": 3, "avg_hours": 2 },
+  "pr_size_distribution": [
+    { "bucket": "XS", "count": 1 }, { "bucket": "S", "count": 1 },
+    { "bucket": "M", "count": 0 }, { "bucket": "L", "count": 1 },
+    { "bucket": "XL", "count": 0 }
+  ],
+  "daily_build_duration": [
+    { "day": "2026-05-01", "avg_seconds": 90, "count": 2 }
+  ],
+  "dora": {
+    "default_branch": "main",
+    "hotfix_label": "hotfix",
+    "incident_label": "incident",
+    "deployments": 3,
+    "per_week": 2.1,
+    "deploy_days": 3,
+    "lead_time": { "count": 3, "avg_hours": 22, "p50_hours": 22, "p90_hours": 30 },
+    "reverts": 1,
+    "hotfixes": 0,
+    "change_failure_rate": 0.3333333333333333,
+    "recovery": { "count": 2, "avg_hours": 36, "p50_hours": 36, "p90_hours": 61.6 },
+    "recovery_from_reverts": 1,
+    "recovery_from_incidents": 1
+  }
+}
+```
+
+`pr_size_distribution` always lists the five buckets in ascending size order, plus an `unknown` entry only when some PRs have no bucket. `dora` follows the [DORA definitions](#dora-definitions) and is `null` while the repo's default branch is unknown (run `repo refresh`); inside it, `change_failure_rate` is `null` when there were no deployments. For a window still in progress, `per_week` is measured up to now, as in the `metrics` command. The canonical examples are the golden files in [`internal/http/testdata/`](../internal/http/testdata/); the dashboard's tests decode the same files.
+
+**Errors** are JSON `{"error": "..."}` with status `400` (bad `from` / `to`), `401` (missing or wrong token), `404` (repo not tracked, unknown path), or `500` (details are logged server-side, not returned).
+
+**Example**
+
+```sh
+DEVPULSE_API_TOKEN=change-me devpulse serve
+curl -H "Authorization: Bearer change-me" \
+  "http://127.0.0.1:8080/api/v1/repos/MilesChou/devpulse/metrics?from=2026-05"
+```
 
 ---
 
@@ -398,6 +464,9 @@ devpulse pr sync MilesChou/devpulse 42
 
 # 5. (Optional) Run the background worker for async enrichment jobs
 devpulse worker
+
+# 6. (Optional) Serve the metrics API for the desktop dashboard
+DEVPULSE_API_TOKEN=change-me devpulse serve
 ```
 
 ## Development Shortcuts (Makefile)
@@ -414,6 +483,10 @@ The `Makefile` at the repository root provides convenience targets. Run `make he
 | `make lint` | Run `go vet` + `gofmt` check |
 | `make tidy` | Run `go mod tidy` |
 | `make clean` | Remove `./bin/` |
+| `make desktop` | Build the Rust desktop dashboard (release) |
+| `make desktop-run` | Run the desktop dashboard (debug build) |
+| `make desktop-test` | Run the desktop dashboard tests |
+| `make desktop-lint` | `cargo fmt --check` + `clippy` for the dashboard |
 
 **Example**
 

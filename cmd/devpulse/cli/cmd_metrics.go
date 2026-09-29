@@ -9,11 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mileschou/devpulse/internal/dora"
+	"github.com/mileschou/devpulse/internal/metrics"
 	"github.com/mileschou/devpulse/internal/persistence"
-	"github.com/mileschou/devpulse/internal/pullrequest"
 	"github.com/mileschou/devpulse/internal/repo"
-	"github.com/mileschou/devpulse/internal/x/statx"
 )
 
 func newMetricsCmd() *cobra.Command {
@@ -43,19 +41,9 @@ func runMetrics(ctx context.Context, repoArg, fromFlag, toFlag string) error {
 		return fmt.Errorf("invalid repo: %w", err)
 	}
 
-	from, err := parseMonth(fromFlag)
+	w, err := metrics.ParseWindow(fromFlag, toFlag, time.Now())
 	if err != nil {
-		return fmt.Errorf("invalid --from: %w", err)
-	}
-
-	var to time.Time
-	if toFlag == "" {
-		to = from.AddDate(0, 1, 0)
-	} else {
-		to, err = parseMonth(toFlag)
-		if err != nil {
-			return fmt.Errorf("invalid --to: %w", err)
-		}
+		return err
 	}
 
 	d, err := buildDeps(ctx)
@@ -69,145 +57,82 @@ func runMetrics(ctx context.Context, repoArg, fromFlag, toFlag string) error {
 		return fmt.Errorf("repo lookup: %w", err)
 	}
 
-	metrics := persistence.NewMetricsPersister(d.pers)
-	return printMetrics(ctx, metrics, r, from, to)
+	report, err := metrics.Compute(ctx, persistence.NewMetricsPersister(d.pers), r, w, time.Now())
+	if err != nil {
+		return err
+	}
+	printMetrics(stdout(), report, w)
+	return nil
 }
 
-func printMetrics(ctx context.Context, m *persistence.MetricsPersister, r repo.Repo, from, to time.Time) error {
-	w := stdout()
-	repoID, repoName := r.ID, r.Name.String()
-
-	// Single-month windows render as "2026-01"; anything wider shows
-	// the inclusive month range so a multi-month aggregate is not
-	// mistaken for one month's numbers.
-	label := from.Format("2006-01")
-	if lastMonth := to.AddDate(0, -1, 0); lastMonth.After(from) {
-		label = fmt.Sprintf("%s ~ %s", from.Format("2006-01"), lastMonth.Format("2006-01"))
-	}
-
-	fmt.Fprintf(w, "Metrics for %s (%s)\n", repoName, label)
+func printMetrics(w io.Writer, r metrics.Report, win metrics.Window) {
+	fmt.Fprintf(w, "Metrics for %s (%s)\n", r.Repo, win.Label())
 	fmt.Fprintf(w, "%s\n", strings.Repeat("─", 40))
 
-	total, failed, rate, err := m.BuildFailureRate(ctx, repoID, from, to)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(w, "CI Failure Rate:        %.1f%% (%d/%d PR builds)\n", rate*100, failed, total)
+	fmt.Fprintf(w, "CI Failure Rate:        %.1f%% (%d/%d PR builds)\n",
+		r.BuildFailure.Rate*100, r.BuildFailure.Failed, r.BuildFailure.Total)
+	fmt.Fprintf(w, "Avg Builds per PR:      %.1f\n", r.AvgBuildsPerPR)
+	fmt.Fprintf(w, "PR Lead Time:           avg %.1fh  p50 %.1fh  p90 %.1fh  (%d PRs)\n",
+		r.PRLeadTime.AvgHours, r.PRLeadTime.P50Hours, r.PRLeadTime.P90Hours, r.PRLeadTime.Count)
+	fmt.Fprintf(w, "Review Wait Time:       avg %.1fh (%d PRs)\n", r.ReviewWait.AvgHours, r.ReviewWait.Count)
+	fmt.Fprintf(w, "PR Size Distribution:   %s\n", formatSizeDist(r.PRSizeDistribution))
 
-	avg, err := m.AverageBuildsPerPR(ctx, repoID, from, to)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(w, "Avg Builds per PR:      %.1f\n", avg)
-
-	prCount, avgH, p50H, p90H, err := m.PRLeadTime(ctx, repoID, from, to)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(w, "PR Lead Time:           avg %.1fh  p50 %.1fh  p90 %.1fh  (%d PRs)\n", avgH, p50H, p90H, prCount)
-
-	rwCount, rwAvgH, err := m.ReviewWaitTime(ctx, repoID, from, to)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(w, "Review Wait Time:       avg %.1fh (%d PRs)\n", rwAvgH, rwCount)
-
-	dist, err := m.PRSizeDistribution(ctx, repoID, from, to)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(w, "PR Size Distribution:   %s\n", formatSizeDist(dist))
-
-	days, err := m.DailyBuildDuration(ctx, repoID, from, to)
-	if err != nil {
-		return err
-	}
-	if len(days) > 0 {
+	if len(r.DailyBuildDuration) > 0 {
 		fmt.Fprintf(w, "\nDaily Build Duration (avg seconds):\n")
-		for _, d := range days {
+		for _, d := range r.DailyBuildDuration {
 			fmt.Fprintf(w, "  %s: %.0fs (%d builds)\n", d.Day, d.AvgSeconds, d.Count)
 		}
 	}
 
-	return printDORA(ctx, w, m, r, from, to)
+	printDORA(w, r.DORA, r.Repo)
 }
 
-// printDORA renders the DORA section. Deployments are merges into the
-// default branch, so without a known default branch there is nothing
-// honest to report — the section says so instead of guessing.
-func printDORA(ctx context.Context, w io.Writer, m *persistence.MetricsPersister, r repo.Repo, from, to time.Time) error {
+// printDORA renders the DORA section. A nil section means the default
+// branch is unknown, and deployments are merges into it, so the output
+// says how to fix that instead of guessing.
+func printDORA(w io.Writer, d *metrics.DORA, repoName string) {
 	fmt.Fprintf(w, "\nDORA (deployment = PR merged into default branch)\n")
 	fmt.Fprintf(w, "%s\n", strings.Repeat("─", 40))
 
-	if r.DefaultBranch == "" {
-		fmt.Fprintf(w, "Default branch unknown; run `devpulse repo refresh %s` first.\n", r.Name.String())
-		return nil
+	if d == nil {
+		fmt.Fprintf(w, "Default branch unknown; run `devpulse repo refresh %s` first.\n", repoName)
+		return
 	}
-
-	in, err := m.DORAInput(ctx, r.ID, r.DefaultBranch, from, to)
-	if err != nil {
-		return err
-	}
-	in.HotfixLabel = r.HotfixLabel
-	in.To = elapsedEnd(to, time.Now().UTC())
-	rep := dora.Compute(in)
 
 	fmt.Fprintf(w, "Deployment Frequency:   %d deploys into %s  (%.2f/week, %d deploy days)\n",
-		rep.Deployments, r.DefaultBranch, rep.PerWeek, rep.DeployDays)
-	fmt.Fprintf(w, "Lead Time for Changes:  %s\n", formatSummary(rep.LeadTime, "deploys"))
+		d.Deployments, d.DefaultBranch, d.PerWeek, d.DeployDays)
+	fmt.Fprintf(w, "Lead Time for Changes:  %s\n", formatSummary(d.LeadTime, "deploys"))
 
 	cfr := "n/a (no deploys)"
-	if rep.ChangeFailureRate != nil {
-		cfr = fmt.Sprintf("%.1f%% (%d/%d)", *rep.ChangeFailureRate*100, rep.Reverts+rep.Hotfixes, rep.Deployments)
+	if d.ChangeFailureRate != nil {
+		cfr = fmt.Sprintf("%.1f%% (%d/%d)", *d.ChangeFailureRate*100, d.Reverts+d.Hotfixes, d.Deployments)
 	}
 	fmt.Fprintf(w, "Change Failure Rate:    %s  reverts=%d hotfixes=%d (label %q)\n",
-		cfr, rep.Reverts, rep.Hotfixes, r.HotfixLabel)
+		cfr, d.Reverts, d.Hotfixes, d.HotfixLabel)
 	fmt.Fprintf(w, "Recovery Time:          %s  from reverts=%d incidents=%d (label %q)\n",
-		formatSummary(rep.Recovery, "samples"), rep.RecoveryFromReverts, rep.RecoveryFromIncidents, r.IncidentLabel)
-	return nil
+		formatSummary(d.Recovery, "samples"), d.RecoveryFromReverts, d.RecoveryFromIncidents, d.IncidentLabel)
 }
 
-// elapsedEnd clamps a window end to now. A window still in progress —
-// the default, since --from defaults to the current month — is measured
-// only up to now, so the per-week rate is not diluted by days that have
-// not happened yet. Nothing can be merged after now, so the counts are
-// unaffected.
-func elapsedEnd(to, now time.Time) time.Time {
-	if now.Before(to) {
-		return now
-	}
-	return to
-}
-
-// formatSummary renders an hours Summary, or "(no data)" for an empty
+// formatSummary renders an hours summary, or "(no data)" for an empty
 // sample so a zero average is never mistaken for an instant result.
-func formatSummary(s statx.Summary, unit string) string {
+func formatSummary(s metrics.HoursSummary, unit string) string {
 	if s.Count == 0 {
 		return "(no data)"
 	}
-	return fmt.Sprintf("avg %.1fh  p50 %.1fh  p90 %.1fh  (%d %s)", s.Avg, s.P50, s.P90, s.Count, unit)
+	return fmt.Sprintf("avg %.1fh  p50 %.1fh  p90 %.1fh  (%d %s)", s.AvgHours, s.P50Hours, s.P90Hours, s.Count, unit)
 }
 
-func formatSizeDist(dist map[string]int) string {
+// formatSizeDist prints only the buckets that have PRs, so an empty
+// window reads "(no data)" rather than a row of zeros.
+func formatSizeDist(dist []metrics.SizeBucketCount) string {
 	var parts []string
-	for _, b := range pullrequest.SizeBuckets() {
-		if n, ok := dist[b]; ok {
-			parts = append(parts, fmt.Sprintf("%s:%d", b, n))
+	for _, b := range dist {
+		if b.Count > 0 {
+			parts = append(parts, fmt.Sprintf("%s:%d", b.Bucket, b.Count))
 		}
-	}
-	if n, ok := dist["unknown"]; ok {
-		parts = append(parts, fmt.Sprintf("unknown:%d", n))
 	}
 	if len(parts) == 0 {
 		return "(no data)"
 	}
 	return strings.Join(parts, "  ")
-}
-
-func parseMonth(s string) (time.Time, error) {
-	t, err := time.Parse("2006-01", s)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("expected YYYY-MM, got %q", s)
-	}
-	return t, nil
 }

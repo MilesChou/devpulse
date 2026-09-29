@@ -97,6 +97,32 @@ jobs:
             -f docker-compose.${{ matrix.dialect }}.yml \
             down -v
 
+  # The Rust desktop dashboard. Its tests decode the Go API golden files
+  # (internal/http/testdata), so this job also catches API contract
+  # drift between the Go server and the client. macOS runners already
+  # have what eframe links against; Linux would need extra X11/Wayland
+  # dev packages.
+  desktop:
+    name: Desktop (Rust)
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+      - name: cargo fmt
+        run: cargo fmt --check
+      - name: cargo clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: cargo test
+        run: cargo test --locked
+
   docker:
     name: Docker build
     runs-on: ubuntu-latest

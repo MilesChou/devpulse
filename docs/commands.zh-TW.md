@@ -368,7 +368,73 @@ devpulse worker --poll 2s
 devpulse serve
 ```
 
-**預留位置——v1 尚未實作。** 印出提示訊息後結束。HTTP API 介面規劃於未來版本提供。
+啟動唯讀的 JSON API，直到按下 `Ctrl-C`（`SIGINT`）或收到 `SIGTERM` 為止。[桌面 dashboard](../desktop/README.zh-TW.md) 是它的 client，其他能發 HTTP 請求的工具也都可以使用。
+
+| 變數 | 預設值 | 說明 |
+|---|---|---|
+| `HTTP_ADDR` | `127.0.0.1:8080` | 監聽位址 |
+| `DEVPULSE_API_TOKEN` | *（空）* | 每個 `/api/` 請求都必須帶上的 bearer token。當 `HTTP_ADDR` 不是 loopback 位址時**必填**，否則 `serve` 會拒絕啟動，因為 API 會公開所有追蹤中 repo 的資料 |
+
+**端點**
+
+| 方法 + 路徑 | 認證 | 回傳 |
+|---|---|---|
+| `GET /healthz` | 不需要 | `{"status":"ok"}` |
+| `GET /api/v1/repos` | bearer | `{"repos":[{id, full_name, owner, name, provider, description, default_branch, disabled}]}` |
+| `GET /api/v1/repos/{owner}/{name}` | bearer | 單一 repo，格式同上 |
+| `GET /api/v1/repos/{owner}/{name}/metrics?from=YYYY-MM&to=YYYY-MM` | bearer | 該時間範圍的報表（見下方） |
+| `GET /api/v1/repos/{owner}/{name}/metrics/monthly?from=YYYY-MM&to=YYYY-MM` | bearer | `{repo, from, to, months:[報表, ...]}`，每個月一份報表，由舊到新 |
+
+`from` / `to` 的行為和 `metrics` 指令的旗標完全相同：`from` 預設為當月（UTC），`to` 不包含在範圍內，預設為 `from` 加一個月。範圍最多 36 個月。報表和 `devpulse metrics` 使用同一段程式計算，兩者的數字不會不一致。
+
+**報表**
+
+```json
+{
+  "repo": "MilesChou/devpulse",
+  "from": "2026-05",
+  "to": "2026-06",
+  "build_failure": { "total": 3, "failed": 2, "rate": 0.6666666666666666 },
+  "avg_builds_per_pr": 1.5,
+  "pr_lead_time": { "count": 3, "avg_hours": 20, "p50_hours": 20, "p90_hours": 28 },
+  "review_wait": { "count": 3, "avg_hours": 2 },
+  "pr_size_distribution": [
+    { "bucket": "XS", "count": 1 }, { "bucket": "S", "count": 1 },
+    { "bucket": "M", "count": 0 }, { "bucket": "L", "count": 1 },
+    { "bucket": "XL", "count": 0 }
+  ],
+  "daily_build_duration": [
+    { "day": "2026-05-01", "avg_seconds": 90, "count": 2 }
+  ],
+  "dora": {
+    "default_branch": "main",
+    "hotfix_label": "hotfix",
+    "incident_label": "incident",
+    "deployments": 3,
+    "per_week": 2.1,
+    "deploy_days": 3,
+    "lead_time": { "count": 3, "avg_hours": 22, "p50_hours": 22, "p90_hours": 30 },
+    "reverts": 1,
+    "hotfixes": 0,
+    "change_failure_rate": 0.3333333333333333,
+    "recovery": { "count": 2, "avg_hours": 36, "p50_hours": 36, "p90_hours": 61.6 },
+    "recovery_from_reverts": 1,
+    "recovery_from_incidents": 1
+  }
+}
+```
+
+`pr_size_distribution` 固定依尺寸由小到大列出五個 bucket；只有在部分 PR 沒有 bucket 時，才會多一筆 `unknown`。`dora` 依照 [DORA 定義](#dora-定義) 計算；repo 的 default branch 還不知道時為 `null`（請先執行 `repo refresh`），而沒有任何部署時，其中的 `change_failure_rate` 為 `null`。視窗還沒結束時，`per_week` 只計算到現在為止，和 `metrics` 指令相同。完整範例是 [`internal/http/testdata/`](../internal/http/testdata/) 裡的 golden 檔案，dashboard 的測試也解析同一批檔案。
+
+**錯誤**格式為 JSON `{"error": "..."}`，狀態碼為 `400`（`from` / `to` 格式錯誤）、`401`（缺少 token 或 token 錯誤）、`404`（repo 未追蹤或路徑不存在）或 `500`（細節只記錄在 server log，不會回傳）。
+
+**範例**
+
+```sh
+DEVPULSE_API_TOKEN=change-me devpulse serve
+curl -H "Authorization: Bearer change-me" \
+  "http://127.0.0.1:8080/api/v1/repos/MilesChou/devpulse/metrics?from=2026-05"
+```
 
 ---
 
@@ -397,6 +463,9 @@ devpulse pr sync MilesChou/devpulse 42
 
 # 5. （選用）啟動背景 Worker 處理非同步補充工作
 devpulse worker
+
+# 6. （選用）啟動指標 API，給桌面 dashboard 使用
+DEVPULSE_API_TOKEN=change-me devpulse serve
 ```
 
 ## 開發捷徑（Makefile）
@@ -413,6 +482,10 @@ devpulse worker
 | `make lint` | 執行 `go vet` + `gofmt` 檢查 |
 | `make tidy` | 執行 `go mod tidy` |
 | `make clean` | 刪除 `./bin/` |
+| `make desktop` | 編譯 Rust 桌面 dashboard（release） |
+| `make desktop-run` | 執行桌面 dashboard（debug 版） |
+| `make desktop-test` | 執行桌面 dashboard 的測試 |
+| `make desktop-lint` | 對 dashboard 執行 `cargo fmt --check` + `clippy` |
 
 **範例**
 

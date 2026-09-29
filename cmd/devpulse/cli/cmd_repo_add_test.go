@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func setEnv(t *testing.T) {
@@ -61,13 +63,72 @@ func TestMigrateUp_OnMemoryDSN(t *testing.T) {
 	}
 }
 
-func TestServe_NotImplemented(t *testing.T) {
+func TestServe_RefusesPublicAddrWithoutToken(t *testing.T) {
 	setEnv(t)
-	out, err := runCmd(t, "serve")
-	if err != nil {
-		t.Fatalf("serve placeholder should not error: %v", err)
+	t.Setenv("HTTP_ADDR", "0.0.0.0:0")
+	t.Setenv("DEVPULSE_API_TOKEN", "")
+	_, err := runCmd(t, "serve")
+	if err == nil || !strings.Contains(err.Error(), "DEVPULSE_API_TOKEN") {
+		t.Fatalf("expected a missing-token error, got %v", err)
 	}
-	if !strings.Contains(out, "not implemented") {
-		t.Fatalf("expected stub message, got: %q", out)
+}
+
+// syncBuffer lets the test read serve's output while serve is still
+// writing it from another goroutine.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func TestServe_StopsOnCancel(t *testing.T) {
+	setEnv(t)
+	t.Setenv("HTTP_ADDR", "127.0.0.1:0")
+	t.Setenv("DEVPULSE_API_TOKEN", "")
+
+	var out syncBuffer
+	prev := SetStdout(&out)
+	defer SetStdout(prev)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	root := NewRootCmd()
+	root.SetArgs([]string{"serve"})
+	done := make(chan error, 1)
+	go func() { done <- root.ExecuteContext(ctx) }()
+
+	deadline := time.After(10 * time.Second)
+	for !strings.Contains(out.String(), "serving on") {
+		select {
+		case err := <-done:
+			t.Fatalf("serve exited early: %v (output %q)", err, out.String())
+		case <-deadline:
+			t.Fatalf("serve did not start: %q", out.String())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("serve: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("serve did not stop on cancel")
+	}
+	if !strings.Contains(out.String(), "server stopped") {
+		t.Fatalf("output: %q", out.String())
 	}
 }

@@ -31,6 +31,9 @@ init.yaml
 *.out
 coverage.txt
 
+# Rust (desktop dashboard)
+/desktop/target
+
 # AI
 .claude/settings.local.json
 .claude/worktrees/

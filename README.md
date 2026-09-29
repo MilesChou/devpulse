@@ -6,13 +6,16 @@ rate, PR review latency, build duration, PR re-push count, and the four
 DORA metrics), and persists them to a relational database for downstream
 analysis.
 
-Distributed as a single Go binary.
+Distributed as a single Go binary. `devpulse serve` exposes the metrics
+as a read-only JSON API, and an optional Rust desktop dashboard
+([`desktop/`](desktop/README.md)) charts them.
 
 > 正體中文：[README.zh-TW.md](README.zh-TW.md)
 
 ## Scope
 
-- **Is**: a CLI tool plus a relational data layer.
+- **Is**: a CLI tool plus a relational data layer, with a read-only
+  HTTP API and a desktop dashboard on top.
 - **Is not**: a SaaS, a multi-tenant platform, or a realtime webhook
   service.
 - **Designed for**: single-host, single-user, ~100–1000 builds per repo
@@ -25,6 +28,7 @@ Distributed as a single Go binary.
 - Go **1.26+** (only for building from source)
 - A supported database: PostgreSQL, MySQL, or SQLite (including in-memory)
 - A GitHub personal access token; a Travis CI token if Travis is used
+- Rust **1.95+**, only for building the desktop dashboard
 
 ### Build from source
 
@@ -91,6 +95,9 @@ devpulse metrics MilesChou/devpulse --from 2026-05
 
 # Process enqueued jobs (long-running).
 devpulse worker
+
+# Serve the metrics as JSON for the desktop dashboard (long-running).
+DEVPULSE_API_TOKEN=change-me devpulse serve
 ```
 
 An optional disk-backed HTTP response cache (`CACHE_ENABLED=true`) can
@@ -149,6 +156,25 @@ repo with `devpulse repo config set <repo> hotfix-label <label>` and
 definitions and limitations are in
 [docs/commands.md](docs/commands.md#dora-definitions).
 
+## Desktop dashboard
+
+[`desktop/`](desktop/README.md) is a native dashboard written in Rust
+(egui) that reads the `devpulse serve` API: KPI cards for CI failure
+rate, builds per PR, PR lead time and review wait (each with its ideal
+value and month-over-month change), the four DORA metrics, PR size
+distribution, daily build duration, and 12-month trends.
+
+![Desktop dashboard](docs/images/desktop-dashboard.jpg)
+
+```bash
+DEVPULSE_API_TOKEN=change-me devpulse serve   # on the host with the DB
+make desktop-run                              # then enter URL + token in Settings
+```
+
+The dashboard only holds the DevPulse API token (in the OS keychain);
+GitHub and CI tokens stay on the server. See
+[`serve`](docs/commands.md#serve) for the endpoints and the JSON shape.
+
 ## Commands
 
 DevPulse groups commands by resource (`repo`, `pr`) with verbs underneath,
@@ -165,7 +191,7 @@ cron / CI.
 | `devpulse metrics <owner/name>` | Print engineering-efficiency and DORA metrics for a month window |
 | `devpulse migrate {up,down,status}` | Schema migration |
 | `devpulse worker` | Run the DB-backed job worker |
-| `devpulse serve` | Placeholder for the v2 HTTP API |
+| `devpulse serve` | Serve repos and metrics as a read-only JSON API |
 
 ## Development
 
@@ -176,6 +202,10 @@ make test      # Run unit tests
 make test-race # Run unit tests with the race detector
 make lint      # gofmt + go vet
 make tidy      # go mod tidy
+
+make desktop-test  # cargo test for the desktop dashboard
+make desktop-lint  # cargo fmt --check + clippy
+make desktop       # release build of the dashboard
 ```
 
 By default `make test` runs against in-memory SQLite. To run the same
@@ -217,6 +247,11 @@ spans; leave it empty and the provider is a no-op.
   for the Travis HTTP client (and any other generic outbound HTTP)
 - OpenTelemetry SDK for tracing
 - A small in-tree DB-backed job queue
+- `net/http` (Go 1.22+ routing patterns) for the JSON API
+- Desktop dashboard: Rust with [`eframe`/`egui`](https://github.com/emilk/egui),
+  [`egui_plot`](https://github.com/emilk/egui_plot),
+  [`ureq`](https://github.com/algesten/ureq) and
+  [`keyring`](https://github.com/open-source-cooperative/keyring-rs)
 
 ## License
 
