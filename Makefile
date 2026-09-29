@@ -58,7 +58,7 @@ clean:
 # not part of `all` (the pre-commit hook), so Go-only commits don't need
 # a Rust toolchain.
 desktop:
-	cd $(DESKTOP) && $(CARGO) build --release
+	cd $(DESKTOP) && $(CARGO) build --release --locked
 
 desktop-run:
 	cd $(DESKTOP) && $(CARGO) run

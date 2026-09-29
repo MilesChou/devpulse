@@ -40,6 +40,29 @@ make build
 go install github.com/mileschou/devpulse/cmd/devpulse@latest
 ```
 
+### 編譯桌面 dashboard（選用）
+
+Dashboard 是 `desktop/` 底下獨立的 Rust crate，不需要 Go toolchain。在要使用 dashboard 的機器上：
+
+1. 用 [rustup](https://rustup.rs) 安裝 Rust 1.95 以上（已經裝過的話執行 `rustup update stable`）。
+2. 安裝各平台的前置套件：macOS 裝 Xcode Command Line Tools，Windows 裝 Visual Studio Build Tools（C++ 工作負載），Debian / Ubuntu 則安裝：
+
+   ```bash
+   sudo apt-get install build-essential pkg-config \
+     libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev
+   ```
+
+3. 編譯：
+
+   ```bash
+   cd desktop
+   cargo build --release --locked   # 或在 repo 根目錄執行 `make desktop`
+   ```
+
+4. 執行 `desktop/target/release/devpulse-desktop`（Windows 為 `devpulse-desktop.exe`），開啟 **Settings**，輸入正在運作的 `devpulse serve` 的 URL 和 token。
+
+細節請見 [desktop/README.zh-TW.md](desktop/README.zh-TW.md#編譯)：連到另一台機器上的 server、在本機完整試跑，以及疑難排解。
+
 ## 設定
 
 複製範例檔並填入機密資訊：

@@ -99,12 +99,16 @@ jobs:
 
   # The Rust desktop dashboard. Its tests decode the Go API golden files
   # (internal/http/testdata), so this job also catches API contract
-  # drift between the Go server and the client. macOS runners already
-  # have what eframe links against; Linux would need extra X11/Wayland
-  # dev packages.
+  # drift between the Go server and the client. The Linux leg installs
+  # exactly the packages desktop/README.md tells users to install, so
+  # the documented build steps are exercised on every run.
   desktop:
-    name: Desktop (Rust)
-    runs-on: macos-latest
+    name: Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
     defaults:
       run:
         working-directory: desktop
@@ -116,12 +120,21 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev
       - name: cargo fmt
+        if: runner.os == 'macOS'
         run: cargo fmt --check
       - name: cargo clippy
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: cargo test
         run: cargo test --locked
+      - name: cargo build --release
+        run: cargo build --release --locked
 
   docker:
     name: Docker build

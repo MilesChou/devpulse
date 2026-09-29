@@ -45,6 +45,37 @@ Or install directly:
 go install github.com/mileschou/devpulse/cmd/devpulse@latest
 ```
 
+### Build the desktop dashboard (optional)
+
+The dashboard is a separate Rust crate in `desktop/` and needs no Go
+toolchain. On the machine where you want the dashboard:
+
+1. Install Rust 1.95+ with [rustup](https://rustup.rs) (`rustup update
+   stable` if it is already installed).
+2. Install the platform prerequisites: Xcode Command Line Tools on
+   macOS, Visual Studio Build Tools (C++ workload) on Windows, or on
+   Debian / Ubuntu:
+
+   ```bash
+   sudo apt-get install build-essential pkg-config \
+     libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev
+   ```
+
+3. Build:
+
+   ```bash
+   cd desktop
+   cargo build --release --locked   # or `make desktop` from the repo root
+   ```
+
+4. Run `desktop/target/release/devpulse-desktop`
+   (`devpulse-desktop.exe` on Windows), open **Settings**, and enter the
+   URL and token of a running `devpulse serve`.
+
+[desktop/README.md](desktop/README.md#build) has the details: connecting
+to a server on another machine, an end-to-end local trial, and
+troubleshooting.
+
 ## Configuration
 
 Copy the example file and fill in the secrets:
