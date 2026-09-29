@@ -79,6 +79,7 @@ func buildDeps(ctx context.Context) (*deps, error) {
 	builds := persistence.NewBuildPersister(pers)
 	prs := persistence.NewPullRequestPersister(pers)
 	reviews := persistence.NewReviewPersister(pers)
+	incidents := persistence.NewIncidentPersister(pers)
 
 	// Build an optional cache transport shared by all API clients.
 	// When CACHE_ENABLED=true, successful responses are stored on
@@ -143,7 +144,7 @@ func buildDeps(ctx context.Context) (*deps, error) {
 	orch := fetching.NewOrchestrator(
 		ciProviders,
 		vcs,
-		builds, prs, reviews,
+		builds, prs, reviews, incidents,
 		logger,
 	)
 

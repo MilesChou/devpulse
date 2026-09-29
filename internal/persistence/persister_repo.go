@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/mileschou/devpulse/internal/repo"
 )
@@ -23,7 +25,8 @@ var ErrRepoNotFound = errors.New("persistence: repo not found")
 const defaultPRSyncStart = 1
 
 const repoSelectColumns = `id, provider, owner, repo_name, description,
-	default_branch, disabled, pr_sync_start_number`
+	default_branch, disabled, pr_sync_start_number, incident_label, hotfix_label,
+	pr_updated_watermark`
 
 // FindByID returns the Repo with the given ID, or ErrRepoNotFound.
 func (r *RepoPersister) FindByID(ctx context.Context, id string) (repo.Repo, error) {
@@ -93,6 +96,7 @@ func scanRepoRow(s rowScanner) (repo.Repo, error) {
 	if err := s.Scan(
 		&got.ID, &provider, &owner, &repoName,
 		&description, &defaultBranch, &disabled, &prSyncStartNumber,
+		&got.IncidentLabel, &got.HotfixLabel, &got.PRUpdatedWatermark,
 	); err != nil {
 		return repo.Repo{}, err
 	}
@@ -122,11 +126,14 @@ func (r *RepoPersister) Create(ctx context.Context, provider string, fullName re
 	if start < 1 {
 		start = defaultPRSyncStart
 	}
+	incidentLabel := labelOrDefault(meta.IncidentLabel, repo.DefaultIncidentLabel)
+	hotfixLabel := labelOrDefault(meta.HotfixLabel, repo.DefaultHotfixLabel)
 
 	const q = `INSERT INTO repos
 	           (id, provider, owner, repo_name, url, description, default_branch,
-	            disabled, pr_sync_start_number, created_at, updated_at)
-	           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	            disabled, pr_sync_start_number, incident_label, hotfix_label,
+	            created_at, updated_at)
+	           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	if _, err := r.ExecCtx(ctx, q,
 		id,
@@ -138,6 +145,8 @@ func (r *RepoPersister) Create(ctx context.Context, provider string, fullName re
 		meta.DefaultBranch,
 		meta.Disabled,
 		start,
+		incidentLabel,
+		hotfixLabel,
 		now,
 		now,
 	); err != nil {
@@ -151,6 +160,8 @@ func (r *RepoPersister) Create(ctx context.Context, provider string, fullName re
 		DefaultBranch:     meta.DefaultBranch,
 		Disabled:          meta.Disabled,
 		PRSyncStartNumber: start,
+		IncidentLabel:     incidentLabel,
+		HotfixLabel:       hotfixLabel,
 	}
 	return created, nil
 }
@@ -205,6 +216,62 @@ func (r *RepoPersister) UpdatePRSyncStart(ctx context.Context, id string, n int)
 		return ErrRepoNotFound
 	}
 	return nil
+}
+
+// UpdateLabels sets the DORA label settings (incident issue label and
+// hotfix PR label) for an existing repo. Blank values are rejected: an
+// empty label would silently match nothing and zero out the metric.
+//
+// Returns ErrRepoNotFound when no row matches `id`.
+func (r *RepoPersister) UpdateLabels(ctx context.Context, id, incidentLabel, hotfixLabel string) error {
+	incidentLabel = strings.TrimSpace(incidentLabel)
+	hotfixLabel = strings.TrimSpace(hotfixLabel)
+	if incidentLabel == "" || hotfixLabel == "" {
+		return fmt.Errorf("repo labels: must not be blank (incident=%q hotfix=%q)", incidentLabel, hotfixLabel)
+	}
+
+	const q = `UPDATE repos SET incident_label = ?, hotfix_label = ?, updated_at = ? WHERE id = ?`
+	res, err := r.ExecCtx(ctx, q, incidentLabel, hotfixLabel, r.Now(), id)
+	if err != nil {
+		return fmt.Errorf("repo update labels: %w", err)
+	}
+	// MySQL reports 0 affected rows when the new values equal the old
+	// ones, so a zero count is confirmed with a lookup instead of being
+	// treated as "not found" outright.
+	if rows, err := res.RowsAffected(); err == nil && rows == 0 {
+		if _, err := r.FindByID(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// UpdatePRUpdatedWatermark records the upstream updated_at high-water
+// mark reached by a fully successful PR refresh. It is sync state, so
+// unlike the operator settings it does not bump updated_at.
+//
+// Returns ErrRepoNotFound when no row matches `id`.
+func (r *RepoPersister) UpdatePRUpdatedWatermark(ctx context.Context, id string, t time.Time) error {
+	const q = `UPDATE repos SET pr_updated_watermark = ? WHERE id = ?`
+	res, err := r.ExecCtx(ctx, q, t.UTC(), id)
+	if err != nil {
+		return fmt.Errorf("repo update pr watermark: %w", err)
+	}
+	// MySQL reports 0 affected rows when the value is unchanged, so a
+	// zero count is confirmed with a lookup, as in UpdateLabels.
+	if rows, err := res.RowsAffected(); err == nil && rows == 0 {
+		if _, err := r.FindByID(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func labelOrDefault(label, def string) string {
+	if l := strings.TrimSpace(label); l != "" {
+		return l
+	}
+	return def
 }
 
 // UpdateMetadata writes the description / default_branch / disabled

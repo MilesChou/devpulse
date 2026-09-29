@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/mileschou/devpulse/internal/pullrequest"
 )
@@ -66,6 +67,9 @@ func (r *PullRequestPersister) UpsertMany(ctx context.Context, prs []pullrequest
 			p.FirstReviewAt, p.FirstApprovedAt,
 			p.TimeToApproval, p.TimeToMerge,
 			p.MergedAt, p.ClosedAt,
+			nullableText(p.Title), encodeLabels(p.Labels),
+			nullableText(p.BaseRef), nullableText(p.HeadRef),
+			nullableText(p.MergeCommitSHA), p.FirstCommitAt, p.RevertsNumber,
 			now, now,
 		}
 		r.Logger.Debug("sql.exec", slog.String("query", r.upsertSQL()), slog.Any("args", args))
@@ -116,12 +120,66 @@ func (r *PullRequestPersister) MaxNumber(ctx context.Context, repoID string) (in
 	return int(n.Int64), true, nil
 }
 
+// ListOpenNumbers returns, ascending, the numbers of every PR stored as
+// open for the repo. The orchestrator refreshes these on every sync, so
+// a stale (cached) open copy heals once its cache entry expires.
+func (r *PullRequestPersister) ListOpenNumbers(ctx context.Context, repoID string) ([]int, error) {
+	const q = `SELECT number FROM pull_requests
+	           WHERE repo_id = ? AND status = 'open'
+	           ORDER BY number`
+
+	out, err := r.queryNumbers(ctx, q, repoID)
+	if err != nil {
+		return nil, fmt.Errorf("pr list open: %w", err)
+	}
+	return out, nil
+}
+
+// ListIncompleteNumbers returns, ascending, the numbers of every PR
+// stored without its DORA facts: no base_ref (every current sync stores
+// one, so the row predates the DORA columns), or merged with no
+// first_commit_at. The orchestrator re-syncs them until they are
+// complete.
+func (r *PullRequestPersister) ListIncompleteNumbers(ctx context.Context, repoID string) ([]int, error) {
+	const q = `SELECT number FROM pull_requests
+	           WHERE repo_id = ?
+	             AND (base_ref IS NULL
+	                  OR (status = 'merged' AND first_commit_at IS NULL))
+	           ORDER BY number`
+
+	out, err := r.queryNumbers(ctx, q, repoID)
+	if err != nil {
+		return nil, fmt.Errorf("pr list incomplete: %w", err)
+	}
+	return out, nil
+}
+
+func (r *PullRequestPersister) queryNumbers(ctx context.Context, q string, args ...any) ([]int, error) {
+	rows, err := r.QueryCtx(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []int
+	for rows.Next() {
+		var n int
+		if err := rows.Scan(&n); err != nil {
+			return nil, fmt.Errorf("scan: %w", err)
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
 // FindByNumber returns the PR by (repo_id, number).
 func (r *PullRequestPersister) FindByNumber(ctx context.Context, repoID string, number int) (pullrequest.PullRequest, error) {
 	const q = `SELECT id, repo_id, number, author_account, status,
 	                  additions, deletions, total_changed_lines, size_bucket, is_draft,
 	                  pr_created_at, ready_at, first_review_at, first_approved_at,
-	                  time_to_approval, time_to_merge, merged_at, closed_at
+	                  time_to_approval, time_to_merge, merged_at, closed_at,
+	                  title, labels, base_ref, head_ref, merge_commit_sha,
+	                  first_commit_at, reverts_number
 	             FROM pull_requests WHERE repo_id = ? AND number = ?`
 
 	row := r.QueryRowCtx(ctx, q, repoID, number)
@@ -148,6 +206,8 @@ func (r *PullRequestPersister) upsertSQL() string {
 	         first_review_at, first_approved_at,
 	         time_to_approval, time_to_merge,
 	         merged_at, closed_at,
+	         title, labels, base_ref, head_ref,
+	         merge_commit_sha, first_commit_at, reverts_number,
 	         created_at, updated_at`
 
 	values := `?, ?, ?, ?, ?, ?,
@@ -156,6 +216,8 @@ func (r *PullRequestPersister) upsertSQL() string {
 	           ?, ?,
 	           ?, ?,
 	           ?, ?,
+	           ?, ?, ?, ?,
+	           ?, ?, ?,
 	           ?, ?`
 
 	if r.Dialect.IsMySQL() {
@@ -174,6 +236,13 @@ func (r *PullRequestPersister) upsertSQL() string {
 		            time_to_merge       = VALUES(time_to_merge),
 		            merged_at           = VALUES(merged_at),
 		            closed_at           = VALUES(closed_at),
+		            title               = VALUES(title),
+		            labels              = VALUES(labels),
+		            base_ref            = VALUES(base_ref),
+		            head_ref            = VALUES(head_ref),
+		            merge_commit_sha    = VALUES(merge_commit_sha),
+		            first_commit_at     = VALUES(first_commit_at),
+		            reverts_number      = VALUES(reverts_number),
 		            updated_at          = VALUES(updated_at)`
 	}
 	return `INSERT INTO pull_requests (` + cols + `) VALUES (` + values + `)
@@ -191,6 +260,13 @@ func (r *PullRequestPersister) upsertSQL() string {
 	            time_to_merge       = EXCLUDED.time_to_merge,
 	            merged_at           = EXCLUDED.merged_at,
 	            closed_at           = EXCLUDED.closed_at,
+	            title               = EXCLUDED.title,
+	            labels              = EXCLUDED.labels,
+	            base_ref            = EXCLUDED.base_ref,
+	            head_ref            = EXCLUDED.head_ref,
+	            merge_commit_sha    = EXCLUDED.merge_commit_sha,
+	            first_commit_at     = EXCLUDED.first_commit_at,
+	            reverts_number      = EXCLUDED.reverts_number,
 	            updated_at          = EXCLUDED.updated_at`
 }
 
@@ -198,17 +274,54 @@ func (r *PullRequestPersister) upsertSQL() string {
 func scanPullRequest(s rowScanner) (pullrequest.PullRequest, error) {
 	var p pullrequest.PullRequest
 	var statusStr string
+	var title, labels, baseRef, headRef, mergeSHA sql.NullString
 
 	err := s.Scan(
 		&p.ID, &p.RepoID, &p.Number, &p.Author, &statusStr,
 		&p.Additions, &p.Deletions, &p.TotalChangedLines, &p.SizeBucket, &p.IsDraft,
 		&p.CreatedAt, &p.ReadyAt, &p.FirstReviewAt, &p.FirstApprovedAt,
 		&p.TimeToApproval, &p.TimeToMerge, &p.MergedAt, &p.ClosedAt,
+		&title, &labels, &baseRef, &headRef, &mergeSHA,
+		&p.FirstCommitAt, &p.RevertsNumber,
 	)
 	if err != nil {
 		return p, err
 	}
 
 	p.Status = pullrequest.ParseStatus(statusStr)
+	p.Title = title.String
+	p.Labels = decodeLabels(labels.String)
+	p.BaseRef = baseRef.String
+	p.HeadRef = headRef.String
+	p.MergeCommitSHA = mergeSHA.String
 	return p, nil
+}
+
+// labelSeparator joins labels into the single pull_requests.labels
+// column. GitHub label names cannot contain a newline, so the encoding
+// is unambiguous without escaping.
+const labelSeparator = "\n"
+
+// encodeLabels stores an empty label set as NULL.
+func encodeLabels(labels []string) any {
+	if len(labels) == 0 {
+		return nil
+	}
+	return strings.Join(labels, labelSeparator)
+}
+
+func decodeLabels(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, labelSeparator)
+}
+
+// nullableText stores an empty string as NULL, so rows synced before a
+// column existed and rows with no value read back the same way.
+func nullableText(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }

@@ -3,14 +3,17 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/mileschou/devpulse/internal/dora"
 	"github.com/mileschou/devpulse/internal/persistence"
 	"github.com/mileschou/devpulse/internal/pullrequest"
 	"github.com/mileschou/devpulse/internal/repo"
+	"github.com/mileschou/devpulse/internal/x/statx"
 )
 
 func newMetricsCmd() *cobra.Command {
@@ -67,11 +70,12 @@ func runMetrics(ctx context.Context, repoArg, fromFlag, toFlag string) error {
 	}
 
 	metrics := persistence.NewMetricsPersister(d.pers)
-	return printMetrics(ctx, metrics, r.ID, name.String(), from, to)
+	return printMetrics(ctx, metrics, r, from, to)
 }
 
-func printMetrics(ctx context.Context, m *persistence.MetricsPersister, repoID, repoName string, from, to time.Time) error {
+func printMetrics(ctx context.Context, m *persistence.MetricsPersister, r repo.Repo, from, to time.Time) error {
 	w := stdout()
+	repoID, repoName := r.ID, r.Name.String()
 
 	// Single-month windows render as "2026-01"; anything wider shows
 	// the inclusive month range so a multi-month aggregate is not
@@ -125,7 +129,63 @@ func printMetrics(ctx context.Context, m *persistence.MetricsPersister, repoID, 
 		}
 	}
 
+	return printDORA(ctx, w, m, r, from, to)
+}
+
+// printDORA renders the DORA section. Deployments are merges into the
+// default branch, so without a known default branch there is nothing
+// honest to report — the section says so instead of guessing.
+func printDORA(ctx context.Context, w io.Writer, m *persistence.MetricsPersister, r repo.Repo, from, to time.Time) error {
+	fmt.Fprintf(w, "\nDORA (deployment = PR merged into default branch)\n")
+	fmt.Fprintf(w, "%s\n", strings.Repeat("─", 40))
+
+	if r.DefaultBranch == "" {
+		fmt.Fprintf(w, "Default branch unknown; run `devpulse repo refresh %s` first.\n", r.Name.String())
+		return nil
+	}
+
+	in, err := m.DORAInput(ctx, r.ID, r.DefaultBranch, from, to)
+	if err != nil {
+		return err
+	}
+	in.HotfixLabel = r.HotfixLabel
+	in.To = elapsedEnd(to, time.Now().UTC())
+	rep := dora.Compute(in)
+
+	fmt.Fprintf(w, "Deployment Frequency:   %d deploys into %s  (%.2f/week, %d deploy days)\n",
+		rep.Deployments, r.DefaultBranch, rep.PerWeek, rep.DeployDays)
+	fmt.Fprintf(w, "Lead Time for Changes:  %s\n", formatSummary(rep.LeadTime, "deploys"))
+
+	cfr := "n/a (no deploys)"
+	if rep.ChangeFailureRate != nil {
+		cfr = fmt.Sprintf("%.1f%% (%d/%d)", *rep.ChangeFailureRate*100, rep.Reverts+rep.Hotfixes, rep.Deployments)
+	}
+	fmt.Fprintf(w, "Change Failure Rate:    %s  reverts=%d hotfixes=%d (label %q)\n",
+		cfr, rep.Reverts, rep.Hotfixes, r.HotfixLabel)
+	fmt.Fprintf(w, "Recovery Time:          %s  from reverts=%d incidents=%d (label %q)\n",
+		formatSummary(rep.Recovery, "samples"), rep.RecoveryFromReverts, rep.RecoveryFromIncidents, r.IncidentLabel)
 	return nil
+}
+
+// elapsedEnd clamps a window end to now. A window still in progress —
+// the default, since --from defaults to the current month — is measured
+// only up to now, so the per-week rate is not diluted by days that have
+// not happened yet. Nothing can be merged after now, so the counts are
+// unaffected.
+func elapsedEnd(to, now time.Time) time.Time {
+	if now.Before(to) {
+		return now
+	}
+	return to
+}
+
+// formatSummary renders an hours Summary, or "(no data)" for an empty
+// sample so a zero average is never mistaken for an instant result.
+func formatSummary(s statx.Summary, unit string) string {
+	if s.Count == 0 {
+		return "(no data)"
+	}
+	return fmt.Sprintf("avg %.1fh  p50 %.1fh  p90 %.1fh  (%d %s)", s.Avg, s.P50, s.P90, s.Count, unit)
 }
 
 func formatSizeDist(dist map[string]int) string {

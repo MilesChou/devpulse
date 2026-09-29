@@ -171,6 +171,47 @@ func (b *BuildPersister) UpdateAuthorBySHA(ctx context.Context, repoID string, s
 	return nil
 }
 
+// prForBuildMatch selects the PRs a PR-triggered build may belong to:
+// same repo, the build's branch is the PR's head branch, and the build
+// started while the PR was open. Shared by the value and the uniqueness
+// subqueries of LinkPullRequestsByBranch so the two cannot drift.
+const prForBuildMatch = `p.repo_id = builds.repo_id
+	  AND p.head_ref = builds.branch
+	  AND p.pr_created_at <= builds.started_at
+	  AND (p.closed_at IS NULL OR p.closed_at >= builds.started_at)`
+
+// LinkPullRequestsByBranch fills pr_number on PR-triggered builds that
+// the CI provider left unlinked. GitHub Actions returns an empty
+// pull_requests array on workflow runs in practice, so the link is
+// recovered from the stored PRs instead (see prForBuildMatch).
+//
+// Only builds with exactly one candidate PR are linked. Two PRs open at
+// the same time from the same branch name (typically fork PRs whose
+// head branch is "main") are ambiguous and stay NULL rather than be
+// attributed to a guess. Builds that already carry a pr_number are never
+// touched, and push builds are out of scope: re-push counts derive from
+// PR-triggered builds.
+//
+// Driven by DB state, so re-running it after a later PR sync also links
+// builds stored before their PR was. Returns the number of builds linked.
+func (b *BuildPersister) LinkPullRequestsByBranch(ctx context.Context, repoID string) (int, error) {
+	const q = `UPDATE builds
+	           SET pr_number = (SELECT MIN(p.number) FROM pull_requests p WHERE ` + prForBuildMatch + `),
+	               updated_at = ?
+	           WHERE repo_id = ?
+	             AND pr_number IS NULL
+	             AND is_pull_request = true
+	             AND branch IS NOT NULL
+	             AND (SELECT COUNT(*) FROM pull_requests p WHERE ` + prForBuildMatch + `) = 1`
+
+	res, err := b.ExecCtx(ctx, q, b.Now(), repoID)
+	if err != nil {
+		return 0, fmt.Errorf("link builds to prs: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
 // buildInsertSQL returns the right INSERT for the dialect.
 //
 // PostgreSQL/SQLite support ON CONFLICT; MySQL uses INSERT IGNORE.

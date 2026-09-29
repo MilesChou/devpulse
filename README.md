@@ -2,8 +2,9 @@
 
 Engineering-efficiency observability for CI and PR workflows: pulls data
 from GitHub and CI providers, computes team-level metrics (CI failure
-rate, PR review latency, build duration, PR re-push count), and persists
-them to a relational database for downstream analysis.
+rate, PR review latency, build duration, PR re-push count, and the four
+DORA metrics), and persists them to a relational database for downstream
+analysis.
 
 Distributed as a single Go binary.
 
@@ -130,6 +131,24 @@ To start over from a clean Metabase: `docker compose down`, then
 The Postgres data (your synced PRs, builds, reviews) is in a separate
 volume and is not affected.
 
+## DORA metrics
+
+`devpulse metrics` includes the four DORA metrics. They are derived from
+data the regular sync already collects:
+
+| Metric | How DevPulse measures it |
+|---|---|
+| Deployment Frequency | PRs merged into the default branch |
+| Lead Time for Changes | Earliest commit author time in the PR → merge |
+| Change Failure Rate | (revert + hotfix PRs) ÷ deployments |
+| Recovery Time | Reverted PR merge → revert merge, and incident issue opened → closed |
+
+Hotfix PRs and incident issues are recognised by label. Set them per
+repo with `devpulse repo config set <repo> hotfix-label <label>` and
+`incident-label <label>` (defaults: `hotfix`, `incident`). Full
+definitions and limitations are in
+[docs/commands.md](docs/commands.md#dora-definitions).
+
 ## Commands
 
 DevPulse groups commands by resource (`repo`, `pr`) with verbs underneath,
@@ -141,9 +160,9 @@ cron / CI.
 |---|---|
 | `devpulse sync` | Sync every tracked repo (sequential; skips disabled; aggregates failures) |
 | `devpulse repo add <owner/name>` | Register a repository |
-| `devpulse repo sync <owner/name>` | Sync one repo: all PRs (with enrichment) then all CI builds |
+| `devpulse repo sync <owner/name>` | Sync one repo: refresh open PRs and PRs changed upstream, new PRs (with enrichment), missing DORA facts on stored PRs, CI builds (linked to their PR), incident issues |
 | `devpulse pr sync <owner/name> <number>` | Re-sync a single PR (detail + reviews) |
-| `devpulse metrics <owner/name>` | Print engineering-efficiency metrics for a month window |
+| `devpulse metrics <owner/name>` | Print engineering-efficiency and DORA metrics for a month window |
 | `devpulse migrate {up,down,status}` | Schema migration |
 | `devpulse worker` | Run the DB-backed job worker |
 | `devpulse serve` | Placeholder for the v2 HTTP API |

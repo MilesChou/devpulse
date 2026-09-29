@@ -102,3 +102,54 @@ func TestRepoConfigGet_UnknownKey(t *testing.T) {
 		t.Fatalf("expected error for unknown setting key")
 	}
 }
+
+// TestRepoConfig_Labels covers the DORA label settings: defaults, set →
+// get round trip, and blank-value rejection that leaves the stored value
+// unchanged.
+func TestRepoConfig_Labels(t *testing.T) {
+	setEnvSharedSQLite(t)
+	if _, err := runCmd(t, "migrate", "up"); err != nil {
+		t.Fatalf("migrate up: %v", err)
+	}
+	if _, err := runCmd(t, "repo", "add", "MilesChou/devpulse"); err != nil {
+		t.Fatalf("repo add: %v", err)
+	}
+
+	out, err := runCmd(t, "repo", "config", "get", "MilesChou/devpulse")
+	if err != nil {
+		t.Fatalf("get all: %v", err)
+	}
+	if !strings.Contains(out, "incident-label=incident") || !strings.Contains(out, "hotfix-label=hotfix") {
+		t.Fatalf("expected label defaults, got: %q", out)
+	}
+
+	out, err = runCmd(t, "repo", "config", "set", "MilesChou/devpulse", "hotfix-label", "urgent-fix")
+	if err != nil {
+		t.Fatalf("set hotfix-label: %v", err)
+	}
+	if !strings.Contains(out, "hotfix-label=urgent-fix") {
+		t.Fatalf("expected confirmation, got: %q", out)
+	}
+	if _, err := runCmd(t, "repo", "config", "set", "MilesChou/devpulse", "incident-label", "sev-1"); err != nil {
+		t.Fatalf("set incident-label: %v", err)
+	}
+
+	if _, err := runCmd(t, "repo", "config", "set", "MilesChou/devpulse", "hotfix-label", "   "); err == nil {
+		t.Fatal("expected error for blank label")
+	}
+
+	out, err = runCmd(t, "repo", "config", "get", "MilesChou/devpulse", "hotfix-label")
+	if err != nil {
+		t.Fatalf("get hotfix-label: %v", err)
+	}
+	if strings.TrimSpace(out) != "urgent-fix" {
+		t.Fatalf("hotfix-label after blank set: %q", out)
+	}
+	out, err = runCmd(t, "repo", "config", "get", "MilesChou/devpulse", "incident-label")
+	if err != nil {
+		t.Fatalf("get incident-label: %v", err)
+	}
+	if strings.TrimSpace(out) != "sev-1" {
+		t.Fatalf("incident-label: %q", out)
+	}
+}

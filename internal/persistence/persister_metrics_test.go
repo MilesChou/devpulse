@@ -56,6 +56,14 @@ func TestMetricsPersister_EmptyStore(t *testing.T) {
 		t.Fatalf("PRLeadTime on empty: count=%d", count)
 	}
 
+	in, err := m.DORAInput(ctx, r.ID, "main", metricsFrom, metricsTo)
+	if err != nil {
+		t.Fatalf("DORAInput: %v", err)
+	}
+	if len(in.Deployments) != 0 || len(in.Incidents) != 0 {
+		t.Fatalf("DORAInput on empty: %+v", in)
+	}
+
 	dist, err := m.PRSizeDistribution(ctx, r.ID, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("PRSizeDistribution: %v", err)

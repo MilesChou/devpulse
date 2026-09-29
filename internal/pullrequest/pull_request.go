@@ -56,6 +56,19 @@ type PullRequest struct {
 	SizeBucket        string
 	IsDraft           bool
 
+	// DORA facts. Title / Labels / HeadRef drive remediation
+	// classification (revert, hotfix); BaseRef decides whether a merge
+	// is a deployment; FirstCommitAt is the lead-time start and is only
+	// fetched once the PR is merged. RevertsNumber is the PR this one
+	// reverts, parsed from GitHub's "Reverts owner/repo#N" body.
+	Title          string
+	Labels         []string
+	BaseRef        string
+	HeadRef        string
+	MergeCommitSHA string
+	FirstCommitAt  *time.Time
+	RevertsNumber  *int
+
 	CreatedAt       time.Time
 	ReadyAt         *time.Time
 	FirstReviewAt   *time.Time
@@ -64,6 +77,18 @@ type PullRequest struct {
 	TimeToMerge     *int // seconds
 	MergedAt        *time.Time
 	ClosedAt        *time.Time
+
+	// SourceUpdatedAt is the upstream updated_at of the fetched version.
+	// It is not persisted; the sync compares it with the listing that
+	// asked for the refresh, to reject a stale (cached) response.
+	SourceUpdatedAt time.Time
+}
+
+// Stamp identifies one upstream version of a PR: its number and the
+// upstream updated_at of that version.
+type Stamp struct {
+	Number    int
+	UpdatedAt time.Time
 }
 
 func (p PullRequest) ChangeStats() ChangeStats {

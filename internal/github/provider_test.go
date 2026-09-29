@@ -3,6 +3,7 @@ package github_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -117,6 +118,155 @@ func TestGetPullRequest_DecodesAdditionsDeletions(t *testing.T) {
 	}
 	if pr.Status != pullrequest.StatusMerged {
 		t.Fatalf("status: %v", pr.Status)
+	}
+	if pr.Title != `Revert "Add fetch orchestrator"` {
+		t.Fatalf("title: %q", pr.Title)
+	}
+	if pr.BaseRef != "main" || pr.HeadRef != "revert-40-fetch" {
+		t.Fatalf("refs: base=%q head=%q", pr.BaseRef, pr.HeadRef)
+	}
+	if pr.MergeCommitSHA != "0123456789abcdef0123456789abcdef01234567" {
+		t.Fatalf("merge sha: %q", pr.MergeCommitSHA)
+	}
+	if len(pr.Labels) != 2 || pr.Labels[0] != "bug" || pr.Labels[1] != "hotfix" {
+		t.Fatalf("labels: %v", pr.Labels)
+	}
+	if pr.RevertsNumber == nil || *pr.RevertsNumber != 40 {
+		t.Fatalf("reverts number: %v", pr.RevertsNumber)
+	}
+	if want := time.Date(2026, 5, 15, 14, 0, 0, 0, time.UTC); !pr.SourceUpdatedAt.Equal(want) {
+		t.Fatalf("source updated_at: %v, want %v", pr.SourceUpdatedAt, want)
+	}
+}
+
+// TestGetFirstCommitAt_MinAuthorDate asserts the lead-time start is the
+// earliest author date on the page, not the first element: rebases can
+// reorder commits relative to their author dates.
+func TestGetFirstCommitAt_MinAuthorDate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/MilesChou/devpulse/pulls/42/commits" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("per_page") != "100" {
+			t.Errorf("per_page: %q", r.URL.Query().Get("per_page"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			{"commit": {"author": {"date": "2026-05-14T11:00:00+08:00"}}},
+			{"commit": {"author": {"date": "2026-05-14T02:00:00Z"}}},
+			{"commit": {"author": null}}
+		]`))
+	}))
+	defer srv.Close()
+
+	c := newClient(t, srv)
+	repoName, _ := repo.ParseFullName("MilesChou/devpulse")
+	got, err := c.GetFirstCommitAt(context.Background(), repoName, 42)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	want := time.Date(2026, 5, 14, 2, 0, 0, 0, time.UTC)
+	if got == nil || !got.Equal(want) || got.Location() != time.UTC {
+		t.Fatalf("got %v, want %v (UTC)", got, want)
+	}
+}
+
+// TestGetFirstCommitAt_IgnoresImplausibleDates asserts an author date
+// from a broken clock (the Unix epoch) does not become the lead-time
+// start, so it can neither skew the metric nor overflow MySQL TIMESTAMP.
+func TestGetFirstCommitAt_IgnoresImplausibleDates(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			{"commit": {"author": {"date": "1970-01-01T00:00:00Z"}}},
+			{"commit": {"author": {"date": "2026-05-14T02:00:00Z"}}}
+		]`))
+	}))
+	defer srv.Close()
+
+	c := newClient(t, srv)
+	repoName, _ := repo.ParseFullName("MilesChou/devpulse")
+	got, err := c.GetFirstCommitAt(context.Background(), repoName, 42)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	want := time.Date(2026, 5, 14, 2, 0, 0, 0, time.UTC)
+	if got == nil || !got.Equal(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestGetFirstCommitAt_NoCommits(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	c := newClient(t, srv)
+	repoName, _ := repo.ParseFullName("MilesChou/devpulse")
+	got, err := c.GetFirstCommitAt(context.Background(), repoName, 42)
+	if err != nil || got != nil {
+		t.Fatalf("want (nil, nil), got (%v, %v)", got, err)
+	}
+}
+
+// TestListIncidentIssues_PaginatesAndDropsPRs walks a full first page and
+// a short second page, and asserts that pull requests carrying the label
+// are dropped.
+func TestListIncidentIssues_PaginatesAndDropsPRs(t *testing.T) {
+	var pages []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/MilesChou/devpulse/issues" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		q := r.URL.Query()
+		if q.Get("labels") != "sev-1" || q.Get("state") != "all" {
+			t.Errorf("query: %s", r.URL.RawQuery)
+		}
+		pages = append(pages, q.Get("page"))
+		w.Header().Set("Content-Type", "application/json")
+
+		if q.Get("page") == "1" {
+			items := make([]string, 0, 100)
+			for i := 1; i <= 100; i++ {
+				if i == 2 {
+					items = append(items, `{"number": 2, "title": "pr", "created_at": "2026-05-01T00:00:00Z", "pull_request": {}}`)
+					continue
+				}
+				items = append(items, fmt.Sprintf(`{"number": %d, "title": "t", "created_at": "2026-05-01T00:00:00Z"}`, i))
+			}
+			_, _ = w.Write([]byte("[" + strings.Join(items, ",") + "]"))
+			return
+		}
+		_, _ = w.Write([]byte(`[{"number": 101, "title": "db down", "created_at": "2026-05-02T08:00:00Z", "closed_at": "2026-05-02T11:00:00Z"}]`))
+	}))
+	defer srv.Close()
+
+	c := newClient(t, srv)
+	repoName, _ := repo.ParseFullName("MilesChou/devpulse")
+	got, err := c.ListIncidentIssues(context.Background(), repoName, "sev-1")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if strings.Join(pages, ",") != "1,2" {
+		t.Fatalf("pages: %v", pages)
+	}
+	if len(got) != 100 {
+		t.Fatalf("want 100 incidents (101 issues minus 1 PR), got %d", len(got))
+	}
+	last := got[len(got)-1]
+	if last.Number != 101 || last.Title != "db down" || last.ResolvedAt == nil ||
+		last.ResolvedAt.Sub(last.OpenedAt) != 3*time.Hour {
+		t.Fatalf("last incident: %+v", last)
+	}
+	if got[0].ResolvedAt != nil {
+		t.Fatalf("open issue has resolved_at: %v", got[0].ResolvedAt)
+	}
+	for _, inc := range got {
+		if inc.Number == 2 {
+			t.Fatal("pull request leaked into incidents")
+		}
 	}
 }
 
@@ -295,5 +445,110 @@ func TestREST_Non2xxNon404PreservesStatus(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "500") {
 		t.Fatalf("expected status 500 in error, got: %v", err)
+	}
+}
+
+// TestListPullRequestsUpdatedSince_StopsAtSince asserts the walk reads
+// sort=updated pages newest first, keeps every PR updated at or after
+// since (the boundary is inclusive), stops at the first older one
+// without requesting another page, and reports the head of the list as
+// newest.
+func TestListPullRequestsUpdatedSince_StopsAtSince(t *testing.T) {
+	head := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	since := head.Add(-101 * time.Minute)
+
+	var pages []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/MilesChou/devpulse/pulls" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		q := r.URL.Query()
+		if q.Get("state") != "all" || q.Get("sort") != "updated" || q.Get("direction") != "desc" || q.Get("per_page") != "100" {
+			t.Errorf("query: %s", r.URL.RawQuery)
+		}
+		pages = append(pages, q.Get("page"))
+
+		// PR #(1000-i) is updated i minutes before head: page 1 holds
+		// i = 0..99, page 2 holds i = 100..199.
+		offset := 0
+		if q.Get("page") == "2" {
+			offset = 100
+		}
+		items := make([]string, 0, 100)
+		for i := offset; i < offset+100; i++ {
+			items = append(items, fmt.Sprintf(`{"number": %d, "updated_at": %q}`,
+				1000-i, head.Add(-time.Duration(i)*time.Minute).Format(time.RFC3339)))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[" + strings.Join(items, ",") + "]"))
+	}))
+	defer srv.Close()
+
+	c := newClient(t, srv)
+	repoName, _ := repo.ParseFullName("MilesChou/devpulse")
+	updated, newest, err := c.ListPullRequestsUpdatedSince(context.Background(), repoName, since)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if strings.Join(pages, ",") != "1,2" {
+		t.Fatalf("pages: %v, want 1,2 (stop inside page 2)", pages)
+	}
+	if !newest.Equal(head) {
+		t.Fatalf("newest: %v, want %v", newest, head)
+	}
+	// i = 0..101 are at or after since: 102 PRs, #1000 down to #899,
+	// the last one exactly at since.
+	if len(updated) != 102 || updated[0].Number != 1000 || updated[101].Number != 899 {
+		t.Fatalf("updated: len=%d first=%v last=%v", len(updated), updated[0], updated[len(updated)-1])
+	}
+	if !updated[0].UpdatedAt.Equal(head) || !updated[101].UpdatedAt.Equal(since) {
+		t.Fatalf("updated_at: first=%v last=%v", updated[0].UpdatedAt, updated[101].UpdatedAt)
+	}
+}
+
+// TestListPullRequestsUpdatedSince_ZeroSinceReadsNewestOnly asserts the
+// bootstrap call costs one single-item request and lists nothing.
+func TestListPullRequestsUpdatedSince_ZeroSinceReadsNewestOnly(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if got := r.URL.Query().Get("per_page"); got != "1" {
+			t.Errorf("per_page: %q, want 1", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"number": 7, "updated_at": "2026-06-01T12:00:00Z"}]`))
+	}))
+	defer srv.Close()
+
+	c := newClient(t, srv)
+	repoName, _ := repo.ParseFullName("MilesChou/devpulse")
+	updated, newest, err := c.ListPullRequestsUpdatedSince(context.Background(), repoName, time.Time{})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if calls != 1 || len(updated) != 0 {
+		t.Fatalf("calls=%d updated=%v, want 1 call and no PRs", calls, updated)
+	}
+	if want := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC); !newest.Equal(want) {
+		t.Fatalf("newest: %v", newest)
+	}
+}
+
+// TestListPullRequestsUpdatedSince_EmptyRepo asserts a repo without PRs
+// yields a zero newest, which the orchestrator reads as "keep the
+// watermark".
+func TestListPullRequestsUpdatedSince_EmptyRepo(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	c := newClient(t, srv)
+	repoName, _ := repo.ParseFullName("MilesChou/devpulse")
+	updated, newest, err := c.ListPullRequestsUpdatedSince(context.Background(), repoName,
+		time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil || len(updated) != 0 || !newest.IsZero() {
+		t.Fatalf("got (%v, %v, %v), want (nil, zero, nil)", updated, newest, err)
 	}
 }

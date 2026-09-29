@@ -10,6 +10,7 @@ import (
 
 	"github.com/mileschou/devpulse/internal/build"
 	"github.com/mileschou/devpulse/internal/fetching"
+	"github.com/mileschou/devpulse/internal/incident"
 	"github.com/mileschou/devpulse/internal/persistence"
 	"github.com/mileschou/devpulse/internal/persistence/persistencetest"
 	"github.com/mileschou/devpulse/internal/pullrequest"
@@ -70,6 +71,17 @@ type fakeVCSProvider struct {
 	bulkErr      error
 	latestErr    error
 
+	firstCommitAt  map[int]time.Time
+	firstCommitErr error
+	incidents      []incident.Incident
+	incidentsErr   error
+	gotLabel       string
+
+	updated       []pullrequest.Stamp
+	updatedNewest time.Time
+	updatedErr    error
+	gotSince      *time.Time
+
 	// gotNumbers records every number GetPullRequest was called with, in
 	// call order, so tests can assert the loop's traversal.
 	gotNumbers []int
@@ -112,6 +124,39 @@ func (f *fakeVCSProvider) GetCommitAuthorAccountsBulk(
 		out[s] = f.logins[s]
 	}
 	return out, nil
+}
+
+func (f *fakeVCSProvider) GetFirstCommitAt(
+	_ context.Context, _ repo.FullName, number int,
+) (*time.Time, error) {
+	if f.firstCommitErr != nil {
+		return nil, f.firstCommitErr
+	}
+	t, ok := f.firstCommitAt[number]
+	if !ok {
+		return nil, nil
+	}
+	return &t, nil
+}
+
+func (f *fakeVCSProvider) ListPullRequestsUpdatedSince(
+	_ context.Context, _ repo.FullName, since time.Time,
+) ([]pullrequest.Stamp, time.Time, error) {
+	f.gotSince = &since
+	if f.updatedErr != nil {
+		return nil, time.Time{}, f.updatedErr
+	}
+	if since.IsZero() {
+		return nil, f.updatedNewest, nil
+	}
+	return f.updated, f.updatedNewest, nil
+}
+
+func (f *fakeVCSProvider) ListIncidentIssues(
+	_ context.Context, _ repo.FullName, label string,
+) ([]incident.Incident, error) {
+	f.gotLabel = label
+	return f.incidents, f.incidentsErr
 }
 
 func (f *fakeVCSProvider) GetRepo(
@@ -187,7 +232,7 @@ func TestBackfill_PersistsBuildsAndPRs(t *testing.T) {
 		logins: map[commitsha.SHA]*string{sha: &loginAlice},
 	}
 
-	orch := fetching.NewOrchestrator([]fetching.CIProvider{ci}, vcs, bp, pp, rvp, nil)
+	orch := fetching.NewOrchestrator([]fetching.CIProvider{ci}, vcs, bp, pp, rvp, nil, nil)
 
 	buildsWritten, err := orch.FetchAllBuilds(ctx, r)
 	if err != nil {
@@ -250,7 +295,7 @@ func TestBackfill_StartsAtPRSyncStartNumber(t *testing.T) {
 		prs[n] = makePR(r.ID, n)
 	}
 	vcs := &fakeVCSProvider{latestNumber: 7, prs: prs}
-	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil)
+	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil, nil)
 
 	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
 	if err != nil {
@@ -285,7 +330,7 @@ func TestBackfill_ResumesFromDBMax(t *testing.T) {
 		5: makePR(r.ID, 5),
 	}
 	vcs := &fakeVCSProvider{latestNumber: 5, prs: prs}
-	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil)
+	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil, nil)
 
 	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
 	if err != nil {
@@ -314,7 +359,7 @@ func TestBackfill_404Skips(t *testing.T) {
 		3: makePR(r.ID, 3),
 	}
 	vcs := &fakeVCSProvider{latestNumber: 3, prs: prs}
-	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil)
+	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil, nil)
 
 	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
 	if err != nil {
@@ -349,7 +394,7 @@ func TestBackfill_FailsFastOnNonNotFoundError(t *testing.T) {
 		prs:          prs,
 		getErrFor:    map[int]error{2: boom},
 	}
-	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil)
+	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil, nil)
 
 	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
 	if err == nil {
@@ -386,7 +431,7 @@ func TestBackfill_EmptyUpstream(t *testing.T) {
 	rvp := persistence.NewReviewPersister(p)
 
 	vcs := &fakeVCSProvider{latestNumber: 0} // empty repo
-	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil)
+	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil, nil)
 
 	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
 	if err != nil {
@@ -413,7 +458,7 @@ func TestBackfill_StartNumberAboveRemoteMax(t *testing.T) {
 	rvp := persistence.NewReviewPersister(p)
 
 	vcs := &fakeVCSProvider{latestNumber: 200}
-	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil)
+	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil, nil)
 
 	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
 	if err != nil {
@@ -454,7 +499,7 @@ func TestBackfill_ConfigVsDBPrecedence(t *testing.T) {
 		}
 
 		vcs := &fakeVCSProvider{latestNumber: 7, prs: mkPRs(r.ID, 5, 7)}
-		orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil)
+		orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil, nil)
 		if _, err := orch.BackfillPullRequestsByNumber(ctx, r); err != nil {
 			t.Fatalf("err: %v", err)
 		}
@@ -478,7 +523,7 @@ func TestBackfill_ConfigVsDBPrecedence(t *testing.T) {
 		}
 
 		vcs := &fakeVCSProvider{latestNumber: 12, prs: mkPRs(r.ID, 10, 12)}
-		orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil)
+		orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil, nil)
 		if _, err := orch.BackfillPullRequestsByNumber(ctx, r); err != nil {
 			t.Fatalf("err: %v", err)
 		}
@@ -500,7 +545,7 @@ func TestBackfill_GetLatestPRNumberError(t *testing.T) {
 
 	boom := errors.New("simulated 502")
 	vcs := &fakeVCSProvider{latestErr: boom}
-	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil)
+	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil, nil)
 
 	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
 	if err == nil || !errors.Is(err, boom) {
@@ -531,7 +576,7 @@ func TestBackfill_CancelledCtxBreaksOut(t *testing.T) {
 			1: makePR(r.ID, 1), 2: makePR(r.ID, 2), 3: makePR(r.ID, 3),
 		},
 	}
-	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil)
+	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil, nil)
 
 	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
 	if !errors.Is(err, context.Canceled) {
@@ -582,7 +627,7 @@ func TestEnrichOnePullRequestByNumber_LocalDBMiss(t *testing.T) {
 	pp := persistence.NewPullRequestPersister(p)
 	rvp := persistence.NewReviewPersister(p)
 
-	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, &fakeVCSProvider{}, bp, pp, rvp, nil)
+	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, &fakeVCSProvider{}, bp, pp, rvp, nil, nil)
 	found, err := orch.EnrichOnePullRequestByNumber(ctx, r, 999)
 	if err != nil {
 		t.Fatalf("local miss should not error, got: %v", err)
@@ -610,7 +655,7 @@ func TestEnrichOnePullRequestByNumber_UpstreamGone(t *testing.T) {
 
 	// VCS doesn't know about #42 — returns ErrNotFound.
 	vcs := &fakeVCSProvider{prs: map[int]pullrequest.PullRequest{}}
-	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil)
+	orch := fetching.NewOrchestrator([]fetching.CIProvider{&fakeCIProvider{}}, vcs, bp, pp, rvp, nil, nil)
 
 	found, err := orch.EnrichOnePullRequestByNumber(ctx, r, 42)
 	if !found {
@@ -640,7 +685,7 @@ func TestFetch_BuildAuthorEnrichmentFailureDoesNotAbortPRFetch(t *testing.T) {
 		bulkErr:      context.DeadlineExceeded, // simulate transient API failure
 	}
 
-	orch := fetching.NewOrchestrator([]fetching.CIProvider{ci}, vcs, bp, pp, rvp, nil)
+	orch := fetching.NewOrchestrator([]fetching.CIProvider{ci}, vcs, bp, pp, rvp, nil, nil)
 
 	// Author backfill failure inside FetchAllBuilds is swallowed (logged
 	// only); the build itself is still written.
@@ -677,7 +722,7 @@ func TestFetchAllBuilds_ColdStart_PassesZeroSince(t *testing.T) {
 		{ExternalID: "1", CommitSHA: sha, Status: build.StatusPassed, Trigger: build.TriggerPush, Branch: "main",
 			StartedAt: time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)},
 	}}
-	orch := fetching.NewOrchestrator([]fetching.CIProvider{ci}, &fakeVCSProvider{}, bp, pp, rvp, nil)
+	orch := fetching.NewOrchestrator([]fetching.CIProvider{ci}, &fakeVCSProvider{}, bp, pp, rvp, nil, nil)
 
 	written, err := orch.FetchAllBuilds(ctx, r)
 	if err != nil {
@@ -723,7 +768,7 @@ func TestFetchAllBuilds_Incremental_PassesWatermarkMinusOverlap(t *testing.T) {
 		{ExternalID: "200", CommitSHA: shaNew, Status: build.StatusPassed, Trigger: build.TriggerPush, Branch: "main",
 			StartedAt: seedStarted.Add(2 * time.Hour)},
 	}}
-	orch := fetching.NewOrchestrator([]fetching.CIProvider{ci}, &fakeVCSProvider{}, bp, pp, rvp, nil)
+	orch := fetching.NewOrchestrator([]fetching.CIProvider{ci}, &fakeVCSProvider{}, bp, pp, rvp, nil, nil)
 
 	written, err := orch.FetchAllBuilds(ctx, r)
 	if err != nil {
@@ -764,7 +809,7 @@ func TestFetchAllBuilds_PerProviderWatermark(t *testing.T) {
 	travisCI := &fakeCIProvider{name: "travis"}
 	actionsCI := &fakeCIProvider{name: "github-actions"}
 	orch := fetching.NewOrchestrator(
-		[]fetching.CIProvider{travisCI, actionsCI}, &fakeVCSProvider{}, bp, pp, rvp, nil)
+		[]fetching.CIProvider{travisCI, actionsCI}, &fakeVCSProvider{}, bp, pp, rvp, nil, nil)
 
 	if _, err := orch.FetchAllBuilds(ctx, r); err != nil {
 		t.Fatalf("FetchAllBuilds: %v", err)
@@ -805,7 +850,7 @@ func TestFetchAllBuilds_SameExternalIDAcrossProviders(t *testing.T) {
 
 	orch := fetching.NewOrchestrator(
 		[]fetching.CIProvider{mk("travis"), mk("github-actions")},
-		&fakeVCSProvider{}, bp, pp, rvp, nil)
+		&fakeVCSProvider{}, bp, pp, rvp, nil, nil)
 
 	written, err := orch.FetchAllBuilds(ctx, r)
 	if err != nil {
@@ -851,7 +896,7 @@ func TestFetchAllBuilds_RetryWithinOverlap_DedupedByDB(t *testing.T) {
 		{ExternalID: "101", CommitSHA: shaRetry, Status: build.StatusPassed, Trigger: build.TriggerPush, Branch: "main",
 			StartedAt: watermark.Add(-2 * time.Minute)},
 	}}
-	orch := fetching.NewOrchestrator([]fetching.CIProvider{ci}, &fakeVCSProvider{}, bp, pp, rvp, nil)
+	orch := fetching.NewOrchestrator([]fetching.CIProvider{ci}, &fakeVCSProvider{}, bp, pp, rvp, nil, nil)
 
 	written, err := orch.FetchAllBuilds(ctx, r)
 	if err != nil {

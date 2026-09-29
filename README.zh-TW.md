@@ -2,7 +2,7 @@
 
 CI 與 PR 工作流程的研發效能觀測工具：從 GitHub 與 CI 服務抓資料、
 聚合成團隊指標（CI 失敗率、PR review latency、build duration、
-PR 重跑次數），寫入關聯式資料庫供後續分析使用。
+PR 重跑次數，以及四項 DORA 指標），寫入關聯式資料庫供後續分析使用。
 
 以單一 Go binary 方式發佈。
 
@@ -120,6 +120,23 @@ docker compose -f docker-compose.metabase.yml logs metabase-init
 `docker volume rm devpulse_metabase-data`，再 `up -d --wait`。Postgres 內的
 資料（已同步的 PR、build、review）放在另一個 volume，不受影響。
 
+## DORA 指標
+
+`devpulse metrics` 會一併輸出四項 DORA 指標，資料都來自一般同步流程
+已經抓下來的內容：
+
+| 指標 | DevPulse 的計算方式 |
+|---|---|
+| Deployment Frequency（部署頻率） | merge 進 default branch 的 PR |
+| Lead Time for Changes（變更前置時間） | PR 中最早的 commit author 時間 → merge |
+| Change Failure Rate（變更失敗率） | （revert + hotfix PR）÷ 部署數 |
+| Recovery Time（恢復時間） | 被 revert 的 PR merge → revert merge，以及事故 issue 開啟 → 關閉 |
+
+Hotfix PR 與事故 issue 以 label 辨識，可用
+`devpulse repo config set <repo> hotfix-label <label>` 與
+`incident-label <label>` 針對每個 repo 設定（預設為 `hotfix`、`incident`）。
+完整定義與限制見 [docs/commands.zh-TW.md](docs/commands.zh-TW.md#dora-定義)。
+
 ## 指令一覽
 
 指令採 noun-on-verb 結構（`repo` / `pr` 兩個 resource group，動詞掛在
@@ -130,9 +147,9 @@ docker compose -f docker-compose.metabase.yml logs metabase-init
 |---|---|
 | `devpulse sync` | 同步所有已註冊 repo（循序；跳過 disabled；彙整失敗） |
 | `devpulse repo add <owner/name>` | 註冊一個 repo |
-| `devpulse repo sync <owner/name>` | 同步單一 repo：所有 PR（含 enrichment）與 CI build |
+| `devpulse repo sync <owner/name>` | 同步單一 repo：重抓 open 及上游有變動的 PR、新 PR（含 enrichment）、補齊既有 PR 缺少的 DORA 資料、CI build（並對應回所屬 PR）、事故 issue |
 | `devpulse pr sync <owner/name> <number>` | 重新同步單一 PR（detail + reviews） |
-| `devpulse metrics <owner/name>` | 印出月份區間的工程效率指標 |
+| `devpulse metrics <owner/name>` | 印出月份區間的工程效率指標與 DORA 指標 |
 | `devpulse migrate {up,down,status}` | Schema migration |
 | `devpulse worker` | 啟動 DB-backed job worker |
 | `devpulse serve` | v2 HTTP API 的 placeholder |
