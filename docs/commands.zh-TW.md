@@ -387,7 +387,7 @@ devpulse serve
 | `GET /api/v1/repos/{owner}/{name}/metrics?from=YYYY-MM&to=YYYY-MM` | bearer | 該時間範圍的報表（見下方） |
 | `GET /api/v1/repos/{owner}/{name}/metrics/monthly?from=YYYY-MM&to=YYYY-MM` | bearer | `{repo, from, to, months:[報表, ...]}`，每個月一份報表，由舊到新 |
 
-`from` / `to` 的行為和 `metrics` 指令的旗標完全相同：`from` 預設為當月（UTC），`to` 不包含在範圍內，預設為 `from` 加一個月。範圍最多 36 個月。報表和 `devpulse metrics` 使用同一段程式計算，兩者的數字不會不一致。
+`from` / `to` 的行為和 `metrics` 指令的旗標完全相同：`from` 預設為當月（UTC），`to` 不包含在範圍內，預設為 `from` 加一個月。`metrics/monthly` 每次最多 36 個月（每個月都要各算一份報表）；`metrics` 沒有範圍上限。報表和 `devpulse metrics` 使用同一段程式計算，兩者的數字不會不一致。
 
 **報表**
 

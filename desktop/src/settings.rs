@@ -56,6 +56,28 @@ pub fn save(path: &Path, settings: &Settings) -> io::Result<()> {
     fs::write(path, json + "\n")
 }
 
+/// Decides which token is in use after the user saves the connection
+/// form. A typed token always wins. With the field left empty, the
+/// current token stays as long as the server URL is unchanged, even if
+/// it was never stored (it came from `DEVPULSE_API_TOKEN`, or the
+/// keychain write failed); only a new URL looks up that server's stored
+/// token.
+pub fn token_after_save(
+    current: Option<String>,
+    url_changed: bool,
+    typed: &str,
+    stored: impl FnOnce() -> Option<String>,
+) -> Option<String> {
+    let typed = typed.trim();
+    if !typed.is_empty() {
+        return Some(typed.to_string());
+    }
+    if !url_changed && current.is_some() {
+        return current;
+    }
+    stored()
+}
+
 /// Storage for the API token.
 pub trait SecretStore: Send {
     /// Returns the stored token, or `None` when none has been saved.
@@ -186,6 +208,43 @@ mod tests {
         store.delete().unwrap();
         store.delete().unwrap(); // deleting twice is fine
         assert_eq!(store.get(), Ok(None));
+    }
+
+    #[test]
+    fn token_after_save_rules() {
+        let cur = || Some("session".to_string());
+        let stored = || Some("stored".to_string());
+        let none = || None;
+
+        // A typed token always wins.
+        assert_eq!(
+            token_after_save(cur(), false, " typed ", stored).as_deref(),
+            Some("typed")
+        );
+        assert_eq!(
+            token_after_save(None, true, "typed", none).as_deref(),
+            Some("typed")
+        );
+
+        // Empty field, same server: keep the current (maybe session-only)
+        // token without consulting the keychain.
+        assert_eq!(
+            token_after_save(cur(), false, "", || panic!("must not look up")).as_deref(),
+            Some("session")
+        );
+
+        // Empty field, same server, nothing in use yet: try the keychain.
+        assert_eq!(
+            token_after_save(None, false, "", stored).as_deref(),
+            Some("stored")
+        );
+
+        // Empty field, new server: that server's stored token, or none.
+        assert_eq!(
+            token_after_save(cur(), true, "  ", stored).as_deref(),
+            Some("stored")
+        );
+        assert_eq!(token_after_save(cur(), true, "", none), None);
     }
 
     #[test]

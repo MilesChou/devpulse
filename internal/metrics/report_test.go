@@ -29,8 +29,8 @@ func TestParseWindow(t *testing.T) {
 		{"bad to", "2026-01", "soon", Window{}, true},
 		{"empty range", "2026-03", "2026-03", Window{}, true},
 		{"reversed range", "2026-03", "2026-01", Window{}, true},
-		{"max width", "2023-01", "2026-01", Window{month(2023, 1), month(2026, 1)}, false},
-		{"too wide", "2023-01", "2026-02", Window{}, true},
+		// Single windows have no width limit; only monthly trends do.
+		{"wide", "2020-01", "2026-01", Window{month(2020, 1), month(2026, 1)}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -48,6 +48,20 @@ func TestParseWindow(t *testing.T) {
 				t.Fatalf("got %v..%v, want %v..%v", got.From, got.To, tt.want.From, tt.want.To)
 			}
 		})
+	}
+}
+
+func TestWindow_CheckTrend(t *testing.T) {
+	ok, _ := ParseWindow("2023-01", "2026-01", now)
+	if err := ok.CheckTrend(); err != nil {
+		t.Fatalf("36 months must pass: %v", err)
+	}
+	wide, _ := ParseWindow("2023-01", "2026-02", now)
+	if err := wide.CheckTrend(); !errors.Is(err, ErrInvalidWindow) {
+		t.Fatalf("37 months: want ErrInvalidWindow, got %v", err)
+	}
+	if _, err := ComputeMonthly(context.Background(), &fakeSource{}, repo.Repo{}, wide, now); !errors.Is(err, ErrInvalidWindow) {
+		t.Fatalf("ComputeMonthly must enforce the limit, got %v", err)
 	}
 }
 

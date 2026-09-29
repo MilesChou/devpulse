@@ -319,6 +319,18 @@ func TestAPI_MonthlyMetrics_Golden(t *testing.T) {
 	assertGolden(t, "metrics_monthly.json", body)
 }
 
+// TestAPI_WideWindow asserts the 36-month limit applies to monthly
+// trends only: a single wide window is one set of queries.
+func TestAPI_WideWindow(t *testing.T) {
+	srv := newTestServer(t)
+	if status, body := get(t, srv, "/api/v1/repos/MilesChou/devpulse/metrics?from=2020-01&to=2026-06", testToken); status != http.StatusOK {
+		t.Fatalf("wide single window: status %d: %s", status, body)
+	}
+	if status, _ := get(t, srv, "/api/v1/repos/MilesChou/devpulse/metrics/monthly?from=2023-06&to=2026-06", testToken); status != http.StatusOK {
+		t.Fatalf("36-month trend: status %d", status)
+	}
+}
+
 func TestAPI_Errors(t *testing.T) {
 	srv := newTestServer(t)
 	tests := []struct {

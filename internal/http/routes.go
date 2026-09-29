@@ -152,6 +152,10 @@ func (h *handlers) getMonthlyMetrics(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if err := win.CheckTrend(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	months, err := metrics.ComputeMonthly(r.Context(), h.cfg.Metrics, rp, win, h.cfg.Now())
 	if err != nil {
 		h.internalError(w, "compute monthly metrics", err)

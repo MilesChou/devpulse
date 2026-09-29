@@ -188,18 +188,15 @@ impl DashboardApp {
             self.notice = Some((true, "Server URL is required.".into()));
             return;
         }
+        let url_changed = url != self.base_url().trim_end_matches('/');
         self.settings.base_url = url;
         self.url_override = None;
         self.persist_settings();
 
-        let token = self.token_input.trim().to_string();
+        let typed = self.token_input.trim().to_string();
         let mut store = (self.make_store)(&self.settings.base_url);
-        if token.is_empty() {
-            // Switching servers without typing a token: use the one the
-            // keychain already holds for that server, if any.
-            self.token = store.get().ok().flatten();
-        } else {
-            self.notice = match store.set(&token) {
+        if !typed.is_empty() {
+            self.notice = match store.set(&typed) {
                 Ok(()) => Some((
                     false,
                     "Saved. The token is stored in the OS keychain.".into(),
@@ -211,9 +208,11 @@ impl DashboardApp {
                     ),
                 )),
             };
-            self.token = Some(token);
             self.token_input.clear();
         }
+        self.token = settings::token_after_save(self.token.take(), url_changed, &typed, || {
+            store.get().ok().flatten()
+        });
 
         if self.token.is_none() {
             self.notice = Some((true, "No API token for this server.".into()));
@@ -388,7 +387,7 @@ impl DashboardApp {
         ui.add_space(6.0);
 
         let hint = if self.token.is_some() {
-            "(stored; leave empty to keep)"
+            "(in use; leave empty to keep)"
         } else {
             "DEVPULSE_API_TOKEN"
         };

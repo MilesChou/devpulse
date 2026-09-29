@@ -387,7 +387,7 @@ In a container, the loopback default is unreachable from outside: set `HTTP_ADDR
 | `GET /api/v1/repos/{owner}/{name}/metrics?from=YYYY-MM&to=YYYY-MM` | bearer | The report for the window (below) |
 | `GET /api/v1/repos/{owner}/{name}/metrics/monthly?from=YYYY-MM&to=YYYY-MM` | bearer | `{repo, from, to, months:[report, ...]}`, one report per month, oldest first |
 
-`from` / `to` behave exactly like the `metrics` command flags: `from` defaults to the current month (UTC), `to` is exclusive and defaults to `from` + 1 month. A window may span at most 36 months. The report is computed by the same code as `devpulse metrics`, so the two never disagree.
+`from` / `to` behave exactly like the `metrics` command flags: `from` defaults to the current month (UTC), `to` is exclusive and defaults to `from` + 1 month. `metrics/monthly` accepts at most 36 months per request (it runs one report per month); `metrics` has no width limit. The report is computed by the same code as `devpulse metrics`, so the two never disagree.
 
 **Report**
 

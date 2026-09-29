@@ -21,8 +21,10 @@ import (
 // parameters, and the Report window labels.
 const monthLayout = "2006-01"
 
-// MaxMonths bounds the width of a monthly trend request so one API call
-// cannot fan out into an unbounded number of per-month queries.
+// MaxMonths bounds the width of a monthly trend (ComputeMonthly) so one
+// API call cannot fan out into an unbounded number of per-month
+// queries. A single-window Compute runs one fixed set of queries at any
+// width, so it has no limit.
 const MaxMonths = 36
 
 // unknownBucket labels PRs whose size_bucket column is NULL.
@@ -147,7 +149,7 @@ func ParseMonth(s string) (time.Time, error) {
 
 // ParseWindow resolves the from/to month strings with the CLI's
 // defaults: an empty from is the month of now, and an empty to is one
-// month after from. The result must span 1..MaxMonths months.
+// month after from. The result spans at least one month.
 func ParseWindow(from, to string, now time.Time) (Window, error) {
 	var w Window
 	var err error
@@ -169,10 +171,15 @@ func ParseWindow(from, to string, now time.Time) (Window, error) {
 		return Window{}, fmt.Errorf("%w: to (%s) must be after from (%s)",
 			ErrInvalidWindow, w.To.Format(monthLayout), w.From.Format(monthLayout))
 	}
-	if n := w.Months(); n > MaxMonths {
-		return Window{}, fmt.Errorf("%w: %d months exceeds the %d-month limit", ErrInvalidWindow, n, MaxMonths)
-	}
 	return w, nil
+}
+
+// CheckTrend reports whether w is narrow enough for ComputeMonthly.
+func (w Window) CheckTrend() error {
+	if n := w.Months(); n > MaxMonths {
+		return fmt.Errorf("%w: %d months exceeds the %d-month limit for a monthly trend", ErrInvalidWindow, n, MaxMonths)
+	}
+	return nil
 }
 
 // Months returns the number of whole months in the window.
@@ -292,6 +299,9 @@ func computeDORA(ctx context.Context, src Source, rp repo.Repo, w Window, now ti
 // ComputeMonthly returns one Report per month of the window, oldest
 // first, for month-over-month trends.
 func ComputeMonthly(ctx context.Context, src Source, rp repo.Repo, w Window, now time.Time) ([]Report, error) {
+	if err := w.CheckTrend(); err != nil {
+		return nil, err
+	}
 	out := make([]Report, 0, w.Months())
 	for m := w.From; m.Before(w.To); m = m.AddDate(0, 1, 0) {
 		r, err := Compute(ctx, src, rp, Window{From: m, To: m.AddDate(0, 1, 0)}, now)
