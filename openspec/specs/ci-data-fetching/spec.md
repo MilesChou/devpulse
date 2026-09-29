@@ -1,5 +1,7 @@
 # CI Data Fetching
 
+## Purpose
+
 Fetches build history from CI services. Internally a provider abstraction isolates concrete CI services (Travis CI is the first implementation), including translation of build attributes (`is_post_merge` / `is_pull_request` / `is_deploy_event`).
 
 ## Requirements
@@ -24,7 +26,7 @@ The user MUST be able to query Travis CI data in the first version, because Trav
 
 ### Requirement: Adding a new CI provider must not force existing repos to be reconfigured
 
-The user SHOULD NOT have to migrate existing configuration when the system later adds support for additional CI services (e.g. GitHub Actions, CircleCI). Repos that already work continue to work with their existing configuration.
+The user MUST NOT have to migrate existing configuration when the system later adds support for additional CI services (e.g. GitHub Actions, CircleCI). Repos that already work continue to work with their existing configuration.
 
 #### Scenario: Adding a new CI provider leaves existing repos untouched
 

@@ -1,5 +1,7 @@
 # Metrics Aggregation
 
+## Purpose
+
 Aggregates raw build / PR / review data into engineering-efficiency metrics. This spec aligns with the four CI metrics listed in [CLAUDE.md](../../../CLAUDE.md): build failure rate, PR re-push count, PR merged-minus-created duration, and PR size distribution.
 
 ## Requirements

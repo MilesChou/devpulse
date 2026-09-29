@@ -1,5 +1,7 @@
 # Tool Configuration
 
+## Purpose
+
 Defines the member list, repo list, bot exclusion list, PR size buckets, and human-signal rules. Static values live in config; values that change live in the DB and are maintained via the CLI. The example configuration MUST be decoupled from any specific organisation.
 
 ## Requirements

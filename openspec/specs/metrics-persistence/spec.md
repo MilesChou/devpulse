@@ -1,5 +1,7 @@
 # Metrics Persistence
 
+## Purpose
+
 Persists fetched raw data and aggregated results so they can be queried later and accumulated long-term, treating closed months as immutable historical fact.
 
 ## Requirements

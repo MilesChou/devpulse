@@ -1,5 +1,7 @@
 # VCS Data Fetching
 
+## Purpose
+
 Fetches PR, commit-author, and PR-review history from GitHub. Handles rate limiting, bulk fetching, and bot filtering.
 
 ## Requirements
