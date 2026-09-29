@@ -1,5 +1,7 @@
 # Desktop Dashboard
 
+## Purpose
+
 A native desktop app (`desktop/`, Rust) that charts the metrics served by the [HTTP API](../http-api/spec.md). It only reads: data collection and every GitHub / CI credential stay with the Go service.
 
 ## Requirements

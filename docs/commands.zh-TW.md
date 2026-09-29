@@ -375,6 +375,8 @@ devpulse serve
 | `HTTP_ADDR` | `127.0.0.1:8080` | 監聽位址 |
 | `DEVPULSE_API_TOKEN` | *（空）* | 每個 `/api/` 請求都必須帶上的 bearer token。當 `HTTP_ADDR` 不是 loopback 位址時**必填**，否則 `serve` 會拒絕啟動，因為 API 會公開所有追蹤中 repo 的資料 |
 
+在容器裡執行時，預設的 loopback 位址從外部連不到：請設定 `HTTP_ADDR=0.0.0.0:8080`（因此也要設定 `DEVPULSE_API_TOKEN`），並把 port 對外開放。
+
 **端點**
 
 | 方法 + 路徑 | 認證 | 回傳 |

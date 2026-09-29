@@ -1,5 +1,7 @@
 # HTTP API
 
+## Purpose
+
 `devpulse serve` exposes the tracked repos and their metrics as a read-only JSON API, so clients other than the CLI (the desktop dashboard first) can show them without direct database access or any GitHub / CI credential.
 
 ## Requirements

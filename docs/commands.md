@@ -375,6 +375,8 @@ Runs the read-only JSON API until `Ctrl-C` (`SIGINT`) or `SIGTERM`. The [desktop
 | `HTTP_ADDR` | `127.0.0.1:8080` | Listen address |
 | `DEVPULSE_API_TOKEN` | *(empty)* | Bearer token every `/api/` request must send. **Required** when `HTTP_ADDR` is not a loopback address; `serve` refuses to start otherwise, because the API exposes every tracked repo's data |
 
+In a container, the loopback default is unreachable from outside: set `HTTP_ADDR=0.0.0.0:8080` (and therefore `DEVPULSE_API_TOKEN`) and publish the port.
+
 **Endpoints**
 
 | Method + path | Auth | Returns |
