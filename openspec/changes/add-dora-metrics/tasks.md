@@ -30,7 +30,8 @@
 - [x] 5.2 Add `RefreshPullRequests` (listed since the updated_at watermark ∪ stored open PRs, stale-detail rejection) and call it from `syncOneRepo`, storing the returned watermark; verify open→merged, closed→reopened→merged, an unlisted stale open PR healing, the stale-detail and failure watermark holds, and the number filters in orchestrator tests
 - [x] 5.3 Add `SyncIncidents` and call it from `syncOneRepo` (a failure is non-fatal); verify with an orchestrator test
 
-- [x] 5.4 Add `LinkPullRequestsByBranch` and call it from `FetchAllBuilds`; verify the branch + open-window match, ambiguity, push builds and preset numbers in a persister test, and the wiring in an orchestrator test
+- [x] 5.4 Add `LinkPullRequestsByBranch` and call it from `FetchAllBuilds`; add a `(repo_id, head_ref)` index for the lookup; verify the branch + open-window match, ambiguity, push builds and preset numbers in a persister test, and the wiring in an orchestrator test
+- [x] 5.5 Add `CompletePullRequestFacts` (stored PRs with no base_ref, or merged with no first_commit_at; stop at the first failure) and call it from `syncOneRepo` after the backfill, non-fatal; make a first-commit fetch failure non-fatal, ignore pre-1971 author dates and clamp later-than-merge ones; verify pre-DORA completion, resume and the first-commit retry in orchestrator tests
 
 ## 6. CLI and docs
 

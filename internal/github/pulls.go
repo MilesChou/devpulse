@@ -237,8 +237,9 @@ type rawPRCommit struct {
 // PR's commits — the DORA lead-time start. Author date (not committer
 // date) is used because it survives rebases. Only the first page (100
 // commits) is inspected; for larger PRs the minimum over that page is
-// returned, which is documented as a known approximation. Returns nil
-// when no commit carries an author date.
+// returned, which is documented as a known approximation. Author dates
+// before pullrequest.MinCommitTime (broken clocks) are ignored. Returns
+// nil when no commit carries a usable author date.
 func (c *Client) GetFirstCommitAt(
 	ctx context.Context,
 	repoName repo.FullName,
@@ -256,7 +257,7 @@ func (c *Client) GetFirstCommitAt(
 	var first *time.Time
 	for _, cm := range commits {
 		a := cm.Commit.Author
-		if a == nil || a.Date == nil {
+		if a == nil || a.Date == nil || !pullrequest.IsPlausibleCommitTime(*a.Date) {
 			continue
 		}
 		if first == nil || a.Date.Before(*first) {

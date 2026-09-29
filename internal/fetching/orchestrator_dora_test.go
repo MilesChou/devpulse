@@ -3,6 +3,7 @@ package fetching_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -50,25 +51,134 @@ func TestBackfill_FetchesFirstCommitOnlyForMerged(t *testing.T) {
 	}
 }
 
-// TestBackfill_FirstCommitErrorFailsFast asserts a first-commit fetch
-// failure is treated like any other per-PR upstream failure.
-func TestBackfill_FirstCommitErrorFailsFast(t *testing.T) {
+// TestBackfill_FirstCommitErrorDoesNotStall asserts a first-commit fetch
+// failure does not stop the backfill: the PR is written without
+// first_commit_at, the next number is still synced, and the row is left
+// for CompletePullRequestFacts to retry.
+func TestBackfill_FirstCommitErrorDoesNotStall(t *testing.T) {
 	p, r := setup(t)
 	pp := persistence.NewPullRequestPersister(p)
+	ctx := context.Background()
 	vcs := &fakeVCSProvider{
-		latestNumber:   1,
-		prs:            map[int]pullrequest.PullRequest{1: makePR(r.ID, 1)},
+		latestNumber:   2,
+		prs:            map[int]pullrequest.PullRequest{1: makePR(r.ID, 1), 2: makePR(r.ID, 2)},
 		firstCommitErr: errors.New("boom"),
 	}
 	orch := fetching.NewOrchestrator(nil, vcs, persistence.NewBuildPersister(p), pp,
 		persistence.NewReviewPersister(p), nil, nil)
 
-	written, err := orch.BackfillPullRequestsByNumber(context.Background(), r)
-	if err == nil || written != 0 {
-		t.Fatalf("want error and 0 written, got written=%d err=%v", written, err)
+	written, err := orch.BackfillPullRequestsByNumber(ctx, r)
+	if err != nil || written != 2 {
+		t.Fatalf("want 2 written and no error, got written=%d err=%v", written, err)
 	}
-	if _, has, _ := pp.MaxNumber(context.Background(), r.ID); has {
-		t.Fatal("PR row written despite first-commit failure")
+	pr, _ := pp.FindByNumber(ctx, r.ID, 1)
+	if pr.FirstCommitAt != nil {
+		t.Fatalf("first_commit_at should be empty after a failed fetch: %v", pr.FirstCommitAt)
+	}
+
+	// The upstream call recovers; the completion pass fills the gap.
+	first := time.Date(2026, 4, 30, 8, 0, 0, 0, time.UTC)
+	vcs.firstCommitErr = nil
+	vcs.firstCommitAt = map[int]time.Time{1: first, 2: first}
+	completed, err := orch.CompletePullRequestFacts(ctx, r)
+	if err != nil || completed != 2 {
+		t.Fatalf("complete: completed=%d err=%v", completed, err)
+	}
+	pr, _ = pp.FindByNumber(ctx, r.ID, 1)
+	if pr.FirstCommitAt == nil || !pr.FirstCommitAt.Equal(first) {
+		t.Fatalf("first_commit_at after completion: %v", pr.FirstCommitAt)
+	}
+}
+
+// TestBackfill_ClampsFirstCommitAfterMerge asserts an author date later
+// than the merge (clock skew) is stored as the merge time, which keeps
+// it inside the range every DB dialect can store.
+func TestBackfill_ClampsFirstCommitAfterMerge(t *testing.T) {
+	p, r := setup(t)
+	pp := persistence.NewPullRequestPersister(p)
+	ctx := context.Background()
+	pr1 := makePR(r.ID, 1)
+	vcs := &fakeVCSProvider{
+		latestNumber:  1,
+		prs:           map[int]pullrequest.PullRequest{1: pr1},
+		firstCommitAt: map[int]time.Time{1: time.Date(2106, 2, 7, 0, 0, 0, 0, time.UTC)},
+	}
+	orch := fetching.NewOrchestrator(nil, vcs, persistence.NewBuildPersister(p), pp,
+		persistence.NewReviewPersister(p), nil, nil)
+
+	if _, err := orch.BackfillPullRequestsByNumber(ctx, r); err != nil {
+		t.Fatalf("backfill: %v", err)
+	}
+	got, _ := pp.FindByNumber(ctx, r.ID, 1)
+	if got.FirstCommitAt == nil || !got.FirstCommitAt.Equal(*pr1.MergedAt) {
+		t.Fatalf("first_commit_at: %v, want merge time %v", got.FirstCommitAt, pr1.MergedAt)
+	}
+}
+
+// TestCompletePullRequestFacts_FillsPreDORARows covers an upgraded store:
+// rows written before the DORA columns existed have no base_ref, and
+// neither the backfill nor the refresh revisits them. The completion
+// pass re-syncs them, skips complete rows and numbers below the sync
+// floor, and stops at the first failure so the next sync resumes.
+func TestCompletePullRequestFacts_FillsPreDORARows(t *testing.T) {
+	p, r := setup(t)
+	pp := persistence.NewPullRequestPersister(p)
+	ctx := context.Background()
+	first := time.Date(2026, 4, 30, 8, 0, 0, 0, time.UTC)
+
+	withBase := func(pr pullrequest.PullRequest) pullrequest.PullRequest {
+		pr.BaseRef, pr.HeadRef = "main", fmt.Sprintf("feature-%d", pr.Number)
+		return pr
+	}
+
+	// Seed: #1..#3 as a pre-DORA sync left them (no base_ref, no first
+	// commit); #4 complete.
+	complete := withBase(makePR(r.ID, 4))
+	complete.FirstCommitAt = &first
+	if _, err := pp.UpsertMany(ctx, []pullrequest.PullRequest{
+		makePR(r.ID, 1), makePR(r.ID, 2), makePR(r.ID, 3), complete,
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	vcs := &fakeVCSProvider{
+		prs: map[int]pullrequest.PullRequest{
+			1: withBase(makePR(r.ID, 1)),
+			2: withBase(makePR(r.ID, 2)),
+			3: withBase(makePR(r.ID, 3)),
+			4: complete,
+		},
+		getErrFor:     map[int]error{3: errors.New("rate limited")},
+		firstCommitAt: map[int]time.Time{1: first, 2: first, 3: first},
+	}
+	orch := fetching.NewOrchestrator(nil, vcs, persistence.NewBuildPersister(p), pp,
+		persistence.NewReviewPersister(p), nil, nil)
+
+	r.PRSyncStartNumber = 2
+	completed, err := orch.CompletePullRequestFacts(ctx, r)
+	if err == nil {
+		t.Fatal("want the #3 failure to be returned")
+	}
+	if completed != 1 {
+		t.Fatalf("completed: %d, want 1", completed)
+	}
+	if len(vcs.gotNumbers) != 2 || vcs.gotNumbers[0] != 2 || vcs.gotNumbers[1] != 3 {
+		t.Fatalf("visited %v, want [2 3]", vcs.gotNumbers)
+	}
+	pr2, _ := pp.FindByNumber(ctx, r.ID, 2)
+	if pr2.BaseRef != "main" || pr2.FirstCommitAt == nil {
+		t.Fatalf("#2 not completed: base=%q first=%v", pr2.BaseRef, pr2.FirstCommitAt)
+	}
+
+	// Next sync resumes at #3.
+	delete(vcs.getErrFor, 3)
+	vcs.gotNumbers = nil
+	completed, err = orch.CompletePullRequestFacts(ctx, r)
+	if err != nil || completed != 1 {
+		t.Fatalf("resume: completed=%d err=%v", completed, err)
+	}
+	if len(vcs.gotNumbers) != 1 || vcs.gotNumbers[0] != 3 {
+		t.Fatalf("resume visited %v, want [3]", vcs.gotNumbers)
 	}
 }
 

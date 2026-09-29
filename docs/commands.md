@@ -144,14 +144,15 @@ devpulse repo config get MilesChou/devpulse
 devpulse repo sync <owner/name>
 ```
 
-Syncs the repository in four steps, in order:
+Syncs the repository in five steps, in order:
 
 1. **PR refresh** — re-fetches every stored PR that GitHub reports as updated since the previous refresh, plus every PR stored as open, so a merge, close, reopen, retitle or relabel after its first sync is recorded (merges are DORA deployments). The high-water mark is the `updated_at` of the most recently updated PR seen, taken from GitHub's own listing, so a cached listing can never skip updates. A PR whose detail comes back older than the listing (a cached copy) is not written. A PR that fails to refresh is logged, and the mark is not advanced so the next sync lists it again. Open PRs are re-fetched every time so that a stale cached copy, for example one written during a rebuild with `CACHE_ENABLED=true`, heals once its cache entry expires.
-2. **Pull requests** — fetches all new PRs from GitHub (detail, reviews, and — for merged PRs — the earliest commit time), upserts them, and runs enrichment.
-3. **CI builds** — fetches build records from every registered CI provider (GitHub Actions always; Travis CI when `TRAVIS_TOKEN` is set) and upserts them. GitHub Actions leaves a run's PR list empty in practice, so each PR-triggered build is then linked to the stored PR whose head branch matches the build's branch and that was open when the build started. A build that matches two PRs (for example, two fork PRs from branches named `main` open at once) stays unlinked.
-4. **Incidents** — mirrors every issue carrying the repo's `incident-label` (open and closed; pull requests excluded). A failure prints a warning and does not fail the command.
+2. **Pull requests** — fetches all new PRs from GitHub (detail, reviews, and — for merged PRs — the earliest commit time), upserts them, and runs enrichment. A failure to fetch the earliest commit time does not fail the PR; step 3 retries it. Commit author dates before 1971 (broken clocks) are ignored, and one later than the merge is stored as the merge time.
+3. **PR fact completion** — re-fetches every stored PR that is missing its DORA facts: no base branch (a row written before the DORA columns existed) or merged with no earliest commit time. This is how a store synced before DORA support fills in its history. It walks ascending, stops at the first failure with a warning, and resumes there on the next sync; it never fails the command.
+4. **CI builds** — fetches build records from every registered CI provider (GitHub Actions always; Travis CI when `TRAVIS_TOKEN` is set) and upserts them. GitHub Actions leaves a run's PR list empty in practice, so each PR-triggered build is then linked to the stored PR whose head branch matches the build's branch and that was open when the build started. A build that matches two PRs (for example, two fork PRs from branches named `main` open at once) stays unlinked.
+5. **Incidents** — mirrors every issue carrying the repo's `incident-label` (open and closed; pull requests excluded). A failure prints a warning and does not fail the command.
 
-If step 1 or 2 fails, later steps are skipped and the command exits non-zero. `GITHUB_TOKEN` is required; `TRAVIS_TOKEN` is optional.
+If step 1, 2 or 4 fails, later steps are skipped and the command exits non-zero. `GITHUB_TOKEN` is required; `TRAVIS_TOKEN` is optional.
 
 > The first run is the expensive one: PR sync walks PR numbers ascending from `pr_sync_start_number` (default 1) up to the upstream max, fetching detail + reviews per PR; build sync walks each provider's full history with no page cap (cold-start path triggered when that provider has no rows yet). Subsequent runs are incremental — PRs resume from `MAX(number) + 1`, and each CI provider resumes from its **own** `MAX(started_at) - 6h` watermark (per-provider cursors keep a lagging or newly added provider from inheriting another's progress; the 6-hour overlap absorbs retry builds and runs that were still executing at the previous sync — 6h is the GitHub Actions per-job hard timeout — while the `(repo_id, ci_provider, external_id)` unique dedupes anything already on file). Author back-fill only touches commit SHAs whose author is still NULL.
 
@@ -166,6 +167,7 @@ If step 1 or 2 fails, later steps are skipped and the command exits non-zero. `G
 ```
 Refreshed MilesChou/devpulse pull requests: 3
 Synced MilesChou/devpulse pull requests: written=7
+Completed MilesChou/devpulse pull request facts: 120
 Synced MilesChou/devpulse ci builds: written=42
 Synced MilesChou/devpulse incidents (label "incident"): 2
 ```
@@ -268,7 +270,7 @@ Every event is counted in the window its end time falls in.
 
 Limitations: pushes straight to the default branch (without a PR) are not seen. A hotfix PR is not linked to the deployment it fixed. If the default branch is unknown, the section asks you to run `devpulse repo refresh`.
 
-> PRs synced before the DORA columns existed have no base branch, so they are not counted as deployments. Rebuild the database, or start with a fresh one, to fill them in. With `CACHE_ENABLED=true` the rebuild replays cached PR responses, which already contain the new fields.
+> PRs synced before the DORA columns existed have no base branch, so they are not counted as deployments until `repo sync` fills them in (the PR fact completion step). On a large history this takes one detail, reviews and commits fetch per PR and may span several syncs if the GitHub rate limit is hit. With `CACHE_ENABLED=true` the detail and reviews come from cached responses, which already contain the new fields.
 
 **Example**
 

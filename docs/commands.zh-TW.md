@@ -144,14 +144,15 @@ devpulse repo config get MilesChou/devpulse
 devpulse repo sync <owner/name>
 ```
 
-依序執行四個步驟同步指定儲存庫：
+依序執行五個步驟同步指定儲存庫：
 
 1. **重抓有變動的 PR**：重抓資料庫中、GitHub 回報自上次重抓後有更新的 PR，以及所有狀態為 open 的 PR，把首次同步之後才發生的 merge、close、重新開啟、改標題或改 label 記錄下來（merge 就是 DORA 的部署）。水位是已看到的 PR 中最新的 `updated_at`，取自 GitHub 列表本身，所以列表就算來自 cache 也不會跳過更新。抓回來的 PR 比列表上的舊（來自 cache 的舊資料）時不會寫入。單一 PR 重抓失敗只會記錄 log，水位不前進，下次同步會再列到它。open 的 PR 每次都重抓，這樣 cache 裡的舊資料（例如開啟 `CACHE_ENABLED=true` 重建資料庫時寫入的）會在 cache 過期後自動更正。
-2. **Pull Request**：從 GitHub 抓取所有新的 PR（detail、reviews；已 merge 的 PR 另外抓最早的 commit 時間），寫入資料庫並執行 enrichment。
-3. **CI builds**：從每一個已註冊的 CI provider（GitHub Actions 必有；設定 `TRAVIS_TOKEN` 時加上 Travis CI）抓取建置記錄並寫入資料庫。GitHub Actions 回傳的 run 實際上不帶 PR 清單，所以接著會把每個由 PR 觸發的 build，對應到 head branch 與 build 的 branch 相同、且 build 開始時仍開啟中的 PR。同時符合兩個 PR 的 build（例如兩個同時開啟、branch 都叫 `main` 的 fork PR）不會被對應。
-4. **事故（incidents）**：鏡像所有帶 repo `incident-label` 的 issue（包含 open 與 closed，排除 PR）。失敗時只印出警告，不會讓指令失敗。
+2. **Pull Request**：從 GitHub 抓取所有新的 PR（detail、reviews；已 merge 的 PR 另外抓最早的 commit 時間），寫入資料庫並執行 enrichment。抓最早的 commit 時間失敗不會讓該 PR 失敗，由步驟 3 重試。早於 1971 年的 commit author 時間（時鐘錯誤）會被忽略，晚於 merge 的時間則以 merge 時間儲存。
+3. **補齊 PR 資料**：重抓資料庫中缺少 DORA 資料的 PR，也就是沒有 base branch（在 DORA 欄位加入前寫入的資料列），或已 merge 但沒有最早 commit 時間的 PR。在支援 DORA 之前就同步過的資料庫，靠這一步補齊歷史資料。依 PR number 由小到大處理，遇到第一個失敗就印出警告並停止，下次同步從該處繼續，不會讓指令失敗。
+4. **CI builds**：從每一個已註冊的 CI provider（GitHub Actions 必有；設定 `TRAVIS_TOKEN` 時加上 Travis CI）抓取建置記錄並寫入資料庫。GitHub Actions 回傳的 run 實際上不帶 PR 清單，所以接著會把每個由 PR 觸發的 build，對應到 head branch 與 build 的 branch 相同、且 build 開始時仍開啟中的 PR。同時符合兩個 PR 的 build（例如兩個同時開啟、branch 都叫 `main` 的 fork PR）不會被對應。
+5. **事故（incidents）**：鏡像所有帶 repo `incident-label` 的 issue（包含 open 與 closed，排除 PR）。失敗時只印出警告，不會讓指令失敗。
 
-步驟 1 或 2 失敗時會跳過後面的步驟，並以非零狀態結束。`GITHUB_TOKEN` 為必要；`TRAVIS_TOKEN` 為選填。
+步驟 1、2 或 4 失敗時會跳過後面的步驟，並以非零狀態結束。`GITHUB_TOKEN` 為必要；`TRAVIS_TOKEN` 為選填。
 
 > 首次執行最耗時：PR 同步會從 `pr_sync_start_number`（預設 1）開始往上、逐個 PR number 抓 detail + reviews，跑到 GitHub 當前最大 PR number 為止；build 同步則會走完該 provider 的完整歷史，無頁數上限（該 provider 尚無任何資料列時才走這條 cold-start 路徑）。後續執行為增量——PR 從 `MAX(number) + 1` 接著抓，每個 CI provider 各自從**自己的** `MAX(started_at) - 6 小時` watermark 開始翻頁（per-provider 游標確保落後或新加入的 provider 不會繼承別人的進度；6 小時 overlap 用來吸收 retry build 與上次同步時還在執行中的 run——6 小時即 GitHub Actions 單一 job 的硬上限——已寫入的列由 `(repo_id, ci_provider, external_id)` unique constraint 靜默去重）、author backfill 只會處理 author 仍為 NULL 的 commit SHA。
 
@@ -166,6 +167,7 @@ devpulse repo sync <owner/name>
 ```
 Refreshed MilesChou/devpulse pull requests: 3
 Synced MilesChou/devpulse pull requests: written=7
+Completed MilesChou/devpulse pull request facts: 120
 Synced MilesChou/devpulse ci builds: written=42
 Synced MilesChou/devpulse incidents (label "incident"): 2
 ```
@@ -268,7 +270,7 @@ Recovery Time:          avg 2.8h  p50 2.8h  p90 3.0h  (2 samples)  from reverts=
 
 限制：沒有經過 PR、直接推上 default branch 的 commit 看不到。hotfix PR 不會連結到它修復的那次部署。default branch 未知時，這個區塊會提示先執行 `devpulse repo refresh`。
 
-> 在 DORA 欄位加入之前就同步的 PR 沒有 base branch，所以不會被算成部署。要補齊的話，請重建資料庫或改用新的資料庫。若有設定 `CACHE_ENABLED=true`，重建時會重播快取的 PR 回應，裡面已經有這些新欄位。
+> 在 DORA 欄位加入之前就同步的 PR 沒有 base branch，在 `repo sync` 補齊之前（補齊 PR 資料步驟）不會被算成部署。歷史資料多的 repo，每個 PR 要各抓一次 detail、reviews 和 commits，碰到 GitHub rate limit 時會分成好幾次同步才補完。若有設定 `CACHE_ENABLED=true`，detail 和 reviews 會用快取的回應，裡面已經有這些新欄位。
 
 **範例**
 

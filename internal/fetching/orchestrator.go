@@ -347,6 +347,58 @@ func (o *Orchestrator) RefreshPullRequests(ctx context.Context, r repo.Repo) (PR
 	return out, nil
 }
 
+// CompletePullRequestFacts re-syncs stored PRs that lack DORA facts:
+// rows with no base_ref (written before the DORA columns existed; every
+// current sync stores it) and merged rows with no first_commit_at (the
+// commits fetch failed, or no commit carried a usable author date).
+// Neither the backfill nor RefreshPullRequests revisits such a row
+// unless it changes upstream, so without this pass an upgraded store
+// would report no deployments for its history and link no builds to
+// its older PRs.
+//
+// Only numbers at or above r.PRSyncStartNumber are completed, in
+// ascending order. The error policy matches the backfill: the first
+// failure stops the pass and is returned, and the set is derived from
+// DB state, so the next sync resumes where this one stopped. An
+// upstream 404 counts as done for this run.
+//
+// Returns the number of PRs re-synced.
+func (o *Orchestrator) CompletePullRequestFacts(ctx context.Context, r repo.Repo) (int, error) {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, "Orchestrator.CompletePullRequestFacts",
+		trace.WithAttributes(attribute.String("repo", r.Name.String())))
+	defer span.End()
+
+	numbers, err := o.prs.ListIncompleteNumbers(ctx, r.ID)
+	if err != nil {
+		span.RecordError(err)
+		return 0, fmt.Errorf("list incomplete prs: %w", err)
+	}
+	span.SetAttributes(attribute.Int("candidates", len(numbers)))
+
+	var completed int
+	for _, n := range numbers {
+		if n < r.PRSyncStartNumber {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			span.RecordError(err)
+			return completed, err
+		}
+
+		ok, err := o.syncOnePullRequestByNumber(ctx, r, n, time.Time{})
+		if err != nil {
+			span.RecordError(err)
+			return completed, fmt.Errorf("complete pr #%d: %w", n, err)
+		}
+		if ok {
+			completed++
+		}
+	}
+	span.SetAttributes(attribute.Int("completed", completed))
+	return completed, nil
+}
+
 // SyncIncidents mirrors the repo's incident issues — every issue
 // carrying r.IncidentLabel — into the incident store. The listing is
 // complete or an error, so the replace never truncates the stored set
@@ -436,12 +488,20 @@ func (o *Orchestrator) syncOnePullRequestByNumber(
 
 	// DORA lead time starts at the earliest commit. Only merged PRs need
 	// it; an open PR gets it on the refresh pass that sees it merged.
+	// A failure here does not fail the PR: the row is written without
+	// first_commit_at, and CompletePullRequestFacts retries it on a later
+	// sync. Failing instead would stall the by-number backfill at this
+	// number on a flaky extra call.
 	if detail.MergedAt != nil {
 		first, err := o.vcs.GetFirstCommitAt(ctx, r.Name, number)
 		if err != nil {
-			return false, fmt.Errorf("first commit: %w", err)
+			o.logger.Warn("first commit fetch failed, will retry next sync",
+				slog.String("repo", r.Name.String()),
+				slog.Int("number", number),
+				slog.String("err", err.Error()),
+			)
 		}
-		detail.FirstCommitAt = first
+		detail.FirstCommitAt = pullrequest.ClampFirstCommitAt(first, *detail.MergedAt)
 	}
 
 	// Compute enrichment BEFORE the PR row is written, so the upsert

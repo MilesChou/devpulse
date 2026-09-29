@@ -10,6 +10,10 @@ ALTER TABLE pull_requests ADD COLUMN first_commit_at TIMESTAMP NULL;
 ALTER TABLE pull_requests ADD COLUMN reverts_number INTEGER NULL;
 
 CREATE INDEX pull_requests_repo_merged_idx ON pull_requests (repo_id, merged_at);
+-- Build-to-PR linking looks PRs up by head branch for every unlinked
+-- PR-triggered build on each sync; without this index each lookup scans
+-- the repo's whole PR history.
+CREATE INDEX pull_requests_repo_head_ref_idx ON pull_requests (repo_id, head_ref);
 
 ALTER TABLE repos ADD COLUMN incident_label VARCHAR(255) NOT NULL DEFAULT 'incident';
 ALTER TABLE repos ADD COLUMN hotfix_label VARCHAR(255) NOT NULL DEFAULT 'hotfix';

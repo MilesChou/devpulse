@@ -11,6 +11,16 @@ The PR sync SHALL record, for every PR: title, labels, base branch, head branch 
 - **WHEN** a merged PR has commits authored at `09:00` and `11:00`
 - **THEN** the stored PR carries `09:00` as its earliest commit time
 
+#### Scenario: Implausible commit times are bounded
+
+- **WHEN** a merged PR has a commit whose author time is before 1971, or later than the PR's merge time
+- **THEN** a pre-1971 time is ignored, and a time later than the merge is stored as the merge time
+
+#### Scenario: Earliest commit time fetch failure does not fail the PR
+
+- **WHEN** fetching a merged PR's commits fails
+- **THEN** the PR is stored without an earliest commit time, and the sync continues with the next PR
+
 #### Scenario: Revert target is recorded
 
 - **WHEN** a PR's body contains `Reverts MilesChou/devpulse#42` and the PR belongs to `MilesChou/devpulse`
@@ -49,6 +59,20 @@ Every repo sync SHALL re-fetch each stored PR that is stored as open or that the
 
 - **WHEN** a listed PR fails to refresh
 - **THEN** the watermark is not advanced, and the next sync lists that PR again
+
+### Requirement: Stored PRs missing DORA facts are completed
+
+Every repo sync SHALL re-fetch each stored PR, at or above the repo's PR sync floor, that has no recorded base branch or that is merged without an earliest commit time, so that a store synced before these facts existed fills in its history. The pass SHALL proceed in ascending PR number, SHALL stop at the first failure, and SHALL resume from stored state on the next sync. A failure SHALL be reported without aborting the rest of the repo sync.
+
+#### Scenario: Pre-DORA rows are completed
+
+- **WHEN** merged PR #3 was stored before base branches were recorded
+- **THEN** after the next sync PR #3 carries its base branch and earliest commit time, and counts as a deployment
+
+#### Scenario: Completion resumes after a failure
+
+- **WHEN** completing PR #3 fails during a sync
+- **THEN** the pass stops at #3, the CI build sync still runs, and the next sync resumes at #3
 
 ### Requirement: Fetch incident issues
 

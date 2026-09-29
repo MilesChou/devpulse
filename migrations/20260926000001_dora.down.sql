@@ -4,6 +4,7 @@ ALTER TABLE repos DROP COLUMN pr_updated_watermark;
 ALTER TABLE repos DROP COLUMN hotfix_label;
 ALTER TABLE repos DROP COLUMN incident_label;
 
+DROP INDEX pull_requests_repo_head_ref_idx;
 DROP INDEX pull_requests_repo_merged_idx;
 
 ALTER TABLE pull_requests DROP COLUMN reverts_number;

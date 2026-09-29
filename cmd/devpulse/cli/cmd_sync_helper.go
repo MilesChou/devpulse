@@ -8,12 +8,16 @@ import (
 )
 
 // syncOneRepo refreshes stored PRs that changed upstream, runs PR sync
-// (by ascending number), CI build sync, and incident sync for a single
-// repo, in that order. The refresh runs first so PRs the backfill writes
-// in this run are not fetched twice; its updated_at watermark is stored
-// as soon as the refresh succeeds, independent of the later steps. Incident sync failures are reported
-// but do not fail the repo, mirroring how a failing CI provider is
-// skipped. Identical surface to `devpulse repo sync`
+// (by ascending number), completes stored PRs missing DORA facts, then
+// runs CI build sync and incident sync for a single repo, in that order.
+// The refresh runs first so PRs the backfill writes in this run are not
+// fetched twice; its updated_at watermark is stored as soon as the
+// refresh succeeds, independent of the later steps. The completion runs
+// before the build sync so builds can link to the head branches it
+// fills in. Completion and incident sync failures are reported but do
+// not fail the repo, mirroring how a failing CI provider is skipped:
+// both resume from DB state on the next sync. Identical surface to
+// `devpulse repo sync`
 // but takes a pre-resolved Repo so the top-level `devpulse sync` can
 // iterate over the store without re-ensuring each row.
 //
@@ -38,6 +42,14 @@ func syncOneRepo(ctx context.Context, d *deps, r repo.Repo) error {
 	fmt.Fprintf(stdout(), "Synced %s pull requests: written=%d\n", r.Name.String(), prsWritten)
 	if prsErr != nil {
 		return fmt.Errorf("sync pull requests: %w", prsErr)
+	}
+
+	completed, err := d.orch.CompletePullRequestFacts(ctx, r)
+	if err != nil {
+		fmt.Fprintf(stdout(), "Warning: complete %s pull request facts (%d done, resumes next sync): %v\n",
+			r.Name.String(), completed, err)
+	} else if completed > 0 {
+		fmt.Fprintf(stdout(), "Completed %s pull request facts: %d\n", r.Name.String(), completed)
 	}
 
 	buildsWritten, err := d.orch.FetchAllBuilds(ctx, r)

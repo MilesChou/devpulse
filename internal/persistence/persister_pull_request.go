@@ -128,9 +128,36 @@ func (r *PullRequestPersister) ListOpenNumbers(ctx context.Context, repoID strin
 	           WHERE repo_id = ? AND status = 'open'
 	           ORDER BY number`
 
-	rows, err := r.QueryCtx(ctx, q, repoID)
+	out, err := r.queryNumbers(ctx, q, repoID)
 	if err != nil {
 		return nil, fmt.Errorf("pr list open: %w", err)
+	}
+	return out, nil
+}
+
+// ListIncompleteNumbers returns, ascending, the numbers of every PR
+// stored without its DORA facts: no base_ref (every current sync stores
+// one, so the row predates the DORA columns), or merged with no
+// first_commit_at. The orchestrator re-syncs them until they are
+// complete.
+func (r *PullRequestPersister) ListIncompleteNumbers(ctx context.Context, repoID string) ([]int, error) {
+	const q = `SELECT number FROM pull_requests
+	           WHERE repo_id = ?
+	             AND (base_ref IS NULL
+	                  OR (status = 'merged' AND first_commit_at IS NULL))
+	           ORDER BY number`
+
+	out, err := r.queryNumbers(ctx, q, repoID)
+	if err != nil {
+		return nil, fmt.Errorf("pr list incomplete: %w", err)
+	}
+	return out, nil
+}
+
+func (r *PullRequestPersister) queryNumbers(ctx context.Context, q string, args ...any) ([]int, error) {
+	rows, err := r.QueryCtx(ctx, q, args...)
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -138,7 +165,7 @@ func (r *PullRequestPersister) ListOpenNumbers(ctx context.Context, repoID strin
 	for rows.Next() {
 		var n int
 		if err := rows.Scan(&n); err != nil {
-			return nil, fmt.Errorf("pr list open scan: %w", err)
+			return nil, fmt.Errorf("scan: %w", err)
 		}
 		out = append(out, n)
 	}

@@ -147,7 +147,7 @@ Hotfix PR 與事故 issue 以 label 辨識，可用
 |---|---|
 | `devpulse sync` | 同步所有已註冊 repo（循序；跳過 disabled；彙整失敗） |
 | `devpulse repo add <owner/name>` | 註冊一個 repo |
-| `devpulse repo sync <owner/name>` | 同步單一 repo：重抓 open 及上游有變動的 PR、新 PR（含 enrichment）、CI build（並對應回所屬 PR）、事故 issue |
+| `devpulse repo sync <owner/name>` | 同步單一 repo：重抓 open 及上游有變動的 PR、新 PR（含 enrichment）、補齊既有 PR 缺少的 DORA 資料、CI build（並對應回所屬 PR）、事故 issue |
 | `devpulse pr sync <owner/name> <number>` | 重新同步單一 PR（detail + reviews） |
 | `devpulse metrics <owner/name>` | 印出月份區間的工程效率指標與 DORA 指標 |
 | `devpulse migrate {up,down,status}` | Schema migration |

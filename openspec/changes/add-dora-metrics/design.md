@@ -87,7 +87,7 @@ Percentiles reuse the linear-interpolation definition already used by `PRLeadTim
 
 ### D7. Schema changes ship as a new additive migration
 
-Although the project is pre-release, an additive migration keeps existing databases working. It adds one `ALTER TABLE … ADD COLUMN` per statement, which is portable across SQLite, PostgreSQL and MySQL, plus the new `incidents` table. Rows synced before this change have NULL `base_ref`, so they do not count as deployments until they are re-synced. The docs recommend rebuilding the DB; the HTTP cache makes a rebuild cheap because cached PR responses already contain the new fields.
+Although the project is pre-release, an additive migration keeps existing databases working. It adds one `ALTER TABLE … ADD COLUMN` per statement, which is portable across SQLite, PostgreSQL and MySQL, plus the new `incidents` table. Rows synced before this change have NULL `base_ref`, so they do not count as deployments until they are re-synced. Neither the backfill (which resumes past `MAX(number)`) nor the refresh (which only revisits open or upstream-updated PRs) would ever reach them, so a separate completion pass re-syncs every stored PR with NULL `base_ref`, or merged with NULL `first_commit_at`, ascending and backfill-style (stop at the first failure, resume from DB state). It runs after the backfill and before the build sync, and its failure is only a warning, so a long catch-up under the rate limit never blocks new PRs or builds. The same pass retries a failed first-commit fetch, which is why that fetch no longer fails the PR. The HTTP cache keeps the catch-up cheap because cached PR responses already contain the new fields.
 
 ### D8. Package layout
 

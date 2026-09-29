@@ -171,6 +171,31 @@ func TestGetFirstCommitAt_MinAuthorDate(t *testing.T) {
 	}
 }
 
+// TestGetFirstCommitAt_IgnoresImplausibleDates asserts an author date
+// from a broken clock (the Unix epoch) does not become the lead-time
+// start, so it can neither skew the metric nor overflow MySQL TIMESTAMP.
+func TestGetFirstCommitAt_IgnoresImplausibleDates(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			{"commit": {"author": {"date": "1970-01-01T00:00:00Z"}}},
+			{"commit": {"author": {"date": "2026-05-14T02:00:00Z"}}}
+		]`))
+	}))
+	defer srv.Close()
+
+	c := newClient(t, srv)
+	repoName, _ := repo.ParseFullName("MilesChou/devpulse")
+	got, err := c.GetFirstCommitAt(context.Background(), repoName, 42)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	want := time.Date(2026, 5, 14, 2, 0, 0, 0, time.UTC)
+	if got == nil || !got.Equal(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
 func TestGetFirstCommitAt_NoCommits(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

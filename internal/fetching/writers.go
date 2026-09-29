@@ -57,6 +57,11 @@ type PullRequestWriter interface {
 	// RefreshPullRequests refetches them on every sync, so a stale
 	// (cached) open copy heals once its cache entry expires.
 	ListOpenNumbers(ctx context.Context, repoID string) ([]int, error)
+
+	// ListIncompleteNumbers returns, ascending, the numbers of every PR
+	// stored without its DORA facts: no base_ref, or merged with no
+	// first_commit_at. CompletePullRequestFacts re-syncs them.
+	ListIncompleteNumbers(ctx context.Context, repoID string) ([]int, error)
 }
 
 // ReviewWriter persists individual PR review submissions. Upsert is keyed
