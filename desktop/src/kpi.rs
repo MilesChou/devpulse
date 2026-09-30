@@ -4,6 +4,72 @@
 use crate::api::{HoursSummary, Report};
 use crate::i18n::Texts;
 
+/// Where a value stands against the project's ideal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Status {
+    OnTarget,
+    Near,
+    Off,
+}
+
+/// The project goals give an ideal but no tolerance, so these bands are
+/// a judgement call, kept in one place: a value up to `on_target` is on
+/// target, up to `near` is near, beyond is off (for metrics where lower
+/// is better).
+struct Band {
+    on_target: f64,
+    near: f64,
+}
+
+/// CI failure rate in percent (ideal 0 %).
+const CI_FAILURE_BAND: Band = Band {
+    on_target: 5.0,
+    near: 15.0,
+};
+/// Builds per PR (ideal 1).
+const BUILDS_PER_PR_BAND: Band = Band {
+    on_target: 1.5,
+    near: 2.5,
+};
+/// PR lead time in hours (ideal 24 h).
+const LEAD_TIME_BAND: Band = Band {
+    on_target: 24.0,
+    near: 72.0,
+};
+/// Share of small (XS + S) PRs in percent; higher is better, so the
+/// comparison flips: at least `on_target` is on target.
+const SMALL_SHARE_BAND: Band = Band {
+    on_target: 70.0,
+    near: 50.0,
+};
+
+impl Band {
+    fn lower_is_better(&self, v: f64) -> Status {
+        if v <= self.on_target {
+            Status::OnTarget
+        } else if v <= self.near {
+            Status::Near
+        } else {
+            Status::Off
+        }
+    }
+
+    fn higher_is_better(&self, v: f64) -> Status {
+        if v >= self.on_target {
+            Status::OnTarget
+        } else if v >= self.near {
+            Status::Near
+        } else {
+            Status::Off
+        }
+    }
+}
+
+/// Status of the small-PR share (0..=1), for the size chart.
+pub fn small_share_status(share: f64) -> Status {
+    SMALL_SHARE_BAND.higher_is_better(share * 100.0)
+}
+
 /// One KPI card.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Kpi {
@@ -17,6 +83,8 @@ pub struct Kpi {
     pub target: &'static str,
     /// Change against the previous month, when a trend is loaded.
     pub delta: Option<Delta>,
+    /// Standing against the ideal; `None` without an ideal or data.
+    pub status: Option<Status>,
 }
 
 /// Month-over-month change of a KPI.
@@ -55,6 +123,7 @@ pub fn kpis(report: &Report, previous: Option<&Report>, t: &'static Texts) -> Ve
             delta: previous
                 .filter(|p| p.build_failure.total > 0 && bf.total > 0)
                 .map(|p| delta(p.build_failure.rate * 100.0, bf.rate * 100.0, " pp")),
+            status: (bf.total > 0).then(|| CI_FAILURE_BAND.lower_is_better(bf.rate * 100.0)),
         },
         Kpi {
             title: t.builds_per_pr,
@@ -69,6 +138,8 @@ pub fn kpis(report: &Report, previous: Option<&Report>, t: &'static Texts) -> Ve
             delta: previous
                 .filter(|p| p.avg_builds_per_pr > 0.0 && report.avg_builds_per_pr > 0.0)
                 .map(|p| delta(p.avg_builds_per_pr, report.avg_builds_per_pr, "")),
+            status: (report.avg_builds_per_pr > 0.0)
+                .then(|| BUILDS_PER_PR_BAND.lower_is_better(report.avg_builds_per_pr)),
         },
         Kpi {
             title: t.pr_lead_time,
@@ -83,6 +154,7 @@ pub fn kpis(report: &Report, previous: Option<&Report>, t: &'static Texts) -> Ve
             delta: previous
                 .filter(|p| p.pr_lead_time.count > 0 && lt.count > 0)
                 .map(|p| delta(p.pr_lead_time.avg_hours, lt.avg_hours, "h")),
+            status: (lt.count > 0).then(|| LEAD_TIME_BAND.lower_is_better(lt.avg_hours)),
         },
         Kpi {
             title: t.review_wait,
@@ -97,6 +169,8 @@ pub fn kpis(report: &Report, previous: Option<&Report>, t: &'static Texts) -> Ve
             delta: previous
                 .filter(|p| p.review_wait.count > 0 && rw.count > 0)
                 .map(|p| delta(p.review_wait.avg_hours, rw.avg_hours, "h")),
+            // No ideal in the project goals.
+            status: None,
         },
     ]
 }
@@ -126,6 +200,8 @@ pub fn dora_kpis(
             delta: prev
                 .filter(|p| p.count > 0 && s.count > 0)
                 .map(|p| delta(p.avg_hours, s.avg_hours, "h")),
+            // The project goals set no DORA targets.
+            status: None,
         };
 
     Some(vec![
@@ -136,6 +212,7 @@ pub fn dora_kpis(
             detail: (t.deploy_detail)(d.deployments, &d.default_branch, d.deploy_days),
             target: t.higher_is_better,
             delta: prev.map(|p| delta(p.per_week, d.per_week, t.per_week)),
+            status: None,
         },
         hours_card(
             t.lead_time_for_changes,
@@ -167,6 +244,7 @@ pub fn dora_kpis(
                 (Some(p), Some(c)) => Some(delta(p * 100.0, c * 100.0, " pp")),
                 _ => None,
             },
+            status: None,
         },
         hours_card(
             t.recovery_time,
@@ -363,5 +441,38 @@ mod tests {
         let dora = dora_kpis(april, None, &ZH_TW).unwrap();
         assert_eq!(dora[0].value, "0.0/週");
         assert_eq!(dora[1].detail, "沒有可計算的部署");
+    }
+
+    #[test]
+    fn status_bands() {
+        use Status::*;
+        // Golden report: failure 66.7 %, builds/PR 1.5, lead time 20 h.
+        let cards = kpis(&report(), None, &EN);
+        let statuses: Vec<_> = cards.iter().map(|k| k.status).collect();
+        assert_eq!(statuses, [Some(Off), Some(OnTarget), Some(OnTarget), None]);
+
+        assert_eq!(CI_FAILURE_BAND.lower_is_better(5.0), OnTarget);
+        assert_eq!(CI_FAILURE_BAND.lower_is_better(5.1), Near);
+        assert_eq!(CI_FAILURE_BAND.lower_is_better(15.1), Off);
+        assert_eq!(BUILDS_PER_PR_BAND.lower_is_better(2.5), Near);
+        assert_eq!(LEAD_TIME_BAND.lower_is_better(72.5), Off);
+        assert_eq!(small_share_status(0.70), OnTarget);
+        assert_eq!(small_share_status(0.55), Near);
+        assert_eq!(small_share_status(0.2), Off);
+    }
+
+    #[test]
+    fn no_data_no_status() {
+        let monthly: crate::api::MonthlyReport = serde_json::from_str(GOLDEN_MONTHLY).unwrap();
+        assert!(
+            kpis(&monthly.months[0], None, &EN)
+                .iter()
+                .all(|k| k.status.is_none())
+        );
+        let dora = dora_kpis(&report(), None, &EN).unwrap();
+        assert!(
+            dora.iter().all(|k| k.status.is_none()),
+            "DORA has no targets"
+        );
     }
 }

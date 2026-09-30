@@ -27,6 +27,8 @@ pub struct Settings {
     /// build) also reads as `None` instead of discarding the whole file.
     #[serde(deserialize_with = "lenient_lang")]
     pub language: Option<Lang>,
+    /// Whether the repo list on the left is collapsed.
+    pub sidebar_collapsed: bool,
 }
 
 impl Default for Settings {
@@ -35,6 +37,7 @@ impl Default for Settings {
             base_url: DEFAULT_BASE_URL.to_string(),
             last_repo: None,
             language: None,
+            sidebar_collapsed: false,
         }
     }
 }
@@ -190,6 +193,7 @@ mod tests {
             base_url: "https://devpulse.example.com".into(),
             last_repo: Some("MilesChou/devpulse".into()),
             language: Some(Lang::ZhTw),
+            sidebar_collapsed: true,
         };
         save(&path, &s).expect("save");
         assert_eq!(load(&path), s);

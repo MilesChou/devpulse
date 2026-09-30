@@ -6,7 +6,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use eframe::egui::{self, Align2, Color32, FontId, RichText, Sense, Stroke};
+use eframe::egui::{self, Align2, FontId, RichText, Sense, Stroke};
 use egui_plot::{
     Bar, BarChart, Legend, Line, Plot, PlotPoints, PlotResponse, log_grid_spacer,
     uniform_grid_spacer,
@@ -22,6 +22,7 @@ use crate::notice::Notice;
 use crate::overview::{Column, Sort, change};
 use crate::settings::{self, SecretStore, Settings};
 use crate::state::{Loadable, MemberForm, Msg, RepoEdit, State, TeamForm, Window};
+use crate::theme::{self, Tone};
 
 /// How often to poll the server while a sync runs.
 const SYNC_POLL: Duration = Duration::from_secs(2);
@@ -131,7 +132,7 @@ impl DashboardApp {
             .map(settings::load)
             .unwrap_or_default();
         let lang = Lang::resolve(overrides.lang, settings.language, locale.as_deref());
-        apply_text_sizes(&ctx);
+        theme::apply(&ctx);
         let state = State::new(Month::current());
         let (tx, rx) = channel();
 
@@ -585,10 +586,12 @@ impl eframe::App for DashboardApp {
                 .default_size(320.0)
                 .show(ui, |ui| self.settings_panel(ui));
         }
-        egui::Panel::left("repos")
-            .resizable(true)
-            .default_size(220.0)
-            .show(ui, |ui| self.repo_list(ui));
+        if !self.settings.sidebar_collapsed {
+            egui::Panel::left("repos")
+                .resizable(true)
+                .default_size(190.0)
+                .show(ui, |ui| self.repo_list(ui));
+        }
         egui::CentralPanel::default().show(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| match self.view {
                 View::Overview => self.overview_page(ui),
@@ -606,7 +609,20 @@ impl DashboardApp {
     fn top_bar(&mut self, ui: &mut egui::Ui) {
         let t = self.lang.texts();
         ui.horizontal(|ui| {
-            ui.heading("DevPulse");
+            let (arrow, hover) = if self.settings.sidebar_collapsed {
+                ("⏵", t.expand_sidebar)
+            } else {
+                ("⏴", t.collapse_sidebar)
+            };
+            if ui.button(arrow).on_hover_text(hover).clicked() {
+                self.settings.sidebar_collapsed = !self.settings.sidebar_collapsed;
+                self.persist_settings();
+            }
+            ui.heading(
+                RichText::new("DevPulse")
+                    .strong()
+                    .color(ui.visuals().hyperlink_color),
+            );
             ui.separator();
             ui.selectable_value(&mut self.view, View::Overview, t.view_overview);
             ui.selectable_value(&mut self.view, View::Dashboard, t.view_dashboard);
@@ -667,7 +683,7 @@ impl DashboardApp {
             let color = if notice.is_error() {
                 ui.visuals().error_fg_color
             } else {
-                success_color(ui)
+                theme::Tone::Good.color(ui)
             };
             let dismissed = ui
                 .horizontal(|ui| {
@@ -719,7 +735,7 @@ impl DashboardApp {
                 ui.spinner();
             }
             Loadable::Ready(()) => {
-                ui.colored_label(success_color(ui), t.connected);
+                ui.colored_label(theme::Tone::Good.color(ui), t.connected);
             }
             Loadable::Failed(e) => {
                 ui.colored_label(ui.visuals().error_fg_color, e.describe(t));
@@ -771,21 +787,41 @@ impl DashboardApp {
                     {
                         clicked = Some(Target::All);
                     }
-                    ui.separator();
+                    // Grouped by owner, so names are short; the rare long one
+                    // is truncated, with the full name on hover.
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+                    let mut groups: std::collections::BTreeMap<&str, Vec<&Repo>> =
+                        std::collections::BTreeMap::new();
                     for repo in repos {
-                        let selected = self.state.selected_repo() == Some(repo);
-                        let mut text = RichText::new(&repo.full_name);
-                        if repo.disabled {
-                            text = text.weak().italics();
-                        }
-                        let resp = ui.selectable_label(selected, text);
-                        let resp = match &repo.description {
-                            Some(d) if !d.is_empty() => resp.on_hover_text(d),
-                            _ => resp,
-                        };
-                        if resp.clicked() {
-                            clicked = Some(Target::Repo(repo.clone()));
-                        }
+                        groups.entry(repo.owner.as_str()).or_default().push(repo);
+                    }
+                    for (owner, mut group) in groups {
+                        group.sort_by(|a, b| a.name.cmp(&b.name));
+                        ui.add_space(4.0);
+                        // Each owner folds on its own; egui remembers which.
+                        egui::CollapsingHeader::new(RichText::new(owner).strong().weak())
+                            .id_salt(("owner", owner))
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                for repo in group {
+                                    let selected = self.state.selected_repo() == Some(repo);
+                                    let mut text = RichText::new(&repo.name);
+                                    if repo.disabled {
+                                        text = text.weak().italics();
+                                    }
+                                    let hover = match &repo.description {
+                                        Some(d) if !d.is_empty() => {
+                                            format!("{}\n{d}", repo.full_name)
+                                        }
+                                        _ => repo.full_name.clone(),
+                                    };
+                                    let resp =
+                                        hover_now(ui.selectable_label(selected, text), &hover);
+                                    if resp.clicked() {
+                                        clicked = Some(Target::Repo(repo.clone()));
+                                    }
+                                }
+                            });
                     }
                 });
             }
@@ -966,16 +1002,19 @@ impl DashboardApp {
                     monthly: &r.monthly,
                 })
                 .collect();
-            let action = comparison_table(
-                ui,
-                "repo-overview",
-                t.col_repo,
-                t.open_repo_hover,
-                &Column::REPOS,
-                &mut self.repo_sort,
-                &table,
-                t,
-            );
+            let action = theme::card(ui, |ui| {
+                comparison_table(
+                    ui,
+                    "repo-overview",
+                    t.col_repo,
+                    t.open_repo_hover,
+                    &Column::REPOS,
+                    &mut self.repo_sort,
+                    &table,
+                    t,
+                )
+            })
+            .inner;
             if let Some(RowAction::Open(i)) = action {
                 let repo = self
                     .state
@@ -989,7 +1028,6 @@ impl DashboardApp {
         }
 
         ui.add_space(16.0);
-        ui.separator();
         ui.heading(t.member_comparison);
         let member_rows: Option<Vec<MemberRow>> = match &self.state.member_overview {
             Loadable::Ready(ov) => Some(ov.rows.clone()),
@@ -1009,16 +1047,19 @@ impl DashboardApp {
                     monthly: &r.monthly,
                 })
                 .collect();
-            let action = comparison_table(
-                ui,
-                "member-overview",
-                t.col_name,
-                t.open_member_hover,
-                &Column::MEMBERS,
-                &mut self.member_sort,
-                &table,
-                t,
-            );
+            let action = theme::card(ui, |ui| {
+                comparison_table(
+                    ui,
+                    "member-overview",
+                    t.col_name,
+                    t.open_member_hover,
+                    &Column::MEMBERS,
+                    &mut self.member_sort,
+                    &table,
+                    t,
+                )
+            })
+            .inner;
             match action {
                 Some(RowAction::Open(i)) => {
                     let scope = match rows[i].member_id.clone() {
@@ -1038,13 +1079,13 @@ impl DashboardApp {
         ui.heading(t.people);
         ui.label(t.people_intro);
         ui.add_space(12.0);
-        self.members_section(ui);
+        theme::card(ui, |ui| self.members_section(ui));
         ui.add_space(16.0);
         ui.separator();
-        self.teams_section(ui);
+        theme::card(ui, |ui| self.teams_section(ui));
         ui.add_space(16.0);
         ui.separator();
-        self.excluded_section(ui);
+        theme::card(ui, |ui| self.excluded_section(ui));
     }
 
     fn members_section(&mut self, ui: &mut egui::Ui) {
@@ -1295,27 +1336,29 @@ impl DashboardApp {
         }
 
         let can_sync = matches!(self.state.sync, Loadable::Ready(_)) && !self.state.sync_running();
-        egui::Grid::new("repo-admin")
-            .num_columns(6)
-            .striped(true)
-            .spacing([18.0, 8.0])
-            .show(ui, |ui| {
-                for title in [
-                    t.col_repo,
-                    t.col_default_branch,
-                    t.col_pr_start,
-                    t.col_incident_label,
-                    t.col_hotfix_label,
-                    "",
-                ] {
-                    ui.label(RichText::new(title).strong());
-                }
-                ui.end_row();
-                for repo in &repos {
-                    self.repo_row(ui, repo, can_sync);
+        theme::card(ui, |ui| {
+            egui::Grid::new("repo-admin")
+                .num_columns(6)
+                .striped(true)
+                .spacing([18.0, 8.0])
+                .show(ui, |ui| {
+                    for title in [
+                        t.col_repo,
+                        t.col_default_branch,
+                        t.col_pr_start,
+                        t.col_incident_label,
+                        t.col_hotfix_label,
+                        "",
+                    ] {
+                        ui.label(RichText::new(title).strong());
+                    }
                     ui.end_row();
-                }
-            });
+                    for repo in &repos {
+                        self.repo_row(ui, repo, can_sync);
+                        ui.end_row();
+                    }
+                });
+        });
     }
 
     fn repo_row(&mut self, ui: &mut egui::Ui, repo: &Repo, can_sync: bool) {
@@ -1452,8 +1495,8 @@ impl DashboardApp {
                 kpi_cards(ui, &kpi::kpis(report, self.state.previous_month(), t), t);
                 ui.add_space(12.0);
                 ui.columns(2, |cols| {
-                    size_chart(&mut cols[0], report, t);
-                    daily_duration_chart(&mut cols[1], report, t);
+                    theme::card(&mut cols[0], |ui| size_chart(ui, report, t));
+                    theme::card(&mut cols[1], |ui| daily_duration_chart(ui, report, t));
                 });
 
                 ui.add_space(12.0);
@@ -1482,7 +1525,7 @@ impl DashboardApp {
                     }
                 });
             } else {
-                self.by_member_section(ui);
+                theme::card(ui, |ui| self.by_member_section(ui));
             }
         }
 
@@ -1507,14 +1550,26 @@ impl DashboardApp {
             Loadable::Ready(monthly) => {
                 ui.small(t.trend_drag_hint);
                 ui.columns(2, |cols| {
-                    picked = picked.or(failure_trend_chart(&mut cols[0], monthly, t));
-                    picked = picked.or(lead_time_trend_chart(&mut cols[1], monthly, t));
+                    picked = picked.or(theme::card(&mut cols[0], |ui| {
+                        failure_trend_chart(ui, monthly, t)
+                    })
+                    .inner);
+                    picked = picked.or(theme::card(&mut cols[1], |ui| {
+                        lead_time_trend_chart(ui, monthly, t)
+                    })
+                    .inner);
                 });
                 if monthly.months.iter().any(|r| r.dora.is_some()) {
                     ui.add_space(8.0);
                     ui.columns(2, |cols| {
-                        picked = picked.or(deploy_trend_chart(&mut cols[0], monthly, t));
-                        picked = picked.or(change_failure_trend_chart(&mut cols[1], monthly, t));
+                        picked = picked.or(theme::card(&mut cols[0], |ui| {
+                            deploy_trend_chart(ui, monthly, t)
+                        })
+                        .inner);
+                        picked = picked.or(theme::card(&mut cols[1], |ui| {
+                            change_failure_trend_chart(ui, monthly, t)
+                        })
+                        .inner);
                     });
                 }
             }
@@ -1542,55 +1597,21 @@ fn dora_section(ui: &mut egui::Ui, report: &Report, previous: Option<&Report>, t
     }
 }
 
-/// Font sizes, in points. egui's defaults (small 9, body 13, heading 18)
-/// are too small to read card details and chart captions comfortably on
-/// a dashboard. Cmd/Ctrl + and - still zoom the whole UI on top of this.
-fn apply_text_sizes(ctx: &egui::Context) {
-    use egui::{FontFamily, FontId, TextStyle};
-    // Both the light and the dark style, so switching the OS theme keeps
-    // the sizes.
-    ctx.all_styles_mut(|style| {
-        style.text_styles = [
-            (
-                TextStyle::Small,
-                FontId::new(12.0, FontFamily::Proportional),
-            ),
-            (TextStyle::Body, FontId::new(15.0, FontFamily::Proportional)),
-            (
-                TextStyle::Button,
-                FontId::new(15.0, FontFamily::Proportional),
-            ),
-            (
-                TextStyle::Heading,
-                FontId::new(22.0, FontFamily::Proportional),
-            ),
-            (
-                TextStyle::Monospace,
-                FontId::new(14.0, FontFamily::Monospace),
-            ),
-        ]
-        .into();
-    });
-}
-
-/// Green for confirmations. egui's visuals have error and warning
-/// colours but no success colour, so pick one readable on the current
-/// light or dark background.
-fn success_color(ui: &egui::Ui) -> Color32 {
-    if ui.visuals().dark_mode {
-        Color32::LIGHT_GREEN
-    } else {
-        Color32::DARK_GREEN
-    }
-}
-
 fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi], t: &Texts) {
     ui.columns(cards.len(), |cols| {
         for (ui, card) in cols.iter_mut().zip(cards) {
-            egui::Frame::group(ui.style()).show(ui, |ui| {
-                ui.set_min_width(ui.available_width());
+            let tone = card.status.map(status_tone);
+            let resp = theme::card(ui, |ui| {
                 titled_row(ui, card.title, card.help);
-                ui.label(RichText::new(&card.value).size(32.0));
+                let value = RichText::new(&card.value).size(32.0).strong();
+                let value = match tone {
+                    Some(tone) => value.color(tone.color(ui)),
+                    None => value,
+                };
+                let resp = ui.label(value);
+                if let Some(status) = card.status {
+                    resp.on_hover_text(status_text(status, t));
+                }
                 ui.small(&card.detail);
                 ui.horizontal(|ui| {
                     ui.small(card.target);
@@ -1606,8 +1627,39 @@ fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi], t: &Texts) {
                     }
                 });
             });
+            // The status as a bar on the card's left edge.
+            if let Some(tone) = tone {
+                let r = resp.response.rect;
+                let bar = egui::Rect::from_min_max(r.min, egui::pos2(r.min.x + 4.0, r.max.y));
+                ui.painter().rect_filled(
+                    bar,
+                    egui::CornerRadius {
+                        nw: 10,
+                        sw: 10,
+                        ne: 0,
+                        se: 0,
+                    },
+                    tone.color(ui),
+                );
+            }
         }
     });
+}
+
+fn status_tone(status: kpi::Status) -> Tone {
+    match status {
+        kpi::Status::OnTarget => Tone::Good,
+        kpi::Status::Near => Tone::Near,
+        kpi::Status::Off => Tone::Bad,
+    }
+}
+
+fn status_text(status: kpi::Status, t: &Texts) -> &'static str {
+    match status {
+        kpi::Status::OnTarget => t.status_on_target,
+        kpi::Status::Near => t.status_near,
+        kpi::Status::Off => t.status_off,
+    }
 }
 
 /// A chart title followed by an (i) that explains the chart on hover.
@@ -1656,12 +1708,22 @@ fn info_icon(ui: &mut egui::Ui, help: &str) {
         .width(320.0)
         .show(|ui| ui.label(help))
         .is_some();
-    if !pinned && resp.hovered() {
+    if !pinned {
+        hover_now(resp, help);
+    }
+}
+
+/// Shows `text` next to a widget as soon as it is hovered. egui's
+/// `on_hover_text` waits for a delay and a still pointer, which in
+/// practice left such help hidden; this skips both checks.
+fn hover_now(resp: egui::Response, text: &str) -> egui::Response {
+    if resp.hovered() {
         resp.show_tooltip_ui(|ui| {
             ui.set_max_width(ui.spacing().tooltip_width);
-            ui.label(help);
+            ui.label(text);
         });
     }
+    resp
 }
 
 /// Spinner, error, or nothing, for a value that is not ready.
@@ -1718,76 +1780,110 @@ fn comparison_table(
     egui::ScrollArea::horizontal().id_salt(id).show(ui, |ui| {
         egui::Grid::new(id)
             .striped(true)
-            .spacing([16.0, 6.0])
+            .spacing([12.0, 8.0])
             .show(ui, |ui| {
                 ui.label(RichText::new(name_title).strong());
+                hover_now(ui.label(RichText::new(t.col_trend).strong()), t.help_trend);
                 for &col in columns {
-                    ui.horizontal(|ui| {
-                        let sorted = sort.column == col;
-                        let arrow = match (sorted, sort.worst_first) {
-                            (false, _) => "",
-                            (true, true) => " ⏷",
-                            (true, false) => " ⏶",
-                        };
-                        let label = RichText::new(format!("{}{arrow}", col.title(t))).strong();
-                        if ui
-                            .selectable_label(sorted, label)
-                            .on_hover_text(t.sort_hover)
-                            .clicked()
-                        {
-                            *sort = sort.click(col);
-                        }
-                        info_icon(ui, col.help(t));
-                    });
+                    let sorted = sort.column == col;
+                    let arrow = match (sorted, sort.worst_first) {
+                        (false, _) => "",
+                        (true, true) => " ⏷",
+                        (true, false) => " ⏶",
+                    };
+                    let label = RichText::new(format!("{}{arrow}", col.short_title(t))).strong();
+                    // Short titles keep the columns narrow; the full title,
+                    // what it counts and how sorting works are on hover.
+                    let hover = format!("{}\n{}\n\n{}", col.title(t), col.help(t), t.sort_hover);
+                    if hover_now(ui.selectable_label(sorted, label), &hover).clicked() {
+                        *sort = sort.click(col);
+                    }
                 }
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(t.col_trend).strong());
-                    info_icon(ui, t.help_trend);
-                });
                 ui.end_row();
 
                 for &i in &order {
                     let row = &rows[i];
-                    if row.unmapped {
-                        ui.horizontal(|ui| {
-                            let name = egui::Link::new(RichText::new(row.name).italics());
-                            if ui
-                                .add(name)
-                                .on_hover_text(format!("{}\n{}", t.unmapped_hover, open_hover))
-                                .clicked()
-                            {
-                                action = Some(RowAction::Open(i));
-                            }
-                            if ui
+                    ui.vertical(|ui| {
+                        // A fixed width, truncating long names (the full name
+                        // is on hover), so rows stay one line tall.
+                        ui.set_width(NAME_WIDTH);
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+                        // "owner/name" reads as name, with the owner below.
+                        let (owner, name) = match row.name.split_once('/') {
+                            Some((o, n)) => (Some(o), n),
+                            None => (None, row.name),
+                        };
+                        let mut text = RichText::new(name).strong();
+                        if row.unmapped {
+                            text = text.italics();
+                        }
+                        let hover = if row.unmapped {
+                            format!("{}\n{}", t.unmapped_hover, open_hover)
+                        } else {
+                            format!("{}\n{}", row.name, open_hover)
+                        };
+                        if hover_now(ui.add(egui::Link::new(text)), &hover).clicked() {
+                            action = Some(RowAction::Open(i));
+                        }
+                        if let Some(owner) = owner {
+                            ui.small(RichText::new(owner).weak());
+                        }
+                        if row.unmapped
+                            && ui
                                 .small_button(t.map_button)
                                 .on_hover_text(t.map_hover)
                                 .clicked()
-                            {
-                                action = Some(RowAction::Map(i));
-                            }
-                        });
-                    } else if ui.link(row.name).on_hover_text(open_hover).clicked() {
-                        action = Some(RowAction::Open(i));
-                    }
+                        {
+                            action = Some(RowAction::Map(i));
+                        }
+                    });
+                    sparkline(ui, sort.column, row.monthly);
                     for &col in columns {
                         ui.vertical(|ui| {
-                            ui.label(col.format(row.current, t));
+                            ui.label(RichText::new(col.format(row.current, t)).strong());
                             if let Some(c) = change(col, row.previous, row.current) {
-                                let color = if c.worse {
-                                    ui.visuals().warn_fg_color
-                                } else {
-                                    ui.visuals().weak_text_color()
-                                };
-                                ui.small(RichText::new(c.text).color(color));
+                                change_tag(ui, &c);
                             }
                         });
                     }
-                    sparkline(ui, sort.column, row.monthly);
                     ui.end_row();
                 }
             });
     });
     action
+}
+
+/// Width of the Overview's name column.
+const NAME_WIDTH: f32 = 150.0;
+
+/// A change against the previous period as a small tinted tag with an
+/// arrow, so the direction does not rely on colour alone.
+fn change_tag(ui: &mut egui::Ui, c: &crate::overview::Change) {
+    let tone = if c.worse {
+        Tone::Bad
+    } else if c.better {
+        Tone::Good
+    } else {
+        Tone::Neutral
+    };
+    // `change` writes "±" for a change that shows as zero, so the sign
+    // alone says the direction.
+    let text = if let Some(rest) = c.text.strip_prefix('+') {
+        format!("⏶{rest}")
+    } else if let Some(rest) = c.text.strip_prefix('-') {
+        format!("⏷{rest}")
+    } else {
+        c.text.clone()
+    };
+    egui::Frame::new()
+        .fill(tone.tint(ui))
+        .corner_radius(egui::CornerRadius::same(4))
+        .inner_margin(egui::Margin::symmetric(5, 1))
+        .show(ui, |ui| {
+            // A tag is one unit; never break it across lines.
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+            ui.small(RichText::new(text).color(tone.color(ui)));
+        });
 }
 
 /// A tiny line chart of one column over the months, painted with egui
@@ -1840,9 +1936,16 @@ fn month_labels(monthly: &MonthlyReport) -> Vec<String> {
 }
 
 fn size_chart(ui: &mut egui::Ui, report: &Report, t: &Texts) {
+    let c0 = theme::series(ui, 0);
     chart_title(ui, t.pr_size_distribution, t.help_size);
     match kpi::small_pr_share(report) {
-        Some(share) => ui.small((t.small_share)(share * 100.0)),
+        Some(share) => {
+            let status = kpi::small_share_status(share);
+            ui.small(
+                RichText::new((t.small_share)(share * 100.0)).color(status_tone(status).color(ui)),
+            )
+            .on_hover_text(status_text(status, t))
+        }
         None => ui.small(t.no_prs_in_window),
     };
     let labels: Vec<String> = report
@@ -1862,10 +1965,13 @@ fn size_chart(ui: &mut egui::Ui, report: &Report, t: &Texts) {
         .collect();
     category_plot(ui, "size", EVERY)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
-        .show(ui, |p| p.bar_chart(BarChart::new(t.series_prs, bars)));
+        .show(ui, |p| {
+            p.bar_chart(BarChart::new(t.series_prs, bars).color(c0))
+        });
 }
 
 fn daily_duration_chart(ui: &mut egui::Ui, report: &Report, t: &Texts) {
+    let c0 = theme::series(ui, 0);
     chart_title(ui, t.daily_build_duration, t.help_daily);
     ui.small(t.daily_build_caption);
     let labels: Vec<String> = report
@@ -1885,7 +1991,9 @@ fn daily_duration_chart(ui: &mut egui::Ui, report: &Report, t: &Texts) {
         .collect();
     category_plot(ui, "daily", SPARSE)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
-        .show(ui, |p| p.bar_chart(BarChart::new(t.series_seconds, bars)));
+        .show(ui, |p| {
+            p.bar_chart(BarChart::new(t.series_seconds, bars).color(c0))
+        });
 }
 
 fn failure_trend_chart(
@@ -1893,6 +2001,7 @@ fn failure_trend_chart(
     monthly: &MonthlyReport,
     t: &Texts,
 ) -> Option<(usize, usize)> {
+    let c0 = theme::series(ui, 0);
     chart_title(ui, t.ci_failure_trend, t.help_failure_trend);
     let labels = month_labels(monthly);
     // Months without PR builds have no rate; leave a gap rather than
@@ -1907,7 +2016,11 @@ fn failure_trend_chart(
     let plot = trend_plot(ui, "failure-trend", monthly)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
-            p.line(Line::new(t.series_failure, PlotPoints::from(points)))
+            p.line(
+                Line::new(t.series_failure, PlotPoints::from(points))
+                    .color(c0)
+                    .width(2.0),
+            )
         });
     month_brush(ui, &plot, monthly.months.len())
 }
@@ -1917,6 +2030,11 @@ fn lead_time_trend_chart(
     monthly: &MonthlyReport,
     t: &Texts,
 ) -> Option<(usize, usize)> {
+    let (c0, c1, c2) = (
+        theme::series(ui, 0),
+        theme::series(ui, 1),
+        theme::series(ui, 2),
+    );
     chart_title(ui, t.lead_time_trend, t.help_lead_trend);
     let labels = month_labels(monthly);
     let series = |f: fn(&Report) -> f64| -> Vec<[f64; 2]> {
@@ -1935,9 +2053,13 @@ fn lead_time_trend_chart(
         .legend(Legend::default())
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
-            p.line(Line::new(t.series_avg, PlotPoints::from(avg)));
-            p.line(Line::new("p50", PlotPoints::from(p50)));
-            p.line(Line::new("p90", PlotPoints::from(p90)));
+            p.line(
+                Line::new(t.series_avg, PlotPoints::from(avg))
+                    .color(c0)
+                    .width(2.0),
+            );
+            p.line(Line::new("p50", PlotPoints::from(p50)).color(c1).width(1.5));
+            p.line(Line::new("p90", PlotPoints::from(p90)).color(c2).width(1.5));
         });
     month_brush(ui, &plot, monthly.months.len())
 }
@@ -1947,6 +2069,7 @@ fn deploy_trend_chart(
     monthly: &MonthlyReport,
     t: &Texts,
 ) -> Option<(usize, usize)> {
+    let c0 = theme::series(ui, 0);
     chart_title(ui, t.deploys_per_week_trend, t.help_deploy_trend);
     let labels = month_labels(monthly);
     let bars = monthly
@@ -1964,7 +2087,9 @@ fn deploy_trend_chart(
         .collect();
     let plot = trend_plot(ui, "deploy-trend", monthly)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
-        .show(ui, |p| p.bar_chart(BarChart::new(t.series_deploys, bars)));
+        .show(ui, |p| {
+            p.bar_chart(BarChart::new(t.series_deploys, bars).color(c0))
+        });
     month_brush(ui, &plot, monthly.months.len())
 }
 
@@ -1973,6 +2098,7 @@ fn change_failure_trend_chart(
     monthly: &MonthlyReport,
     t: &Texts,
 ) -> Option<(usize, usize)> {
+    let c0 = theme::series(ui, 0);
     chart_title(ui, t.cfr_trend, t.help_cfr_trend);
     let labels = month_labels(monthly);
     // Months without deployments have no rate (null), so they are gaps.
@@ -1988,7 +2114,11 @@ fn change_failure_trend_chart(
     let plot = trend_plot(ui, "cfr-trend", monthly)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
-            p.line(Line::new(t.series_cfr, PlotPoints::from(points)))
+            p.line(
+                Line::new(t.series_cfr, PlotPoints::from(points))
+                    .color(c0)
+                    .width(2.0),
+            )
         });
     month_brush(ui, &plot, monthly.months.len())
 }

@@ -39,6 +39,12 @@ otherwise) is highlighted. Click a column header to sort, worst first
 sorted metric. Click a repo to open its dashboard, or a member to open
 their dashboard across all repos.
 
+Cards with an ideal in the project goals (CI failure rate, builds per
+PR, PR lead time) and the small-PR share are coloured by where the value
+stands: on target, near, or off; hover the value for the words. The
+repo list groups repos by owner; fold a group, or hide the whole list
+with the button at the left of the top bar.
+
 **All repos** at the top of the repo list is that person-first view:
 with a member picked in **Show**, the cards, charts and trends cover
 their work in every repo. DORA is measured per repo, so its panel asks
