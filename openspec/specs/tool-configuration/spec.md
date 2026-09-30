@@ -2,25 +2,35 @@
 
 ## Purpose
 
-Defines the member list, repo list, bot exclusion list, PR size buckets, and human-signal rules. Static values live in config; values that change live in the DB and are maintained via the CLI. The example configuration MUST be decoupled from any specific organisation.
+Defines the member list, repo list, bot exclusion list, PR size buckets, and human-signal rules. Static values live in config; values that change live in the DB and are maintained via the CLI or the HTTP API (and so the desktop dashboard). The example configuration MUST be decoupled from any specific organisation.
 ## Requirements
 ### Requirement: Maintain a team-member list
 
-The user MUST be able to maintain a member list where each member has a display name and a corresponding GitHub account, so reports can attribute commits / PRs to a "human name" instead of a GitHub login.
+The user MUST be able to maintain a member list where each member has a display name and one or more GitHub accounts, so reports can attribute commits / PRs to a "human name" instead of a GitHub login, and one person's accounts count together. An account belongs to at most one member. Accounts compare case-insensitively.
 
 #### Scenario: Reports show display name rather than login
 
-- **WHEN** the user runs a monthly report
-- **THEN** the "member" column shows the configured display name (e.g. "Member1") rather than the GitHub login (e.g. "user-1")
+- **WHEN** the user views the per-member breakdown of a repo and month
+- **THEN** the row shows the configured display name (e.g. "Member1") rather than the GitHub login (e.g. "user-1")
+
+#### Scenario: One person, several accounts
+
+- **WHEN** a member has the accounts `user-1` and `user-1-work`
+- **THEN** that member's metrics include work by both accounts
+
+#### Scenario: Unmapped accounts stay visible
+
+- **WHEN** an account with activity in the window belongs to no member
+- **THEN** the breakdown lists it under its login, so the user can map it
 
 ### Requirement: Multiple groups for different teams or scenarios
 
-The user MUST be able to define multiple groups, each with its own set of repos and members, so "my team", "neighbouring team", and "any future deployment scenario" can be observed independently.
+The user MUST be able to define multiple teams, each a set of members, so "my team" and "neighbouring team" can be observed independently. A member may be in several teams. Teams do not own repos: the repo is chosen separately, and a team view shows that team's work in the chosen repo.
 
-#### Scenario: Switch group to view a different team
+#### Scenario: Switch team to view a different team
 
-- **WHEN** the user runs a monthly report and specifies a different group
-- **THEN** the system reports statistics from that group's repos and members only, without mixing in other groups
+- **WHEN** the user views a repo's metrics for a different team
+- **THEN** the system reports statistics from that team's members' work only, without mixing in other people's
 
 ### Requirement: The tool is decoupled from any specific organisation
 
@@ -33,7 +43,7 @@ The user MUST, on first acquiring this tool, see example configuration that cont
 
 ### Requirement: Configurable automation-bot exclusion list
 
-The user MUST be able to configure which bot accounts to exclude (e.g. dependabot, Copilot auto-review). The default list MUST already include common bots.
+The user MUST be able to configure which bot accounts to exclude (e.g. dependabot, Copilot auto-review). The default list MUST already include common bots: `dependabot`, `github-actions`, and `copilot-pull-request-reviewer`. Excluded accounts' PRs, builds, and reviews count in no metric except DORA, where a merge into the default branch is a deployment whoever made it.
 
 #### Scenario: Common bots excluded by default
 
@@ -43,7 +53,12 @@ The user MUST be able to configure which bot accounts to exclude (e.g. dependabo
 #### Scenario: User can add a new bot
 
 - **WHEN** the user adds a new bot to the exclusion list
-- **THEN** subsequent reports stop counting that bot's activity
+- **THEN** subsequent reports stop counting that bot's activity, without a re-sync
+
+#### Scenario: One entry covers both API spellings
+
+- **WHEN** the list contains `dependabot`
+- **THEN** activity by `dependabot[bot]` (as GitHub's REST API names it) is excluded too
 
 ### Requirement: PR size buckets are tunable
 

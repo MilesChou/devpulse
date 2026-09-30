@@ -237,6 +237,8 @@ Prints the engineering-efficiency metrics for a repo over a month window: CI fai
 
 `--from` defaults to the current month; `--to` is exclusive and defaults to one month after `--from`.
 
+Work by **excluded accounts** (bots; see [People](#people)) is left out of every metric except DORA: their PRs, their builds (a build's owner is its PR's author, else its commit author), and their reviews. Review wait is measured to the first review by a non-excluded account, so a Copilot review a minute after "ready" no longer makes a PR look reviewed instantly. The defaults exclude `dependabot`, `github-actions` and `copilot-pull-request-reviewer`.
+
 **Arguments**
 
 | Argument | Description |
@@ -409,6 +411,25 @@ In a container, the loopback default is unreachable from outside: set `HTTP_ADDR
 | `GET /api/v1/sync` | bearer | Background sync status: `{running, started_at, last_repo, last_finished_at, last_error}` |
 
 Repo objects carry the settings too: `pr_start`, `incident_label`, `hotfix_label`. Request bodies must be a single JSON object with known fields only, so a misspelt field (`pr-start`) is rejected with `400` rather than ignored.
+
+#### People
+
+| Method + path | Returns |
+|---|---|
+| `GET /api/v1/members` | `{"members":[{id, display_name, accounts, team_ids}]}` |
+| `POST /api/v1/members` with `{"display_name", "accounts": [...]}` | `201` the member |
+| `PUT /api/v1/members/{id}` with the same body | The member; replaces its name and accounts |
+| `DELETE /api/v1/members/{id}` | `204`; also removes it from its teams |
+| `GET /api/v1/teams` | `{"teams":[{id, name, member_ids}]}` |
+| `POST /api/v1/teams`, `PUT /api/v1/teams/{id}` with `{"name", "member_ids": [...]}` | The team |
+| `DELETE /api/v1/teams/{id}` | `204`; its members stay |
+| `GET /api/v1/excluded-accounts` | `{"accounts": [...]}` |
+| `PUT /api/v1/excluded-accounts` with `{"accounts": [...]}` | Replaces the list; returns it normalized |
+| `GET /api/v1/repos/{owner}/{name}/metrics/by-member?from=&to=` | `{repo, from, to, rows:[{member_id, name, accounts, report}]}` |
+
+Accounts are normalized: lower-cased, with a trailing `[bot]` removed, because GitHub's REST API calls a bot `dependabot[bot]` and its GraphQL API calls the same bot `dependabot`. An account belongs to at most one member, and display and team names are unique; a clash answers `409`.
+
+`metrics` and `metrics/monthly` accept `member=<id>` or `team=<id>` to cover only that person's or team's work. The report then carries `scope: {kind, id, name, accounts}` (`null` otherwise) and `dora` is `null`, since DORA measures the whole repo. `by-member` lists one row per member active in the window and one per active account no member claims (`member_id: null`, `name` = the account), each with its own report.
 
 The API has one token for reads and writes: whoever holds `DEVPULSE_API_TOKEN` can also add and remove repos. On a loopback address without a token, any local process can. That fits the single-user scope; keep the token private.
 

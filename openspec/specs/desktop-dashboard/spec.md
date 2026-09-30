@@ -133,3 +133,23 @@ The user MUST be able to add, reconfigure, sync, and remove tracked repos from t
 
 - **WHEN** the server has no `GITHUB_TOKEN`
 - **THEN** the Sync buttons are disabled and the page says to run `devpulse sync` on the server
+
+### Requirement: Manage people and view metrics per person
+
+The user MUST be able to map accounts to members and teams, edit the excluded accounts, and view any repo's metrics for everyone, one team, or one member.
+
+#### Scenario: Map an unmapped account
+
+- **WHEN** the per-member breakdown lists an account nobody has mapped and the user presses Map
+- **THEN** the People page opens with a new member prefilled with that account
+
+#### Scenario: Switch whose work is shown
+
+- **WHEN** the user picks a member or team in the dashboard's Show picker, or presses Show on a breakdown row
+- **THEN** the cards, charts, and trends cover only that work, and the DORA panel explains it is only available for everyone
+
+#### Scenario: Scope removed underneath
+
+- **WHEN** the member or team being shown is deleted
+- **THEN** the dashboard falls back to everyone
+

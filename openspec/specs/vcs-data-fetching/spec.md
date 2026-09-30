@@ -40,6 +40,11 @@ The user MUST be able to configure a list of bot accounts to exclude, so PRs ope
 - **WHEN** a PR's author is in the user's bot list
 - **THEN** that PR does not appear in downstream PR review-latency or size-bucket statistics
 
+#### Scenario: Bot reviews do not count as the first review
+
+- **WHEN** a bot (e.g. Copilot) reviews a PR a minute after it becomes ready and a person reviews it two hours later
+- **THEN** the PR's review wait is two hours
+
 ### Requirement: Repeated queries must not keep hitting the external service
 
 The user MUST be able to re-run the same (repo, month) query without forcing a round trip to the external API every time, to avoid latency and quota waste.

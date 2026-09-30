@@ -12,8 +12,8 @@ The user MUST be able to see, for any given month, the CI failure rate of every 
 
 #### Scenario: Monthly failure rate
 
-- **WHEN** the user specifies a group (containing members and repos) and a month
-- **THEN** the system returns, for every (member, repo) pair, the total run count, failure count, and failure rate
+- **WHEN** the user requests the per-member breakdown for a repo and a month
+- **THEN** the system returns, for every member active in that repo and month, the total run count, failure count, and failure rate of PR builds they own (a build's owner is its PR's author, else its commit author)
 
 ### Requirement: Failure rate defaults to runs the individual is responsible for
 

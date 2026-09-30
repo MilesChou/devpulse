@@ -141,3 +141,37 @@ The user MUST understand that the API token authorizes every operation, includin
 
 - **WHEN** a write request lacks the token while one is configured
 - **THEN** the answer is 401 and nothing changes
+
+### Requirement: People are managed over the API
+
+The user MUST be able to manage members (display name, accounts), teams (name, members), and excluded accounts through the API.
+
+#### Scenario: Conflicting member
+
+- **WHEN** a member is created or renamed with a display name, or given an account, that another member already has
+- **THEN** the answer is 409 naming the clash, and nothing changes
+
+#### Scenario: Accounts are normalized
+
+- **WHEN** a client submits the accounts `Alice` and `renovate[bot]`
+- **THEN** they are stored as `alice` and `renovate`
+
+### Requirement: Metrics can be limited to a member or team
+
+The user MUST be able to request any metrics report for one member's or one team's work, and a per-member breakdown of a repo and window.
+
+#### Scenario: Scoped report
+
+- **WHEN** the client adds `member=<id>` or `team=<id>` to a metrics request
+- **THEN** the report covers only work owned by those accounts, names the scope, and omits DORA, which measures the whole repo
+
+#### Scenario: Unknown or conflicting scope
+
+- **WHEN** the id is unknown, or both `member` and `team` are given
+- **THEN** the answer is 404 or 400 respectively
+
+#### Scenario: Breakdown
+
+- **WHEN** the client requests `/api/v1/repos/{owner}/{name}/metrics/by-member`
+- **THEN** the answer has one row per member active in the window and one per active account no member claims, each with its own report
+

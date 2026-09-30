@@ -88,8 +88,102 @@ pub struct Report {
     pub review_wait: ReviewWait,
     pub pr_size_distribution: Vec<SizeBucketCount>,
     pub daily_build_duration: Vec<DayBuildDuration>,
-    /// `None` while the server does not know the repo's default branch.
+    /// `None` while the server does not know the repo's default branch,
+    /// and for a report limited to a member or team.
     pub dora: Option<Box<Dora>>,
+    /// Whose work the report covers; `None` means everyone.
+    #[serde(default)]
+    pub scope: Option<Scope>,
+}
+
+/// The member, team or unmapped account a report is limited to.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Scope {
+    /// "member", "team", or "account".
+    pub kind: String,
+    pub id: String,
+    pub name: String,
+    pub accounts: Vec<String>,
+}
+
+/// A person, shown by display name, acting through GitHub accounts.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Member {
+    pub id: String,
+    pub display_name: String,
+    pub accounts: Vec<String>,
+    pub team_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Team {
+    pub id: String,
+    pub name: String,
+    pub member_ids: Vec<String>,
+}
+
+/// One line of the per-member breakdown: a member, or an active account
+/// nobody has mapped yet (`member_id` is `None`, `name` is the account).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Row {
+    pub member_id: Option<String>,
+    pub name: String,
+    pub accounts: Vec<String>,
+    pub report: Report,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ByMember {
+    pub repo: String,
+    pub from: String,
+    pub to: String,
+    pub rows: Vec<Row>,
+}
+
+/// Whose work to limit metrics to.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum ScopeParam {
+    #[default]
+    Everyone,
+    Member(String),
+    Team(String),
+}
+
+impl ScopeParam {
+    fn query(&self) -> Option<(&'static str, &str)> {
+        match self {
+            Self::Everyone => None,
+            Self::Member(id) => Some(("member", id)),
+            Self::Team(id) => Some(("team", id)),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct MembersResponse {
+    members: Vec<Member>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TeamsResponse {
+    teams: Vec<Team>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AccountsResponse {
+    accounts: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct MemberBody<'a> {
+    display_name: &'a str,
+    accounts: &'a [String],
+}
+
+#[derive(Serialize)]
+struct TeamBody<'a> {
+    name: &'a str,
+    member_ids: &'a [String],
 }
 
 /// CI failure rate over PR-triggered builds. `rate` is 0..=1.
@@ -244,9 +338,15 @@ impl Client {
             .map(|r| r.repos)
     }
 
-    pub fn metrics(&self, repo: &Repo, from: Month, to: Month) -> Result<Report, ApiError> {
+    pub fn metrics(
+        &self,
+        repo: &Repo,
+        from: Month,
+        to: Month,
+        scope: &ScopeParam,
+    ) -> Result<Report, ApiError> {
         let path = format!("/api/v1/repos/{}/{}/metrics", repo.owner, repo.name);
-        self.get(&path, Some((from, to)))
+        self.get_scoped(&path, Some((from, to)), scope)
     }
 
     pub fn monthly_metrics(
@@ -254,9 +354,108 @@ impl Client {
         repo: &Repo,
         from: Month,
         to: Month,
+        scope: &ScopeParam,
     ) -> Result<MonthlyReport, ApiError> {
         let path = format!("/api/v1/repos/{}/{}/metrics/monthly", repo.owner, repo.name);
+        self.get_scoped(&path, Some((from, to)), scope)
+    }
+
+    pub fn metrics_by_member(
+        &self,
+        repo: &Repo,
+        from: Month,
+        to: Month,
+    ) -> Result<ByMember, ApiError> {
+        let path = format!(
+            "/api/v1/repos/{}/{}/metrics/by-member",
+            repo.owner, repo.name
+        );
         self.get(&path, Some((from, to)))
+    }
+
+    pub fn list_members(&self) -> Result<Vec<Member>, ApiError> {
+        self.get::<MembersResponse>("/api/v1/members", None)
+            .map(|r| r.members)
+    }
+
+    /// Creates a member, or updates it when `id` is given.
+    pub fn save_member(
+        &self,
+        id: Option<&str>,
+        display_name: &str,
+        accounts: &[String],
+    ) -> Result<Member, ApiError> {
+        let body = MemberBody {
+            display_name,
+            accounts,
+        };
+        let req = match id {
+            None => self.agent.post(self.url("/api/v1/members")),
+            Some(id) => self.agent.put(self.url(&format!("/api/v1/members/{id}"))),
+        };
+        let resp = self
+            .authed(req)
+            .send_json(body)
+            .map_err(|e| ApiError::Transport(e.to_string()))?;
+        read_json(resp)
+    }
+
+    pub fn delete_member(&self, id: &str) -> Result<(), ApiError> {
+        self.delete(&format!("/api/v1/members/{id}"))
+    }
+
+    pub fn list_teams(&self) -> Result<Vec<Team>, ApiError> {
+        self.get::<TeamsResponse>("/api/v1/teams", None)
+            .map(|r| r.teams)
+    }
+
+    /// Creates a team, or updates it when `id` is given.
+    pub fn save_team(
+        &self,
+        id: Option<&str>,
+        name: &str,
+        member_ids: &[String],
+    ) -> Result<Team, ApiError> {
+        let body = TeamBody { name, member_ids };
+        let req = match id {
+            None => self.agent.post(self.url("/api/v1/teams")),
+            Some(id) => self.agent.put(self.url(&format!("/api/v1/teams/{id}"))),
+        };
+        let resp = self
+            .authed(req)
+            .send_json(body)
+            .map_err(|e| ApiError::Transport(e.to_string()))?;
+        read_json(resp)
+    }
+
+    pub fn delete_team(&self, id: &str) -> Result<(), ApiError> {
+        self.delete(&format!("/api/v1/teams/{id}"))
+    }
+
+    pub fn excluded_accounts(&self) -> Result<Vec<String>, ApiError> {
+        self.get::<AccountsResponse>("/api/v1/excluded-accounts", None)
+            .map(|r| r.accounts)
+    }
+
+    /// Replaces the excluded set; returns it as the server normalized it.
+    pub fn replace_excluded_accounts(&self, accounts: &[String]) -> Result<Vec<String>, ApiError> {
+        #[derive(Serialize)]
+        struct Body<'a> {
+            accounts: &'a [String],
+        }
+        let resp = self
+            .authed(self.agent.put(self.url("/api/v1/excluded-accounts")))
+            .send_json(Body { accounts })
+            .map_err(|e| ApiError::Transport(e.to_string()))?;
+        read_json::<AccountsResponse>(resp).map(|r| r.accounts)
+    }
+
+    fn delete(&self, path: &str) -> Result<(), ApiError> {
+        let resp = self
+            .authed(self.agent.delete(self.url(path)))
+            .call()
+            .map_err(|e| ApiError::Transport(e.to_string()))?;
+        read_empty(resp)
     }
 
     /// Registers `full_name` (`owner/name`) for tracking.
@@ -323,7 +522,19 @@ impl Client {
         path: &str,
         window: Option<(Month, Month)>,
     ) -> Result<T, ApiError> {
+        self.get_scoped(path, window, &ScopeParam::Everyone)
+    }
+
+    fn get_scoped<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        window: Option<(Month, Month)>,
+        scope: &ScopeParam,
+    ) -> Result<T, ApiError> {
         let mut req = self.authed(self.agent.get(self.url(path)));
+        if let Some((key, value)) = scope.query() {
+            req = req.query(key, value);
+        }
         if let Some((from, to)) = window {
             req = req
                 .query("from", from.to_string())
@@ -495,7 +706,9 @@ mod tests {
         let (url, head) = serve_once(200, GOLDEN_METRICS);
         let client = Client::new(&url, " tok ");
         let from: Month = "2026-05".parse().unwrap();
-        let report = client.metrics(&repo(), from, from.next()).expect("metrics");
+        let report = client
+            .metrics(&repo(), from, from.next(), &ScopeParam::Everyone)
+            .expect("metrics");
         assert_eq!(report.repo, "MilesChou/devpulse");
 
         let head = head.recv().unwrap();
@@ -526,6 +739,7 @@ mod tests {
                 &repo(),
                 "2026-01".parse().unwrap(),
                 "2026-02".parse().unwrap(),
+                &ScopeParam::Everyone,
             )
             .unwrap_err();
         assert_eq!(err, ApiError::NotFound("repo acme/x is not tracked".into()));
@@ -624,6 +838,50 @@ mod tests {
         )
         .unwrap();
         assert_eq!((r.pr_start, r.hotfix_label.as_str()), (1, ""));
+    }
+
+    #[test]
+    fn scope_goes_into_the_query() {
+        let (url, head) = serve_once(200, GOLDEN_METRICS);
+        let from: Month = "2026-05".parse().unwrap();
+        Client::new(&url, "t")
+            .metrics(&repo(), from, from.next(), &ScopeParam::Team("01T".into()))
+            .expect("metrics");
+        let head = head.recv().unwrap();
+        assert!(
+            head.starts_with(
+                "GET /api/v1/repos/MilesChou/devpulse/metrics?team=01T&from=2026-05&to=2026-06 "
+            ),
+            "{head}"
+        );
+    }
+
+    #[test]
+    fn saves_member_with_put_when_editing() {
+        let (url, head) = serve_once(
+            200,
+            r#"{"id":"01M","display_name":"Alice","accounts":["alice"],"team_ids":[]}"#,
+        );
+        let m = Client::new(&url, "t")
+            .save_member(Some("01M"), "Alice", &["alice".into()])
+            .expect("save");
+        assert_eq!(m.display_name, "Alice");
+        let head = head.recv().unwrap();
+        assert!(head.starts_with("PUT /api/v1/members/01M "), "{head}");
+        assert_eq!(
+            body_json(&head),
+            serde_json::json!({"display_name": "Alice", "accounts": ["alice"]})
+        );
+    }
+
+    #[test]
+    fn decodes_by_member_rows() {
+        let body = format!(
+            r#"{{"repo":"a/b","from":"2026-05","to":"2026-06","rows":[{{"member_id":null,"name":"alice","accounts":["alice"],"report":{GOLDEN_METRICS}}}]}}"#
+        );
+        let b: ByMember = serde_json::from_str(&body).expect("decode");
+        assert_eq!(b.rows[0].member_id, None);
+        assert_eq!(b.rows[0].report.build_failure.total, 3);
     }
 
     #[test]

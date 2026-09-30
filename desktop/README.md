@@ -28,6 +28,19 @@ It shows, per repo and month window:
   p90), deployments per week, and change failure rate, ending at the
   selected window.
 
+The **Show** picker next to the repo name limits everything on the
+dashboard to one team or one member (DORA stays whole-repo only). Below
+the DORA panel, **By member** lists everyone active in the window with
+their PRs, lead time, builds per PR, CI failures and review wait;
+accounts no member claims yet are listed in italics with a **Map…**
+button.
+
+The **People** page maps GitHub accounts to members (one person, any
+number of accounts), groups members into teams, and edits the excluded
+accounts: bots whose PRs, builds and reviews count in no metric except
+DORA. It starts with `dependabot`, `github-actions` and
+`copilot-pull-request-reviewer`.
+
 The **Repos** page (top bar) manages what the server tracks: add a repo
 by `owner/name`, edit its settings (PR start, incident and hotfix
 labels), start a sync, or remove it together with its synced data

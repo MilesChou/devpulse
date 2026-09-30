@@ -11,11 +11,11 @@ use egui_plot::{
     Bar, BarChart, Legend, Line, Plot, PlotPoints, log_grid_spacer, uniform_grid_spacer,
 };
 
-use crate::api::{Client, MonthlyReport, Repo, Report};
+use crate::api::{ByMember, Client, MonthlyReport, Repo, Report, ScopeParam};
 use crate::kpi::{self, Direction, Kpi};
 use crate::month::Month;
 use crate::settings::{self, SecretStore, Settings};
-use crate::state::{Loadable, Msg, RepoEdit, State, Window};
+use crate::state::{Loadable, MemberForm, Msg, RepoEdit, State, TeamForm, Window};
 
 /// How often to poll the server while a sync runs.
 const SYNC_POLL: Duration = Duration::from_secs(2);
@@ -25,6 +25,7 @@ const SYNC_POLL: Duration = Duration::from_secs(2);
 enum View {
     Dashboard,
     Repos,
+    People,
 }
 
 /// Builds the token store for a server URL.
@@ -83,6 +84,13 @@ pub struct DashboardApp {
     editing: Option<RepoEdit>,
     /// `owner/name` awaiting a second click to confirm removal.
     confirm_remove: Option<String>,
+
+    // People page.
+    member_form: MemberForm,
+    team_form: TeamForm,
+    excluded_input: String,
+    /// Member or team id awaiting a second click to confirm deletion.
+    confirm_delete: Option<String>,
     last_sync_poll: Option<Instant>,
 
     tx: Sender<Msg>,
@@ -126,6 +134,10 @@ impl DashboardApp {
             editing: None,
             confirm_remove: None,
             last_sync_poll: None,
+            member_form: MemberForm::default(),
+            team_form: TeamForm::default(),
+            excluded_input: String::new(),
+            confirm_delete: None,
             tx,
             rx,
             ctx,
@@ -180,6 +192,7 @@ impl DashboardApp {
         self.spawn(move || Msg::Repos(c.list_repos()));
         // Also learn whether a sync is running (or possible at all).
         self.spawn(move || Msg::Sync(client.sync_status()));
+        self.load_people();
     }
 
     fn register_repo(&mut self) {
@@ -245,16 +258,106 @@ impl DashboardApp {
         let generation = self.state.begin_metrics_load();
         let window = self.state.window;
 
-        let (c, r) = (client.clone(), repo.clone());
-        self.spawn(move || Msg::Report(generation, c.metrics(&r, window.from, window.to)));
+        let scope = self.state.scope.clone();
+
+        let (c, r, s) = (client.clone(), repo.clone(), scope.clone());
+        self.spawn(move || Msg::Report(generation, c.metrics(&r, window.from, window.to, &s)));
+
+        if scope == ScopeParam::Everyone {
+            let (c, r) = (client.clone(), repo.clone());
+            self.spawn(move || {
+                Msg::ByMember(generation, c.metrics_by_member(&r, window.from, window.to))
+            });
+        }
 
         let trend = window.trend();
         self.spawn(move || {
             Msg::Trend(
                 generation,
-                client.monthly_metrics(&repo, trend.from, trend.to),
+                client.monthly_metrics(&repo, trend.from, trend.to, &scope),
             )
         });
+    }
+
+    /// Loads members, teams and excluded accounts.
+    fn load_people(&mut self) {
+        let Some(client) = self.client() else { return };
+        let (a, b) = (client.clone(), client.clone());
+        self.spawn(move || Msg::Members(a.list_members()));
+        self.spawn(move || Msg::Teams(b.list_teams()));
+        self.spawn(move || Msg::Excluded(client.excluded_accounts()));
+    }
+
+    fn save_member(&mut self) {
+        let (name, accounts) = match self.member_form.validate() {
+            Ok(v) => v,
+            Err(e) => {
+                self.notice = Some((true, e));
+                return;
+            }
+        };
+        let Some(client) = self.client() else { return };
+        let id = self.member_form.id.clone();
+        self.member_form = MemberForm::default();
+        self.spawn(move || {
+            let done = format!("Saved {name}.");
+            Msg::PeopleChanged(
+                done,
+                client
+                    .save_member(id.as_deref(), &name, &accounts)
+                    .map(|_| ()),
+            )
+        });
+    }
+
+    fn save_team(&mut self) {
+        let (name, member_ids) = match self.team_form.validate() {
+            Ok(v) => v,
+            Err(e) => {
+                self.notice = Some((true, e));
+                return;
+            }
+        };
+        let Some(client) = self.client() else { return };
+        let id = self.team_form.id.clone();
+        self.team_form = TeamForm::default();
+        self.spawn(move || {
+            let done = format!("Saved team {name}.");
+            Msg::PeopleChanged(
+                done,
+                client
+                    .save_team(id.as_deref(), &name, &member_ids)
+                    .map(|_| ()),
+            )
+        });
+    }
+
+    fn delete_member(&mut self, id: String, name: String) {
+        let Some(client) = self.client() else { return };
+        self.confirm_delete = None;
+        self.spawn(move || {
+            Msg::PeopleChanged(format!("Deleted {name}."), client.delete_member(&id))
+        });
+    }
+
+    fn delete_team(&mut self, id: String, name: String) {
+        let Some(client) = self.client() else { return };
+        self.confirm_delete = None;
+        self.spawn(move || {
+            Msg::PeopleChanged(format!("Deleted team {name}."), client.delete_team(&id))
+        });
+    }
+
+    fn save_excluded(&mut self) {
+        let Some(client) = self.client() else { return };
+        let accounts = crate::state::parse_accounts(&self.excluded_input);
+        self.spawn(move || Msg::ExcludedSaved(client.replace_excluded_accounts(&accounts)));
+    }
+
+    /// Opens the People page with a new member prefilled for `account`.
+    fn map_account(&mut self, account: &str) {
+        self.member_form = MemberForm::for_account(account);
+        self.view = View::People;
     }
 
     fn set_window(&mut self, window: Window) {
@@ -370,15 +473,22 @@ impl eframe::App for DashboardApp {
     fn logic(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
         while let Ok(msg) = self.rx.try_recv() {
             let repos_arrived = matches!(msg, Msg::Repos(Ok(_)));
+            let excluded_arrived = matches!(msg, Msg::Excluded(Ok(_)) | Msg::ExcludedSaved(Ok(_)));
             let applied = self.state.apply(msg);
             if repos_arrived {
                 self.restore_last_repo();
+            }
+            if excluded_arrived && let Some(accounts) = self.state.excluded.ready() {
+                self.excluded_input = accounts.join("\n");
             }
             if applied.notice.is_some() {
                 self.notice = applied.notice;
             }
             if applied.reload_repos {
                 self.load_repos();
+            }
+            if applied.reload_people {
+                self.load_people();
             }
             if applied.reload_metrics {
                 self.load_metrics();
@@ -403,6 +513,7 @@ impl eframe::App for DashboardApp {
             egui::ScrollArea::vertical().show(ui, |ui| match self.view {
                 View::Dashboard => self.dashboard(ui),
                 View::Repos => self.repos_page(ui),
+                View::People => self.people_page(ui),
             });
         });
     }
@@ -417,6 +528,7 @@ impl DashboardApp {
             ui.separator();
             ui.selectable_value(&mut self.view, View::Dashboard, "Dashboard");
             ui.selectable_value(&mut self.view, View::Repos, "Repos");
+            ui.selectable_value(&mut self.view, View::People, "People");
             ui.separator();
 
             let w = self.state.window;
@@ -577,6 +689,352 @@ impl DashboardApp {
             self.settings.last_repo = Some(repo.full_name);
             self.persist_settings();
             self.load_metrics();
+        }
+    }
+
+    /// The Everyone / team / member picker. Returns true when the choice
+    /// changed.
+    fn scope_picker(&mut self, ui: &mut egui::Ui) -> bool {
+        let before = self.state.scope.clone();
+        let mut scope = before.clone();
+        let teams = self.state.teams.ready().cloned().unwrap_or_default();
+        let members = self.state.members.ready().cloned().unwrap_or_default();
+        egui::ComboBox::from_id_salt("scope")
+            .selected_text(self.state.scope_label(&before))
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut scope, ScopeParam::Everyone, "Everyone");
+                for t in &teams {
+                    ui.selectable_value(
+                        &mut scope,
+                        ScopeParam::Team(t.id.clone()),
+                        format!("Team {}", t.name),
+                    );
+                }
+                for m in &members {
+                    ui.selectable_value(
+                        &mut scope,
+                        ScopeParam::Member(m.id.clone()),
+                        &m.display_name,
+                    );
+                }
+            });
+        if scope == before {
+            return false;
+        }
+        self.state.scope = scope;
+        true
+    }
+
+    fn by_member_section(&mut self, ui: &mut egui::Ui) {
+        ui.heading("By member");
+        ui.small(
+            "Members with activity in this window, and active accounts not mapped to a member yet. \
+             Excluded accounts (bots) are left out.",
+        );
+        ui.add_space(4.0);
+        let rows = match &self.state.by_member {
+            Loadable::Ready(ByMember { rows, .. }) => rows.clone(),
+            Loadable::Loading => {
+                ui.spinner();
+                return;
+            }
+            Loadable::Failed(e) => {
+                ui.colored_label(ui.visuals().error_fg_color, e);
+                return;
+            }
+            Loadable::Idle => return,
+        };
+        if rows.is_empty() {
+            ui.label("No activity in this window.");
+            return;
+        }
+
+        egui::Grid::new("by-member")
+            .num_columns(8)
+            .striped(true)
+            .spacing([18.0, 6.0])
+            .show(ui, |ui| {
+                for title in [
+                    "Name",
+                    "PRs opened",
+                    "Merged",
+                    "Lead time",
+                    "Builds per PR",
+                    "CI failures",
+                    "Review wait",
+                    "",
+                ] {
+                    ui.label(RichText::new(title).strong());
+                }
+                ui.end_row();
+                for row in &rows {
+                    let r = &row.report;
+                    let name = if row.member_id.is_some() {
+                        RichText::new(&row.name)
+                    } else {
+                        RichText::new(&row.name).weak().italics()
+                    };
+                    ui.label(name).on_hover_text(row.accounts.join(", "));
+                    let opened: u64 = r.pr_size_distribution.iter().map(|b| b.count).sum();
+                    ui.label(opened.to_string());
+                    ui.label(r.pr_lead_time.count.to_string());
+                    ui.label(hours(r.pr_lead_time.count, r.pr_lead_time.avg_hours));
+                    ui.label(if r.avg_builds_per_pr > 0.0 {
+                        format!("{:.1}", r.avg_builds_per_pr)
+                    } else {
+                        "—".into()
+                    });
+                    ui.label(if r.build_failure.total > 0 {
+                        format!(
+                            "{:.0}% ({}/{})",
+                            r.build_failure.rate * 100.0,
+                            r.build_failure.failed,
+                            r.build_failure.total
+                        )
+                    } else {
+                        "—".into()
+                    });
+                    ui.label(hours(r.review_wait.count, r.review_wait.avg_hours));
+                    match &row.member_id {
+                        Some(id) => {
+                            if ui
+                                .small_button("Show")
+                                .on_hover_text("Show only this member")
+                                .clicked()
+                            {
+                                self.state.scope = ScopeParam::Member(id.clone());
+                                self.load_metrics();
+                            }
+                        }
+                        None => {
+                            if ui
+                                .small_button("Map…")
+                                .on_hover_text("Create a member for this account")
+                                .clicked()
+                            {
+                                self.map_account(&row.name);
+                            }
+                        }
+                    }
+                    ui.end_row();
+                }
+            });
+    }
+
+    fn people_page(&mut self, ui: &mut egui::Ui) {
+        ui.heading("People");
+        ui.label("Map GitHub accounts to people and teams, and choose which accounts to leave out of the metrics.");
+        ui.add_space(12.0);
+        self.members_section(ui);
+        ui.add_space(16.0);
+        ui.separator();
+        self.teams_section(ui);
+        ui.add_space(16.0);
+        ui.separator();
+        self.excluded_section(ui);
+    }
+
+    fn members_section(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Members");
+        ui.small("A member is one person. List every GitHub account they use; accounts compare case-insensitively.");
+        ui.add_space(4.0);
+        let members = match &self.state.members {
+            Loadable::Ready(ms) => ms.clone(),
+            Loadable::Failed(e) => {
+                ui.colored_label(ui.visuals().error_fg_color, e);
+                return;
+            }
+            _ => {
+                ui.spinner();
+                return;
+            }
+        };
+        let teams = self.state.teams.ready().cloned().unwrap_or_default();
+
+        if !members.is_empty() {
+            egui::Grid::new("members")
+                .num_columns(4)
+                .striped(true)
+                .spacing([18.0, 6.0])
+                .show(ui, |ui| {
+                    for title in ["Name", "Accounts", "Teams", ""] {
+                        ui.label(RichText::new(title).strong());
+                    }
+                    ui.end_row();
+                    for m in &members {
+                        ui.label(&m.display_name);
+                        ui.label(if m.accounts.is_empty() {
+                            "—".to_string()
+                        } else {
+                            m.accounts.join(", ")
+                        });
+                        let team_names: Vec<&str> = teams
+                            .iter()
+                            .filter(|t| m.team_ids.contains(&t.id))
+                            .map(|t| t.name.as_str())
+                            .collect();
+                        ui.label(if team_names.is_empty() {
+                            "—".to_string()
+                        } else {
+                            team_names.join(", ")
+                        });
+                        ui.horizontal(|ui| {
+                            if self.confirm_delete.as_deref() == Some(m.id.as_str()) {
+                                ui.colored_label(ui.visuals().warn_fg_color, "Delete this member?");
+                                if ui.button("Delete").clicked() {
+                                    self.delete_member(m.id.clone(), m.display_name.clone());
+                                }
+                                if ui.button("Cancel").clicked() {
+                                    self.confirm_delete = None;
+                                }
+                                return;
+                            }
+                            if ui.button("Edit").clicked() {
+                                self.member_form = MemberForm::edit(m);
+                            }
+                            if ui.button("Delete…").clicked() {
+                                self.confirm_delete = Some(m.id.clone());
+                            }
+                        });
+                        ui.end_row();
+                    }
+                });
+            ui.add_space(8.0);
+        }
+
+        let editing = self.member_form.id.is_some();
+        ui.label(RichText::new(if editing { "Edit member" } else { "New member" }).strong());
+        ui.horizontal(|ui| {
+            ui.label("Name");
+            ui.add(egui::TextEdit::singleline(&mut self.member_form.name).desired_width(180.0));
+            ui.label("Accounts");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.member_form.accounts)
+                    .hint_text("alice, alice-work")
+                    .desired_width(260.0),
+            );
+            if ui.button("Save").clicked() {
+                self.save_member();
+            }
+            if (editing || self.member_form != MemberForm::default())
+                && ui.button("Cancel").clicked()
+            {
+                self.member_form = MemberForm::default();
+            }
+        });
+    }
+
+    fn teams_section(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Teams");
+        ui.small("A team is a set of members; the dashboard can show a team's work on its own.");
+        ui.add_space(4.0);
+        let (Some(teams), Some(members)) = (
+            self.state.teams.ready().cloned(),
+            self.state.members.ready().cloned(),
+        ) else {
+            ui.spinner();
+            return;
+        };
+
+        if !teams.is_empty() {
+            egui::Grid::new("teams")
+                .num_columns(3)
+                .striped(true)
+                .spacing([18.0, 6.0])
+                .show(ui, |ui| {
+                    for title in ["Name", "Members", ""] {
+                        ui.label(RichText::new(title).strong());
+                    }
+                    ui.end_row();
+                    for t in &teams {
+                        ui.label(&t.name);
+                        let names: Vec<&str> = members
+                            .iter()
+                            .filter(|m| t.member_ids.contains(&m.id))
+                            .map(|m| m.display_name.as_str())
+                            .collect();
+                        ui.label(if names.is_empty() {
+                            "—".to_string()
+                        } else {
+                            names.join(", ")
+                        });
+                        ui.horizontal(|ui| {
+                            if self.confirm_delete.as_deref() == Some(t.id.as_str()) {
+                                ui.colored_label(
+                                    ui.visuals().warn_fg_color,
+                                    "Delete this team? Its members stay.",
+                                );
+                                if ui.button("Delete").clicked() {
+                                    self.delete_team(t.id.clone(), t.name.clone());
+                                }
+                                if ui.button("Cancel").clicked() {
+                                    self.confirm_delete = None;
+                                }
+                                return;
+                            }
+                            if ui.button("Edit").clicked() {
+                                self.team_form = TeamForm::edit(t);
+                            }
+                            if ui.button("Delete…").clicked() {
+                                self.confirm_delete = Some(t.id.clone());
+                            }
+                        });
+                        ui.end_row();
+                    }
+                });
+            ui.add_space(8.0);
+        }
+
+        let editing = self.team_form.id.is_some();
+        ui.label(RichText::new(if editing { "Edit team" } else { "New team" }).strong());
+        ui.horizontal(|ui| {
+            ui.label("Name");
+            ui.add(egui::TextEdit::singleline(&mut self.team_form.name).desired_width(180.0));
+        });
+        if members.is_empty() {
+            ui.small("Add members first to put them in a team.");
+        } else {
+            ui.horizontal_wrapped(|ui| {
+                for m in &members {
+                    let mut on = self.team_form.member_ids.contains(&m.id);
+                    if ui.checkbox(&mut on, &m.display_name).changed() {
+                        if on {
+                            self.team_form.member_ids.insert(m.id.clone());
+                        } else {
+                            self.team_form.member_ids.remove(&m.id);
+                        }
+                    }
+                }
+            });
+        }
+        ui.horizontal(|ui| {
+            if ui.button("Save team").clicked() {
+                self.save_team();
+            }
+            if (editing || self.team_form != TeamForm::default()) && ui.button("Cancel").clicked() {
+                self.team_form = TeamForm::default();
+            }
+        });
+    }
+
+    fn excluded_section(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Excluded accounts");
+        ui.small(
+            "Bots and other accounts left out of every metric except DORA: their PRs, builds and reviews. \
+             One account per line; a trailing [bot] is ignored, so `dependabot` also covers `dependabot[bot]`.",
+        );
+        ui.add_space(4.0);
+        if let Loadable::Failed(e) = &self.state.excluded {
+            ui.colored_label(ui.visuals().error_fg_color, e);
+            return;
+        }
+        ui.add(
+            egui::TextEdit::multiline(&mut self.excluded_input)
+                .desired_rows(4)
+                .desired_width(320.0),
+        );
+        if ui.button("Save excluded accounts").clicked() {
+            self.save_excluded();
         }
     }
 
@@ -748,16 +1206,26 @@ impl DashboardApp {
         }
     }
 
-    fn dashboard(&self, ui: &mut egui::Ui) {
-        let Some(repo) = &self.state.selected else {
+    fn dashboard(&mut self, ui: &mut egui::Ui) {
+        let Some(repo) = self.state.selected.clone() else {
             ui.label("Select a repository.");
             return;
         };
-        ui.heading(format!(
-            "{} · {}",
-            repo.full_name,
-            self.state.window.label()
-        ));
+        let changed = ui
+            .horizontal(|ui| {
+                ui.heading(format!(
+                    "{} · {}",
+                    repo.full_name,
+                    self.state.window.label()
+                ));
+                ui.separator();
+                ui.label("Show");
+                self.scope_picker(ui)
+            })
+            .inner;
+        if changed {
+            self.load_metrics();
+        }
         if repo.disabled {
             ui.colored_label(
                 ui.visuals().warn_fg_color,
@@ -784,8 +1252,21 @@ impl DashboardApp {
 
                 ui.add_space(12.0);
                 ui.separator();
-                dora_section(ui, report, self.state.previous_month());
+                if self.state.scope == ScopeParam::Everyone {
+                    dora_section(ui, report, self.state.previous_month());
+                } else {
+                    ui.heading("DORA");
+                    ui.label(
+                        "DORA measures delivery of the whole repo; choose Everyone to see it.",
+                    );
+                }
             }
+        }
+
+        if self.state.scope == ScopeParam::Everyone {
+            ui.add_space(12.0);
+            ui.separator();
+            self.by_member_section(ui);
         }
 
         ui.add_space(12.0);
@@ -1072,6 +1553,15 @@ fn category_plot(id: &str, steps: [f64; 3]) -> Plot<'static> {
 const EVERY: [f64; 3] = [1.0, 1.0, 1.0];
 /// Label months or days sparsely when crowded.
 const SPARSE: [f64; 3] = [1.0, 3.0, 12.0];
+
+/// "12.3h", or "—" when there is no sample.
+fn hours(count: u64, avg: f64) -> String {
+    if count == 0 {
+        "—".into()
+    } else {
+        format!("{avg:.1}h")
+    }
+}
 
 /// Upper-cases the first letter of a server message ("sync is
 /// unavailable" reads as a sentence on its own line).

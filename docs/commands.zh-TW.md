@@ -237,6 +237,8 @@ devpulse metrics <owner/name> [--from YYYY-MM] [--to YYYY-MM]
 
 `--from` 預設為當前月份；`--to` 為排除上界，預設為 `--from` 的下一個月。
 
+**被排除的帳號**（bot，見 [People](#people)）的活動不計入 DORA 以外的任何指標：包括它們開的 PR、它們的 build（build 的擁有者是其 PR 的作者，沒有 PR 時則是 commit 作者），以及它們的 review。Review 等待時間只算到第一個非排除帳號的 review，所以 Copilot 在 PR ready 一分鐘後留下的 review，不會再讓 PR 看起來被立刻 review。預設排除 `dependabot`、`github-actions` 和 `copilot-pull-request-reviewer`。
+
 **引數**
 
 | 引數 | 說明 |
@@ -409,6 +411,25 @@ devpulse serve
 | `GET /api/v1/sync` | bearer | 背景同步狀態：`{running, started_at, last_repo, last_finished_at, last_error}` |
 
 Repo 物件也會帶上設定值：`pr_start`、`incident_label`、`hotfix_label`。請求 body 必須是單一 JSON 物件，而且只能有已知的欄位，拼錯的欄位（例如 `pr-start`）會回傳 `400`，不會被默默忽略。
+
+#### People
+
+| 方法 + 路徑 | 回傳 |
+|---|---|
+| `GET /api/v1/members` | `{"members":[{id, display_name, accounts, team_ids}]}` |
+| `POST /api/v1/members`，body 為 `{"display_name", "accounts": [...]}` | `201` 和該成員 |
+| `PUT /api/v1/members/{id}`，body 同上 | 該成員；取代名稱和帳號 |
+| `DELETE /api/v1/members/{id}` | `204`；同時從所屬團隊移除 |
+| `GET /api/v1/teams` | `{"teams":[{id, name, member_ids}]}` |
+| `POST /api/v1/teams`、`PUT /api/v1/teams/{id}`，body 為 `{"name", "member_ids": [...]}` | 該團隊 |
+| `DELETE /api/v1/teams/{id}` | `204`；成員本身保留 |
+| `GET /api/v1/excluded-accounts` | `{"accounts": [...]}` |
+| `PUT /api/v1/excluded-accounts`，body 為 `{"accounts": [...]}` | 取代整份清單，回傳正規化後的結果 |
+| `GET /api/v1/repos/{owner}/{name}/metrics/by-member?from=&to=` | `{repo, from, to, rows:[{member_id, name, accounts, report}]}` |
+
+帳號會被正規化：轉成小寫，並去掉結尾的 `[bot]`。這是因為 GitHub 的 REST API 把 bot 稱為 `dependabot[bot]`，GraphQL API 則稱同一個 bot 為 `dependabot`。一個帳號最多屬於一位成員，成員名稱和團隊名稱都不能重複，衝突時回傳 `409`。
+
+`metrics` 和 `metrics/monthly` 可以加上 `member=<id>` 或 `team=<id>`，只計算該成員或團隊的活動。這時報表會帶有 `scope: {kind, id, name, accounts}`（沒有篩選時為 `null`），`dora` 則為 `null`，因為 DORA 衡量的是整個 repo。`by-member` 會為視窗內有活動的每位成員列一列，也會為每個沒有對應成員的活躍帳號列一列（`member_id: null`，`name` 為該帳號），每一列都有自己的報表。
 
 API 的讀取和寫入共用同一個 token：持有 `DEVPULSE_API_TOKEN` 的人也能新增、移除 repo。在沒有 token 的 loopback 位址上，本機的任何程式都可以這麼做。這符合單一使用者的使用情境，請妥善保管 token。
 

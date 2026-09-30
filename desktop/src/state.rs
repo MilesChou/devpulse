@@ -2,7 +2,10 @@
 //! egui here: the UI in `app.rs` renders this state and turns clicks
 //! into requests, and this module decides what a response changes.
 
-use crate::api::{ApiError, MonthlyReport, Registration, Repo, RepoPatch, Report, SyncStatus};
+use crate::api::{
+    ApiError, ByMember, Member, MonthlyReport, Registration, Repo, RepoPatch, Report, ScopeParam,
+    SyncStatus, Team,
+};
 use crate::month::Month;
 
 /// How many months the trend charts cover, ending at the window's end.
@@ -99,6 +102,14 @@ pub enum Msg {
     /// Carries the removed repo's `owner/name`.
     RepoRemoved(String, Result<(), ApiError>),
     Sync(Result<SyncStatus, ApiError>),
+    ByMember(u64, Result<ByMember, ApiError>),
+    Members(Result<Vec<Member>, ApiError>),
+    Teams(Result<Vec<Team>, ApiError>),
+    Excluded(Result<Vec<String>, ApiError>),
+    /// A member or team was created, updated or deleted; carries the
+    /// message to show on success.
+    PeopleChanged(String, Result<(), ApiError>),
+    ExcludedSaved(Result<Vec<String>, ApiError>),
 }
 
 /// What the app should do after a message was applied.
@@ -106,6 +117,7 @@ pub enum Msg {
 pub struct Applied {
     pub reload_repos: bool,
     pub reload_metrics: bool,
+    pub reload_people: bool,
     /// A message for the user: (is_error, text).
     pub notice: Option<(bool, String)>,
 }
@@ -131,6 +143,13 @@ pub struct State {
     /// The server's background sync. `Failed` holds why syncing is
     /// unavailable (e.g. no GITHUB_TOKEN on the server).
     pub sync: Loadable<SyncStatus>,
+    /// Whose work the dashboard shows.
+    pub scope: ScopeParam,
+    /// Per-member breakdown of the selected window (everyone scope only).
+    pub by_member: Loadable<ByMember>,
+    pub members: Loadable<Vec<Member>>,
+    pub teams: Loadable<Vec<Team>>,
+    pub excluded: Loadable<Vec<String>>,
     generation: u64,
 }
 
@@ -144,7 +163,29 @@ impl State {
             trend: Loadable::Idle,
             health: Loadable::Idle,
             sync: Loadable::Idle,
+            scope: ScopeParam::Everyone,
+            by_member: Loadable::Idle,
+            members: Loadable::Idle,
+            teams: Loadable::Idle,
+            excluded: Loadable::Idle,
             generation: 0,
+        }
+    }
+
+    /// Label for a scope, from the loaded members and teams.
+    pub fn scope_label(&self, scope: &ScopeParam) -> String {
+        match scope {
+            ScopeParam::Everyone => "Everyone".into(),
+            ScopeParam::Member(id) => self
+                .members
+                .ready()
+                .and_then(|ms| ms.iter().find(|m| &m.id == id))
+                .map_or_else(|| "Member".into(), |m| m.display_name.clone()),
+            ScopeParam::Team(id) => self
+                .teams
+                .ready()
+                .and_then(|ts| ts.iter().find(|t| &t.id == id))
+                .map_or_else(|| "Team".into(), |t| format!("Team {}", t.name)),
         }
     }
 
@@ -160,6 +201,13 @@ impl State {
         self.generation += 1;
         self.report = Loadable::Loading;
         self.trend = Loadable::Loading;
+        // The breakdown splits everyone's work; it has no meaning inside
+        // a member or team scope.
+        self.by_member = if self.scope == ScopeParam::Everyone {
+            Loadable::Loading
+        } else {
+            Loadable::Idle
+        };
         self.generation
     }
 
@@ -201,7 +249,63 @@ impl State {
             }
             Msg::Report(generation, r) if generation == self.generation => self.report = r.into(),
             Msg::Trend(generation, r) if generation == self.generation => self.trend = r.into(),
-            Msg::Report(..) | Msg::Trend(..) => {} // stale
+            Msg::ByMember(generation, r) if generation == self.generation => {
+                self.by_member = r.into()
+            }
+            Msg::Report(..) | Msg::Trend(..) | Msg::ByMember(..) => {} // stale
+            Msg::Members(r) => {
+                // Drop a member scope whose member no longer exists.
+                if let (Ok(members), ScopeParam::Member(id)) = (&r, &self.scope)
+                    && !members.iter().any(|m| &m.id == id)
+                {
+                    self.scope = ScopeParam::Everyone;
+                    self.members = r.into();
+                    return Applied {
+                        reload_metrics: true,
+                        ..Default::default()
+                    };
+                }
+                self.members = r.into();
+            }
+            Msg::Teams(r) => {
+                if let (Ok(teams), ScopeParam::Team(id)) = (&r, &self.scope)
+                    && !teams.iter().any(|t| &t.id == id)
+                {
+                    self.scope = ScopeParam::Everyone;
+                    self.teams = r.into();
+                    return Applied {
+                        reload_metrics: true,
+                        ..Default::default()
+                    };
+                }
+                self.teams = r.into();
+            }
+            Msg::Excluded(r) => self.excluded = r.into(),
+            Msg::PeopleChanged(done, r) => {
+                return match r {
+                    // Names and memberships feed the breakdown and scopes.
+                    Ok(()) => Applied {
+                        reload_people: true,
+                        reload_metrics: true,
+                        ..Applied::notice(false, done)
+                    },
+                    Err(e) => Applied::notice(true, e.to_string()),
+                };
+            }
+            Msg::ExcludedSaved(r) => {
+                return match r {
+                    Ok(accounts) => {
+                        self.excluded = Loadable::Ready(accounts);
+                        Applied {
+                            reload_metrics: true,
+                            ..Applied::notice(false, "Saved excluded accounts.")
+                        }
+                    }
+                    Err(e) => {
+                        Applied::notice(true, format!("Could not save excluded accounts: {e}"))
+                    }
+                };
+            }
         }
         Applied::default()
     }
@@ -261,6 +365,7 @@ impl State {
             reload_repos: true,
             reload_metrics: on_screen,
             notice: Some(notice),
+            ..Default::default()
         }
     }
 
@@ -299,6 +404,78 @@ fn registered(r: Result<Registration, ApiError>) -> Applied {
         reload_repos: true,
         notice: Some(notice),
         ..Default::default()
+    }
+}
+
+/// Splits free-form account input ("alice, alice-work\nbob") into
+/// accounts. The server normalizes and validates them.
+pub fn parse_accounts(input: &str) -> Vec<String> {
+    input
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// The member form: creating when `id` is `None`, else editing.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct MemberForm {
+    pub id: Option<String>,
+    pub name: String,
+    pub accounts: String,
+}
+
+impl MemberForm {
+    pub fn edit(m: &Member) -> Self {
+        Self {
+            id: Some(m.id.clone()),
+            name: m.display_name.clone(),
+            accounts: m.accounts.join(", "),
+        }
+    }
+
+    /// Prefills a new member for an unmapped account.
+    pub fn for_account(account: &str) -> Self {
+        Self {
+            id: None,
+            name: String::new(),
+            accounts: account.to_string(),
+        }
+    }
+
+    /// The name and accounts to send, or what is wrong.
+    pub fn validate(&self) -> Result<(String, Vec<String>), String> {
+        let name = self.name.trim();
+        if name.is_empty() {
+            return Err("Display name must not be blank".into());
+        }
+        Ok((name.to_string(), parse_accounts(&self.accounts)))
+    }
+}
+
+/// The team form: creating when `id` is `None`, else editing.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TeamForm {
+    pub id: Option<String>,
+    pub name: String,
+    pub member_ids: std::collections::BTreeSet<String>,
+}
+
+impl TeamForm {
+    pub fn edit(t: &Team) -> Self {
+        Self {
+            id: Some(t.id.clone()),
+            name: t.name.clone(),
+            member_ids: t.member_ids.iter().cloned().collect(),
+        }
+    }
+
+    pub fn validate(&self) -> Result<(String, Vec<String>), String> {
+        let name = self.name.trim();
+        if name.is_empty() {
+            return Err("Team name must not be blank".into());
+        }
+        Ok((name.to_string(), self.member_ids.iter().cloned().collect()))
     }
 }
 
@@ -616,5 +793,85 @@ mod tests {
                 .unwrap_err()
                 .contains("Incident label")
         );
+    }
+
+    fn member(id: &str, name: &str) -> Member {
+        Member {
+            id: id.into(),
+            display_name: name.into(),
+            accounts: vec![name.to_lowercase()],
+            team_ids: vec![],
+        }
+    }
+
+    #[test]
+    fn parses_account_input() {
+        assert_eq!(
+            parse_accounts(" alice, alice-work\nbob  ,, "),
+            vec!["alice", "alice-work", "bob"]
+        );
+        assert!(parse_accounts("  ").is_empty());
+    }
+
+    #[test]
+    fn member_and_team_forms() {
+        let m = member("01M", "Alice");
+        let form = MemberForm::edit(&m);
+        assert_eq!(form.validate(), Ok(("Alice".into(), vec!["alice".into()])));
+        assert!(MemberForm::default().validate().is_err(), "blank name");
+        assert_eq!(MemberForm::for_account("bob").accounts, "bob");
+
+        let mut team = TeamForm::default();
+        assert!(team.validate().is_err(), "blank team name");
+        team.name = " Web ".into();
+        team.member_ids.insert("01M".into());
+        assert_eq!(team.validate(), Ok(("Web".into(), vec!["01M".into()])));
+    }
+
+    #[test]
+    fn scope_only_loads_breakdown_for_everyone() {
+        let mut s = State::new(m("2026-05"));
+        s.begin_metrics_load();
+        assert!(s.by_member.is_loading());
+
+        s.scope = ScopeParam::Member("01M".into());
+        s.begin_metrics_load();
+        assert_eq!(s.by_member, Loadable::Idle);
+    }
+
+    #[test]
+    fn deleted_member_resets_scope() {
+        let mut s = State::new(m("2026-05"));
+        s.scope = ScopeParam::Member("gone".into());
+        let a = s.apply(Msg::Members(Ok(vec![member("01M", "Alice")])));
+        assert_eq!(s.scope, ScopeParam::Everyone);
+        assert!(a.reload_metrics);
+
+        s.scope = ScopeParam::Member("01M".into());
+        let a = s.apply(Msg::Members(Ok(vec![member("01M", "Alice")])));
+        assert_eq!(s.scope, ScopeParam::Member("01M".into()));
+        assert!(!a.reload_metrics);
+        assert_eq!(s.scope_label(&s.scope), "Alice");
+    }
+
+    #[test]
+    fn people_changes_reload_people_and_metrics() {
+        let mut s = State::new(m("2026-05"));
+        let a = s.apply(Msg::PeopleChanged("Saved Alice.".into(), Ok(())));
+        assert!(a.reload_people && a.reload_metrics);
+        assert_eq!(a.notice, Some((false, "Saved Alice.".into())));
+
+        let a = s.apply(Msg::PeopleChanged(
+            "x".into(),
+            Err(ApiError::Conflict(
+                "account \"bob\" already belongs to Bob".into(),
+            )),
+        ));
+        assert!(!a.reload_people);
+        assert_eq!(a.notice.map(|n| n.0), Some(true));
+
+        let a = s.apply(Msg::ExcludedSaved(Ok(vec!["dependabot".into()])));
+        assert!(a.reload_metrics);
+        assert_eq!(s.excluded, Loadable::Ready(vec!["dependabot".into()]));
     }
 }

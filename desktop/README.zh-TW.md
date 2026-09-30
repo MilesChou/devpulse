@@ -13,6 +13,10 @@
 - **DORA 卡片**：部署頻率、變更前置時間、變更失敗率和恢復時間，附逐月變化。專案目標沒有訂 DORA 的目標值，所以卡片標示的是哪個方向比較好，而不是理想值。如果 server 還不知道 repo 的 default branch，面板會提示執行 `devpulse repo refresh`。
 - **12 個月趨勢**：CI 失敗率、PR lead time（avg / p50 / p90）、每週部署次數和變更失敗率，終點為目前選擇的範圍。
 
+Repo 名稱旁邊的 **Show** 選單可以把整個 dashboard 限定為某個團隊或某位成員（DORA 仍然只提供整個 repo 的數字）。DORA 面板下方的 **By member** 會列出這段期間有活動的每個人，以及他們的 PR 數、lead time、每個 PR 的 build 次數、CI 失敗和 review 等待時間；還沒有對應成員的帳號會以斜體顯示，旁邊有 **Map…** 按鈕。
+
+**People** 頁面用來把 GitHub 帳號對應到成員（一個人可以有多個帳號）、把成員編成團隊，以及編輯要排除的帳號：這些 bot 的 PR、build 和 review 不計入 DORA 以外的任何指標。預設清單是 `dependabot`、`github-actions` 和 `copilot-pull-request-reviewer`。
+
 頂端的 **Repos** 頁面用來管理 server 追蹤的 repo：用 `owner/name` 新增 repo、修改設定（PR start、incident 和 hotfix label）、觸發同步，或連同已同步的資料一起移除（會先要求確認）。從 dashboard 觸發同步需要 server 設定 `GITHUB_TOKEN`；沒有設定時頁面會說明，這時仍然要在 server 上執行 `devpulse sync`。一次只會跑一個同步，頁面會顯示進度。
 
 ## 編譯
