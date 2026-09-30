@@ -692,10 +692,7 @@ fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi], t: &Texts) {
         for (ui, card) in cols.iter_mut().zip(cards) {
             egui::Frame::group(ui.style()).show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(card.title).strong());
-                    info_icon(ui, card.help);
-                });
+                titled_row(ui, card.title, card.help);
                 ui.label(RichText::new(&card.value).size(32.0));
                 ui.small(&card.detail);
                 ui.horizontal(|ui| {
@@ -718,14 +715,23 @@ fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi], t: &Texts) {
 
 /// A chart title followed by an (i) that explains the chart on hover.
 fn chart_title(ui: &mut egui::Ui, title: &str, help: &str) {
-    ui.horizontal(|ui| {
+    titled_row(ui, title, help);
+}
+
+/// A bold title followed by an (i). Wrapped, so a long title (most
+/// Chinese ones, in a narrow card) breaks onto the next line instead of
+/// widening its column past the window edge.
+fn titled_row(ui: &mut egui::Ui, title: &str, help: &str) {
+    ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new(title).strong());
         info_icon(ui, help);
     });
 }
 
-/// A small circled "i" that explains something: hovering shows `help` as
-/// a tooltip, clicking pins it in a popup until the next click outside.
+/// A small circled "i" that explains something: hovering shows `help`
+/// right away, clicking pins it in a popup until the next click outside.
+/// The hover text is shown directly rather than through `on_hover_text`,
+/// whose delay and stillness checks left it hidden in practice.
 /// Painted rather than typed: egui's bundled fonts have no info glyph
 /// (ℹ, ⓘ), and the CJK fallback font may be missing.
 fn info_icon(ui: &mut egui::Ui, help: &str) {
@@ -753,8 +759,11 @@ fn info_icon(ui: &mut egui::Ui, help: &str) {
         .width(320.0)
         .show(|ui| ui.label(help))
         .is_some();
-    if !pinned {
-        resp.on_hover_text(help);
+    if !pinned && resp.hovered() {
+        resp.show_tooltip_ui(|ui| {
+            ui.set_max_width(ui.spacing().tooltip_width);
+            ui.label(help);
+        });
     }
 }
 
@@ -1023,4 +1032,75 @@ fn index_label(labels: &[String], value: f64) -> String {
         return String::new();
     }
     labels.get(value as usize).cloned().unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    /// Runs one headless frame of `body` in an 800×400 screen.
+    fn frame(
+        ctx: &egui::Context,
+        t: f64,
+        pointer: Option<egui::Pos2>,
+        body: &dyn Fn(&mut egui::Ui),
+    ) {
+        let mut input = egui::RawInput {
+            time: Some(t),
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(800.0, 400.0),
+            )),
+            ..Default::default()
+        };
+        if let Some(p) = pointer {
+            input.events.push(egui::Event::PointerMoved(p));
+        }
+        let mut out = ctx.run_ui(input, |ui| {
+            egui::CentralPanel::default().show(ui, |ui| body(ui));
+        });
+        out.textures_delta.clear();
+    }
+
+    fn tooltip_layers(ctx: &egui::Context) -> usize {
+        ctx.memory(|m| {
+            m.layer_ids()
+                .filter(|l| l.order == egui::Order::Tooltip)
+                .count()
+        })
+    }
+
+    #[test]
+    fn long_title_wraps_inside_a_narrow_column() {
+        let ctx = egui::Context::default();
+        let width = Cell::new(0.0f32);
+        let body = |ui: &mut egui::Ui| {
+            ui.allocate_ui(egui::vec2(120.0, 200.0), |ui| {
+                let r = ui.scope(|ui| titled_row(ui, "每個 PR 的建置次數 builds per PR", "help"));
+                width.set(r.response.rect.width());
+            });
+        };
+        frame(&ctx, 0.0, None, &body);
+        assert!(width.get() <= 120.0, "title row is {} wide", width.get());
+    }
+
+    #[test]
+    fn hovering_the_info_icon_shows_help_immediately() {
+        let ctx = egui::Context::default();
+        let icon = Cell::new(egui::Pos2::ZERO);
+        let body = |ui: &mut egui::Ui| {
+            ui.horizontal(|ui| {
+                let at = ui.cursor().min;
+                info_icon(ui, "help");
+                icon.set(at + egui::vec2(6.0, 6.0));
+            });
+        };
+        frame(&ctx, 0.0, None, &body);
+        assert_eq!(tooltip_layers(&ctx), 0);
+        // One frame after the pointer arrives, with no tooltip delay.
+        frame(&ctx, 0.01, Some(icon.get()), &body);
+        frame(&ctx, 0.02, None, &body);
+        assert_eq!(tooltip_layers(&ctx), 1);
+    }
 }
