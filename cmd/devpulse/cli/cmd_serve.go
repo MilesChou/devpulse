@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -10,10 +12,12 @@ import (
 	"github.com/mileschou/devpulse/internal/config"
 	apihttp "github.com/mileschou/devpulse/internal/http"
 	"github.com/mileschou/devpulse/internal/persistence"
+	"github.com/mileschou/devpulse/internal/repo"
+	"github.com/mileschou/devpulse/internal/syncrun"
 )
 
-// newServeCmd runs the read-only JSON API (see internal/http) until
-// SIGINT / SIGTERM. The desktop dashboard is its client.
+// newServeCmd runs the JSON API (see internal/http) until SIGINT /
+// SIGTERM. The desktop dashboard is its client.
 func newServeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "serve",
@@ -42,15 +46,31 @@ func newServeCmd() *cobra.Command {
 			}
 			defer d.close(ctx)
 
-			srv := apihttp.New(apihttp.Config{
+			apiCfg := apihttp.Config{
 				Addr:    d.cfg.HTTPAddr,
 				Token:   d.cfg.APIToken,
 				Repos:   d.repos,
 				Metrics: persistence.NewMetricsPersister(d.pers),
-			})
+				Admin:   d.admin,
+			}
+			// Syncing needs GitHub; without a token the sync endpoints
+			// answer 503 and everything else keeps working.
+			var runner *syncrun.Runner
+			if strings.TrimSpace(d.cfg.GitHubToken) != "" {
+				runner = syncrun.New(ctx, func(ctx context.Context, r repo.Repo) error {
+					return syncOneRepo(ctx, d, r)
+				}, nil)
+				apiCfg.Sync = runner
+			}
+			srv := apihttp.New(apiCfg)
 			fmt.Fprintf(stdout(), "serving on http://%s; press Ctrl-C to stop\n", d.cfg.HTTPAddr)
 			if err := srv.Start(ctx); err != nil {
 				return err
+			}
+			if runner != nil {
+				// ctx is cancelled, so a sync in progress is stopping;
+				// wait for it before closing the DB underneath it.
+				runner.Wait()
 			}
 			fmt.Fprintln(stdout(), "server stopped")
 			return nil

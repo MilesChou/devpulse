@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`devpulse serve` exposes the tracked repos and their metrics as a read-only JSON API, so clients other than the CLI (the desktop dashboard first) can show them without direct database access or any GitHub / CI credential.
+`devpulse serve` exposes the tracked repos, their metrics, and repo management as a JSON API, so clients other than the CLI (the desktop dashboard first) can show and manage them without direct database access or any GitHub / CI credential.
 
 ## Requirements
 
@@ -89,3 +89,55 @@ The user MUST be able to rely on the JSON field names and ordering staying stabl
 
 - **WHEN** a month has PRs in only some size buckets
 - **THEN** the size distribution still lists XS, S, M, L, XL in that order (zero counts included), adding `unknown` only when some PRs lack a bucket
+
+### Requirement: Tracked repos are managed over the API
+
+The user MUST be able to register, reconfigure, and stop tracking repos through the API with the same rules as the CLI (`repo add`, `repo config set`, `repo remove`), so a client never needs shell access to the server.
+
+#### Scenario: Register a repo
+
+- **WHEN** the client posts `{"full_name": "owner/name"}` to `/api/v1/repos`
+- **THEN** the repo is tracked and the answer is 201, or 200 when it was already tracked
+
+#### Scenario: Metadata cannot be fetched
+
+- **WHEN** GitHub metadata for a new repo cannot be fetched (typo, private repo, no token)
+- **THEN** the repo is still registered and the answer carries `metadata_error` explaining why
+
+#### Scenario: Invalid setting
+
+- **WHEN** a settings update contains an invalid value (PR start below 1, a blank label) or an unknown field
+- **THEN** the answer is 400 and no setting changes, including the valid fields of the same request
+
+#### Scenario: Stop tracking
+
+- **WHEN** the client deletes a repo
+- **THEN** the repo and every pull request, review, build, and incident synced for it are removed in one transaction
+
+### Requirement: Syncs can be triggered, one at a time
+
+The user MUST be able to start a repo sync from a client and follow its progress, without two syncs spending the same rate-limited token at once.
+
+#### Scenario: Start a sync
+
+- **WHEN** the client posts to `/api/v1/repos/{owner}/{name}/sync` while no sync runs
+- **THEN** the sync starts in the background, the answer is 202, and `GET /api/v1/sync` reports it as running until it finishes, then reports its outcome
+
+#### Scenario: Busy
+
+- **WHEN** a sync is already running
+- **THEN** the answer is 409 and no second sync starts
+
+#### Scenario: Server cannot sync
+
+- **WHEN** the server has no `GITHUB_TOKEN`
+- **THEN** the sync endpoints answer 503 with that reason, and every other endpoint keeps working
+
+### Requirement: One token guards reads and writes
+
+The user MUST understand that the API token authorizes every operation, including removing repos; there are no per-operation permissions, which matches the single-user scope.
+
+#### Scenario: Writes need the token
+
+- **WHEN** a write request lacks the token while one is configured
+- **THEN** the answer is 401 and nothing changes

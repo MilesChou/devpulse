@@ -1,6 +1,6 @@
 # DevPulse 桌面 dashboard
 
-以 Rust 和 [egui](https://github.com/emilk/egui) 寫成的原生 dashboard，用來檢視 DevPulse 蒐集的指標。它是 `devpulse serve` 所提供 JSON API 的唯讀 client：資料蒐集（GitHub、CI provider、資料庫）全部由 Go 服務負責，這個 app 只需要 server URL 和 API token。
+以 Rust 和 [egui](https://github.com/emilk/egui) 寫成的原生 dashboard，用來檢視 DevPulse 蒐集的指標。它是 `devpulse serve` 所提供 JSON API 的 client：資料蒐集（GitHub、CI provider、資料庫）全部由 Go 服務負責，這個 app 只需要 server URL 和 API token。
 
 > English: [README.md](README.md)
 
@@ -12,6 +12,8 @@
 - **PR 尺寸分布**（理想：多數為 XS / S）和**每日 build 時間**。
 - **DORA 卡片**：部署頻率、變更前置時間、變更失敗率和恢復時間，附逐月變化。專案目標沒有訂 DORA 的目標值，所以卡片標示的是哪個方向比較好，而不是理想值。如果 server 還不知道 repo 的 default branch，面板會提示執行 `devpulse repo refresh`。
 - **12 個月趨勢**：CI 失敗率、PR lead time（avg / p50 / p90）、每週部署次數和變更失敗率，終點為目前選擇的範圍。
+
+頂端的 **Repos** 頁面用來管理 server 追蹤的 repo：用 `owner/name` 新增 repo、修改設定（PR start、incident 和 hotfix label）、觸發同步，或連同已同步的資料一起移除（會先要求確認）。從 dashboard 觸發同步需要 server 設定 `GITHUB_TOKEN`；沒有設定時頁面會說明，這時仍然要在 server 上執行 `devpulse sync`。一次只會跑一個同步，頁面會顯示進度。
 
 ## 編譯
 

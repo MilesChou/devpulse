@@ -94,6 +94,22 @@ devpulse repo add MilesChou/devpulse
 
 ---
 
+### `repo remove`
+
+```
+devpulse repo remove <owner/name> --yes
+```
+
+停止追蹤儲存庫，並在同一個 transaction 裡刪除它所有已同步的 pull request、review、build 和事故紀錄。之後重新註冊時，會從頭同步。刪除無法復原，所以沒有加 `--yes` 時指令會拒絕執行。
+
+**輸出**
+
+```
+Removed MilesChou/devpulse
+```
+
+---
+
 ### `repo config set` / `repo config get`
 
 ```
@@ -368,7 +384,7 @@ devpulse worker --poll 2s
 devpulse serve
 ```
 
-啟動唯讀的 JSON API，直到按下 `Ctrl-C`（`SIGINT`）或收到 `SIGTERM` 為止。[桌面 dashboard](../desktop/README.zh-TW.md) 是它的 client，其他能發 HTTP 請求的工具也都可以使用。
+啟動 JSON API（指標，以及 repo 管理），直到按下 `Ctrl-C`（`SIGINT`）或收到 `SIGTERM` 為止。[桌面 dashboard](../desktop/README.zh-TW.md) 是它的 client，其他能發 HTTP 請求的工具也都可以使用。
 
 | 變數 | 預設值 | 說明 |
 |---|---|---|
@@ -386,6 +402,15 @@ devpulse serve
 | `GET /api/v1/repos/{owner}/{name}` | bearer | 單一 repo，格式同上 |
 | `GET /api/v1/repos/{owner}/{name}/metrics?from=YYYY-MM&to=YYYY-MM` | bearer | 該時間範圍的報表（見下方） |
 | `GET /api/v1/repos/{owner}/{name}/metrics/monthly?from=YYYY-MM&to=YYYY-MM` | bearer | `{repo, from, to, months:[報表, ...]}`，每個月一份報表，由舊到新 |
+| `POST /api/v1/repos`，body 為 `{"full_name": "owner/name"}` | bearer | 註冊 repo，等同 `repo add`：回傳 `201` `{repo, created: true, metadata_error}`；已經追蹤的 repo 回傳 `200`。抓不到 GitHub metadata 時會帶 `metadata_error`，但 repo 仍會註冊 |
+| `PATCH /api/v1/repos/{owner}/{name}`，body 為 `{"pr_start", "incident_label", "hotfix_label"}` 的任意組合 | bearer | 更新 `repo config set` 管理的設定並回傳 repo。驗證規則相同，只要有一個欄位不合法，整個請求都不會生效 |
+| `DELETE /api/v1/repos/{owner}/{name}` | bearer | 停止追蹤並刪除已同步的資料，等同 `repo remove`：回傳 `204` |
+| `POST /api/v1/repos/{owner}/{name}/sync` | bearer | 在背景執行該 repo 的 `repo sync`：回傳 `202` 和同步狀態；已有其他同步在跑時回傳 `409`（一次只跑一個，和 `devpulse sync` 一樣）；server 沒有 `GITHUB_TOKEN` 時回傳 `503` |
+| `GET /api/v1/sync` | bearer | 背景同步狀態：`{running, started_at, last_repo, last_finished_at, last_error}` |
+
+Repo 物件也會帶上設定值：`pr_start`、`incident_label`、`hotfix_label`。請求 body 必須是單一 JSON 物件，而且只能有已知的欄位，拼錯的欄位（例如 `pr-start`）會回傳 `400`，不會被默默忽略。
+
+API 的讀取和寫入共用同一個 token：持有 `DEVPULSE_API_TOKEN` 的人也能新增、移除 repo。在沒有 token 的 loopback 位址上，本機的任何程式都可以這麼做。這符合單一使用者的使用情境，請妥善保管 token。
 
 `from` / `to` 的行為和 `metrics` 指令的旗標完全相同：`from` 預設為當月（UTC），`to` 不包含在範圍內，預設為 `from` 加一個月。`metrics/monthly` 每次最多 36 個月（每個月都要各算一份報表）；`metrics` 沒有範圍上限。報表和 `devpulse metrics` 使用同一段程式計算，兩者的數字不會不一致。
 
@@ -428,7 +453,7 @@ devpulse serve
 
 `pr_size_distribution` 固定依尺寸由小到大列出五個 bucket；只有在部分 PR 沒有 bucket 時，才會多一筆 `unknown`。`dora` 依照 [DORA 定義](#dora-定義) 計算；repo 的 default branch 還不知道時為 `null`（請先執行 `repo refresh`），而沒有任何部署時，其中的 `change_failure_rate` 為 `null`。視窗還沒結束時，`per_week` 只計算到現在為止，和 `metrics` 指令相同。完整範例是 [`internal/http/testdata/`](../internal/http/testdata/) 裡的 golden 檔案，dashboard 的測試也解析同一批檔案。
 
-**錯誤**格式為 JSON `{"error": "..."}`，狀態碼為 `400`（`from` / `to` 格式錯誤）、`401`（缺少 token 或 token 錯誤）、`404`（repo 未追蹤或路徑不存在）或 `500`（細節只記錄在 server log，不會回傳）。
+**錯誤**格式為 JSON `{"error": "..."}`，狀態碼為 `400`（`from` / `to`、body 或設定值不合法）、`401`（缺少 token 或 token 錯誤）、`404`（repo 未追蹤或路徑不存在）、`409`（已有同步在執行）、`503`（無法同步）或 `500`（細節只記錄在 server log，不會回傳）。
 
 **範例**
 

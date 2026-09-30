@@ -4,17 +4,28 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Color32, RichText};
 use egui_plot::{
     Bar, BarChart, Legend, Line, Plot, PlotPoints, log_grid_spacer, uniform_grid_spacer,
 };
 
-use crate::api::{Client, MonthlyReport, Report};
+use crate::api::{Client, MonthlyReport, Repo, Report};
 use crate::kpi::{self, Direction, Kpi};
 use crate::month::Month;
 use crate::settings::{self, SecretStore, Settings};
-use crate::state::{Loadable, Msg, State, Window};
+use crate::state::{Loadable, Msg, RepoEdit, State, Window};
+
+/// How often to poll the server while a sync runs.
+const SYNC_POLL: Duration = Duration::from_secs(2);
+
+/// The page shown in the central panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum View {
+    Dashboard,
+    Repos,
+}
 
 /// Builds the token store for a server URL.
 pub type SecretStoreFactory = Box<dyn Fn(&str) -> Box<dyn SecretStore>>;
@@ -66,6 +77,14 @@ pub struct DashboardApp {
     from_input: String,
     to_input: String,
 
+    // Repos page.
+    view: View,
+    add_input: String,
+    editing: Option<RepoEdit>,
+    /// `owner/name` awaiting a second click to confirm removal.
+    confirm_remove: Option<String>,
+    last_sync_poll: Option<Instant>,
+
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
     ctx: egui::Context,
@@ -102,6 +121,11 @@ impl DashboardApp {
             show_settings: false,
             token_input: String::new(),
             notice: None,
+            view: View::Dashboard,
+            add_input: String::new(),
+            editing: None,
+            confirm_remove: None,
+            last_sync_poll: None,
             tx,
             rx,
             ctx,
@@ -152,7 +176,66 @@ impl DashboardApp {
     fn load_repos(&mut self) {
         let Some(client) = self.client() else { return };
         self.state.repos = Loadable::Loading;
-        self.spawn(move || Msg::Repos(client.list_repos()));
+        let c = client.clone();
+        self.spawn(move || Msg::Repos(c.list_repos()));
+        // Also learn whether a sync is running (or possible at all).
+        self.spawn(move || Msg::Sync(client.sync_status()));
+    }
+
+    fn register_repo(&mut self) {
+        let Some(client) = self.client() else { return };
+        let name = self.add_input.trim().to_string();
+        if name.is_empty() {
+            return;
+        }
+        self.add_input.clear();
+        self.spawn(move || Msg::Registered(client.register_repo(&name)));
+    }
+
+    fn save_repo_edit(&mut self, original: &Repo) {
+        let Some(edit) = &self.editing else { return };
+        let patch = match edit.to_patch(original) {
+            Ok(p) => p,
+            Err(e) => {
+                self.notice = Some((true, e));
+                return;
+            }
+        };
+        self.editing = None;
+        if patch == Default::default() {
+            return;
+        }
+        let Some(client) = self.client() else { return };
+        let repo = original.clone();
+        self.spawn(move || Msg::RepoUpdated(client.update_repo(&repo, &patch)));
+    }
+
+    fn remove_repo(&mut self, repo: &Repo) {
+        let Some(client) = self.client() else { return };
+        self.confirm_remove = None;
+        let repo = repo.clone();
+        self.spawn(move || Msg::RepoRemoved(repo.full_name.clone(), client.remove_repo(&repo)));
+    }
+
+    fn start_sync(&mut self, repo: &Repo) {
+        let Some(client) = self.client() else { return };
+        let repo = repo.clone();
+        self.last_sync_poll = Some(Instant::now());
+        self.spawn(move || Msg::Sync(client.start_sync(&repo)));
+    }
+
+    /// While a sync runs, asks the server for its status every
+    /// SYNC_POLL, and schedules a repaint so this runs without input.
+    fn poll_sync(&mut self) {
+        if !self.state.sync_running() {
+            return;
+        }
+        let due = self.last_sync_poll.is_none_or(|t| t.elapsed() >= SYNC_POLL);
+        if due && let Some(client) = self.client() {
+            self.last_sync_poll = Some(Instant::now());
+            self.spawn(move || Msg::Sync(client.sync_status()));
+        }
+        self.ctx.request_repaint_after(SYNC_POLL);
     }
 
     fn load_metrics(&mut self) {
@@ -287,11 +370,21 @@ impl eframe::App for DashboardApp {
     fn logic(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
         while let Ok(msg) = self.rx.try_recv() {
             let repos_arrived = matches!(msg, Msg::Repos(Ok(_)));
-            self.state.apply(msg);
+            let applied = self.state.apply(msg);
             if repos_arrived {
                 self.restore_last_repo();
             }
+            if applied.notice.is_some() {
+                self.notice = applied.notice;
+            }
+            if applied.reload_repos {
+                self.load_repos();
+            }
+            if applied.reload_metrics {
+                self.load_metrics();
+            }
         }
+        self.poll_sync();
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -307,7 +400,10 @@ impl eframe::App for DashboardApp {
             .default_size(220.0)
             .show(ui, |ui| self.repo_list(ui));
         egui::CentralPanel::default().show(ui, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| self.dashboard(ui));
+            egui::ScrollArea::vertical().show(ui, |ui| match self.view {
+                View::Dashboard => self.dashboard(ui),
+                View::Repos => self.repos_page(ui),
+            });
         });
     }
 }
@@ -318,6 +414,9 @@ impl DashboardApp {
     fn top_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.heading("DevPulse");
+            ui.separator();
+            ui.selectable_value(&mut self.view, View::Dashboard, "Dashboard");
+            ui.selectable_value(&mut self.view, View::Repos, "Repos");
             ui.separator();
 
             let w = self.state.window;
@@ -372,7 +471,7 @@ impl DashboardApp {
             let dismissed = ui
                 .horizontal(|ui| {
                     ui.colored_label(color, text);
-                    ui.small_button("✕").clicked()
+                    ui.small_button("Dismiss").clicked()
                 })
                 .inner;
             if dismissed {
@@ -478,6 +577,174 @@ impl DashboardApp {
             self.settings.last_repo = Some(repo.full_name);
             self.persist_settings();
             self.load_metrics();
+        }
+    }
+
+    fn repos_page(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Repositories");
+        ui.label("Add, configure, sync or remove the repos this server tracks.");
+        ui.add_space(8.0);
+
+        ui.horizontal(|ui| {
+            ui.label("Add repo");
+            let resp = ui.add(
+                egui::TextEdit::singleline(&mut self.add_input)
+                    .hint_text("owner/name")
+                    .desired_width(260.0),
+            );
+            let entered = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            if ui.button("Add").clicked() || entered {
+                self.register_repo();
+            }
+        });
+        ui.small("GitHub metadata is fetched right away; pull requests and builds arrive with the next sync.");
+        ui.add_space(8.0);
+        self.sync_status_line(ui);
+        ui.add_space(8.0);
+
+        let repos = match &self.state.repos {
+            Loadable::Ready(repos) => repos.clone(),
+            Loadable::Loading => {
+                ui.spinner();
+                return;
+            }
+            Loadable::Failed(e) => {
+                ui.colored_label(ui.visuals().error_fg_color, e);
+                return;
+            }
+            Loadable::Idle => {
+                ui.label("Connect to a server in Settings.");
+                return;
+            }
+        };
+        if repos.is_empty() {
+            ui.label("No repos yet.");
+            return;
+        }
+
+        let can_sync = matches!(self.state.sync, Loadable::Ready(_)) && !self.state.sync_running();
+        egui::Grid::new("repo-admin")
+            .num_columns(6)
+            .striped(true)
+            .spacing([18.0, 8.0])
+            .show(ui, |ui| {
+                for title in [
+                    "Repo",
+                    "Default branch",
+                    "PR start",
+                    "Incident label",
+                    "Hotfix label",
+                    "",
+                ] {
+                    ui.label(RichText::new(title).strong());
+                }
+                ui.end_row();
+                for repo in &repos {
+                    self.repo_row(ui, repo, can_sync);
+                    ui.end_row();
+                }
+            });
+    }
+
+    fn repo_row(&mut self, ui: &mut egui::Ui, repo: &Repo, can_sync: bool) {
+        let mut name = RichText::new(&repo.full_name);
+        if repo.disabled {
+            name = name.weak().italics();
+        }
+        ui.label(name)
+            .on_hover_text(repo.description.as_deref().unwrap_or(""));
+        ui.label(if repo.default_branch.is_empty() {
+            "—"
+        } else {
+            &repo.default_branch
+        });
+
+        let editing = self
+            .editing
+            .as_ref()
+            .is_some_and(|e| e.full_name == repo.full_name);
+        if editing {
+            let edit = self.editing.as_mut().expect("editing");
+            ui.add(egui::TextEdit::singleline(&mut edit.pr_start).desired_width(70.0));
+            ui.add(egui::TextEdit::singleline(&mut edit.incident_label).desired_width(120.0));
+            ui.add(egui::TextEdit::singleline(&mut edit.hotfix_label).desired_width(120.0));
+            ui.horizontal(|ui| {
+                if ui.button("Save").clicked() {
+                    self.save_repo_edit(repo);
+                }
+                if ui.button("Cancel").clicked() {
+                    self.editing = None;
+                }
+            });
+            return;
+        }
+
+        ui.label(repo.pr_start.to_string());
+        ui.label(&repo.incident_label);
+        ui.label(&repo.hotfix_label);
+        ui.horizontal(|ui| {
+            if self.confirm_remove.as_deref() == Some(repo.full_name.as_str()) {
+                ui.colored_label(
+                    ui.visuals().warn_fg_color,
+                    "Delete it and all its synced data?",
+                );
+                if ui.button("Remove").clicked() {
+                    self.remove_repo(repo);
+                }
+                if ui.button("Cancel").clicked() {
+                    self.confirm_remove = None;
+                }
+                return;
+            }
+            if ui.button("Edit").clicked() {
+                self.editing = Some(RepoEdit::from_repo(repo));
+            }
+            if ui
+                .add_enabled(can_sync, egui::Button::new("Sync"))
+                .on_disabled_hover_text("A sync is running, or the server cannot sync")
+                .clicked()
+            {
+                self.start_sync(repo);
+            }
+            if ui.button("Remove…").clicked() {
+                self.confirm_remove = Some(repo.full_name.clone());
+            }
+        });
+    }
+
+    fn sync_status_line(&self, ui: &mut egui::Ui) {
+        match &self.state.sync {
+            Loadable::Failed(msg) => {
+                ui.colored_label(
+                    ui.visuals().warn_fg_color,
+                    format!(
+                        "{}. Run `devpulse sync` on the server instead.",
+                        capitalize(msg)
+                    ),
+                );
+            }
+            Loadable::Ready(s) if !s.running.is_empty() => {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(format!(
+                        "Syncing {} (started {})…",
+                        s.running,
+                        short_time(s.started_at.as_deref())
+                    ));
+                });
+            }
+            Loadable::Ready(s) if !s.last_repo.is_empty() => {
+                let when = short_time(s.last_finished_at.as_deref());
+                if s.last_error.is_empty() {
+                    ui.label(format!("Last sync: {} finished {when}.", s.last_repo));
+                } else {
+                    ui.colored_label(
+                        ui.visuals().error_fg_color,
+                        format!("Last sync: {} failed {when}: {}", s.last_repo, s.last_error),
+                    );
+                }
+            }
+            _ => {}
         }
     }
 
@@ -806,6 +1073,25 @@ const EVERY: [f64; 3] = [1.0, 1.0, 1.0];
 /// Label months or days sparsely when crowded.
 const SPARSE: [f64; 3] = [1.0, 3.0, 12.0];
 
+/// Upper-cases the first letter of a server message ("sync is
+/// unavailable" reads as a sentence on its own line).
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) => c.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
+/// Renders an RFC 3339 timestamp from the server as "2026-09-30 03:15 UTC".
+fn short_time(ts: Option<&str>) -> String {
+    match ts {
+        Some(t) if t.len() >= 16 => format!("{} UTC", t[..16].replacen('T', " ", 1)),
+        Some(t) => t.to_string(),
+        None => "—".into(),
+    }
+}
+
 /// Labels integer grid marks with the matching category; other marks
 /// stay blank so zoomed-in fractional ticks do not repeat labels.
 fn index_label(labels: &[String], value: f64) -> String {
@@ -813,4 +1099,35 @@ fn index_label(labels: &[String], value: f64) -> String {
         return String::new();
     }
     labels.get(value as usize).cloned().unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn capitalizes_first_letter() {
+        assert_eq!(capitalize("sync is unavailable"), "Sync is unavailable");
+        assert_eq!(capitalize(""), "");
+        assert_eq!(capitalize("Already"), "Already");
+    }
+
+    #[test]
+    fn shortens_server_timestamps() {
+        assert_eq!(
+            short_time(Some("2026-09-30T03:15:42.123456Z")),
+            "2026-09-30 03:15 UTC"
+        );
+        assert_eq!(short_time(Some("soon")), "soon");
+        assert_eq!(short_time(None), "—");
+    }
+
+    #[test]
+    fn index_labels_only_whole_marks() {
+        let labels = vec!["XS".to_string(), "S".to_string()];
+        assert_eq!(index_label(&labels, 1.0), "S");
+        assert_eq!(index_label(&labels, 0.5), "");
+        assert_eq!(index_label(&labels, 5.0), "");
+        assert_eq!(index_label(&labels, -1.0), "");
+    }
 }

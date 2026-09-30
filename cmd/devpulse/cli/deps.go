@@ -12,6 +12,7 @@ import (
 	"github.com/mileschou/devpulse/internal/persistence"
 	"github.com/mileschou/devpulse/internal/persistence/dsn"
 	"github.com/mileschou/devpulse/internal/persistence/migrator"
+	"github.com/mileschou/devpulse/internal/repoadmin"
 	"github.com/mileschou/devpulse/internal/travis"
 	"github.com/mileschou/devpulse/internal/x/httpcache"
 	"github.com/mileschou/devpulse/internal/x/logx"
@@ -29,6 +30,7 @@ type deps struct {
 	orch  *fetching.Orchestrator
 	vcs   fetching.VCSProvider
 	repos *persistence.RepoPersister
+	admin *repoadmin.Service
 	tp    *otelx.Provider
 }
 
@@ -155,6 +157,7 @@ func buildDeps(ctx context.Context) (*deps, error) {
 		orch:  orch,
 		vcs:   vcs,
 		repos: repos,
+		admin: repoadmin.New(repos, vcs),
 		tp:    tp,
 	}, nil
 }

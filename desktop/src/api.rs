@@ -8,8 +8,8 @@
 use std::fmt;
 use std::time::Duration;
 
-use serde::Deserialize;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 use crate::month::Month;
 
@@ -24,6 +24,51 @@ pub struct Repo {
     pub description: Option<String>,
     pub default_branch: String,
     pub disabled: bool,
+    /// Operator settings (`devpulse repo config`). Defaulted so an older
+    /// server that does not send them still decodes.
+    #[serde(default = "default_pr_start")]
+    pub pr_start: u32,
+    #[serde(default)]
+    pub incident_label: String,
+    #[serde(default)]
+    pub hotfix_label: String,
+}
+
+fn default_pr_start() -> u32 {
+    1
+}
+
+/// Answer to registering a repo.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Registration {
+    pub repo: Repo,
+    /// False when the repo was already tracked.
+    pub created: bool,
+    /// Why GitHub metadata could not be fetched; the repo is registered
+    /// anyway.
+    pub metadata_error: Option<String>,
+}
+
+/// A partial settings update; `None` fields are left unchanged.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct RepoPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pr_start: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub incident_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hotfix_label: Option<String>,
+}
+
+/// State of the server's background sync.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct SyncStatus {
+    /// The repo being synced; empty when idle.
+    pub running: String,
+    pub started_at: Option<String>,
+    pub last_repo: String,
+    pub last_finished_at: Option<String>,
+    pub last_error: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -130,6 +175,10 @@ pub enum ApiError {
     NotFound(String),
     /// The request was malformed, e.g. a bad month window (400).
     BadRequest(String),
+    /// The server is busy with conflicting work, e.g. another sync (409).
+    Conflict(String),
+    /// The server cannot do this, e.g. sync without GITHUB_TOKEN (503).
+    Unavailable(String),
     /// Any other non-2xx status.
     Status(u16, String),
     /// The server could not be reached.
@@ -144,6 +193,7 @@ impl fmt::Display for ApiError {
             Self::Unauthorized => write!(f, "API token was rejected (401)"),
             Self::NotFound(msg) => write!(f, "not found: {msg}"),
             Self::BadRequest(msg) => write!(f, "bad request: {msg}"),
+            Self::Conflict(msg) | Self::Unavailable(msg) => write!(f, "{msg}"),
             Self::Status(code, msg) => write!(f, "server error {code}: {msg}"),
             Self::Transport(msg) => write!(f, "cannot reach server: {msg}"),
             Self::Decode(msg) => write!(f, "unexpected response: {msg}"),
@@ -209,15 +259,71 @@ impl Client {
         self.get(&path, Some((from, to)))
     }
 
+    /// Registers `full_name` (`owner/name`) for tracking.
+    pub fn register_repo(&self, full_name: &str) -> Result<Registration, ApiError> {
+        #[derive(Serialize)]
+        struct Body<'a> {
+            full_name: &'a str,
+        }
+        let resp = self
+            .authed(self.agent.post(self.url("/api/v1/repos")))
+            .send_json(Body {
+                full_name: full_name.trim(),
+            })
+            .map_err(|e| ApiError::Transport(e.to_string()))?;
+        read_json(resp)
+    }
+
+    pub fn update_repo(&self, repo: &Repo, patch: &RepoPatch) -> Result<Repo, ApiError> {
+        let resp = self
+            .authed(self.agent.patch(self.repo_url(repo, "")))
+            .send_json(patch)
+            .map_err(|e| ApiError::Transport(e.to_string()))?;
+        read_json(resp)
+    }
+
+    /// Stops tracking the repo; the server deletes its synced data.
+    pub fn remove_repo(&self, repo: &Repo) -> Result<(), ApiError> {
+        let resp = self
+            .authed(self.agent.delete(self.repo_url(repo, "")))
+            .call()
+            .map_err(|e| ApiError::Transport(e.to_string()))?;
+        read_empty(resp)
+    }
+
+    pub fn start_sync(&self, repo: &Repo) -> Result<SyncStatus, ApiError> {
+        let resp = self
+            .authed(self.agent.post(self.repo_url(repo, "/sync")))
+            .send_empty()
+            .map_err(|e| ApiError::Transport(e.to_string()))?;
+        read_json(resp)
+    }
+
+    pub fn sync_status(&self) -> Result<SyncStatus, ApiError> {
+        self.get("/api/v1/sync", None)
+    }
+
+    fn url(&self, path: &str) -> String {
+        format!("{}{path}", self.base_url)
+    }
+
+    fn repo_url(&self, repo: &Repo, suffix: &str) -> String {
+        self.url(&format!(
+            "/api/v1/repos/{}/{}{suffix}",
+            repo.owner, repo.name
+        ))
+    }
+
+    fn authed<B>(&self, req: ureq::RequestBuilder<B>) -> ureq::RequestBuilder<B> {
+        req.header("Authorization", format!("Bearer {}", self.token))
+    }
+
     fn get<T: DeserializeOwned>(
         &self,
         path: &str,
         window: Option<(Month, Month)>,
     ) -> Result<T, ApiError> {
-        let mut req = self
-            .agent
-            .get(format!("{}{path}", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.token));
+        let mut req = self.authed(self.agent.get(self.url(path)));
         if let Some((from, to)) = window {
             req = req
                 .query("from", from.to_string())
@@ -228,9 +334,18 @@ impl Client {
     }
 }
 
-fn read_json<T: DeserializeOwned>(
-    mut resp: ureq::http::Response<ureq::Body>,
-) -> Result<T, ApiError> {
+fn read_json<T: DeserializeOwned>(resp: ureq::http::Response<ureq::Body>) -> Result<T, ApiError> {
+    let body = read_ok(resp)?;
+    serde_json::from_str(&body).map_err(|e| ApiError::Decode(e.to_string()))
+}
+
+/// For responses without a body (204).
+fn read_empty(resp: ureq::http::Response<ureq::Body>) -> Result<(), ApiError> {
+    read_ok(resp).map(|_| ())
+}
+
+/// Returns the body of a 2xx response, or the classified error.
+fn read_ok(mut resp: ureq::http::Response<ureq::Body>) -> Result<String, ApiError> {
     let status = resp.status().as_u16();
     let body = resp
         .body_mut()
@@ -238,7 +353,7 @@ fn read_json<T: DeserializeOwned>(
         .map_err(|e| ApiError::Transport(e.to_string()))?;
 
     if (200..300).contains(&status) {
-        return serde_json::from_str(&body).map_err(|e| ApiError::Decode(e.to_string()));
+        return Ok(body);
     }
 
     let msg = serde_json::from_str::<ErrorBody>(&body)
@@ -248,6 +363,8 @@ fn read_json<T: DeserializeOwned>(
         401 => ApiError::Unauthorized,
         404 => ApiError::NotFound(msg),
         400 => ApiError::BadRequest(msg),
+        409 => ApiError::Conflict(msg),
+        503 => ApiError::Unavailable(msg),
         _ => ApiError::Status(status, msg),
     })
 }
@@ -326,6 +443,21 @@ mod tests {
                 }
                 head.push_str(&line);
             }
+            // Append the request body, if any, so tests can check it.
+            let len = head
+                .lines()
+                .find_map(|l| {
+                    let (k, v) = l.split_once(':')?;
+                    k.eq_ignore_ascii_case("content-length")
+                        .then(|| v.trim().parse::<usize>().ok())?
+                })
+                .unwrap_or(0);
+            if len > 0 {
+                let mut buf = vec![0; len];
+                std::io::Read::read_exact(&mut reader, &mut buf).expect("read body");
+                head.push('\n');
+                head.push_str(&String::from_utf8_lossy(&buf));
+            }
             let resp = format!(
                 "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                 body.len()
@@ -334,6 +466,12 @@ mod tests {
             tx.send(head).expect("send head");
         });
         (format!("http://{addr}/"), rx)
+    }
+
+    /// The JSON body serve_once appended after the request headers.
+    fn body_json(head: &str) -> serde_json::Value {
+        let (_, body) = head.split_once("\r\n\n").expect("request has a body");
+        serde_json::from_str(body).expect("body is JSON")
     }
 
     fn repo() -> Repo {
@@ -346,6 +484,9 @@ mod tests {
             description: None,
             default_branch: "main".into(),
             disabled: false,
+            pr_start: 1,
+            incident_label: "incident".into(),
+            hotfix_label: "hotfix".into(),
         }
     }
 
@@ -394,6 +535,95 @@ mod tests {
             Client::new(&url, "x").list_repos(),
             Err(ApiError::Status(500, "boom".into()))
         );
+    }
+
+    #[test]
+    fn register_posts_the_name() {
+        let (url, head) = serve_once(
+            201,
+            r#"{"repo":{"id":"1","full_name":"acme/web","owner":"acme","name":"web","provider":"github","description":null,"default_branch":"","disabled":false,"pr_start":1,"incident_label":"incident","hotfix_label":"hotfix"},"created":true,"metadata_error":"fetch github metadata: 404"}"#,
+        );
+        let reg = Client::new(&url, "t")
+            .register_repo(" acme/web ")
+            .expect("register");
+        assert!(reg.created);
+        assert_eq!(reg.repo.full_name, "acme/web");
+        assert_eq!(
+            reg.metadata_error.as_deref(),
+            Some("fetch github metadata: 404")
+        );
+
+        let head = head.recv().unwrap();
+        assert!(head.starts_with("POST /api/v1/repos "), "{head}");
+        assert_eq!(
+            body_json(&head),
+            serde_json::json!({"full_name": "acme/web"})
+        );
+    }
+
+    #[test]
+    fn patch_sends_only_changed_fields() {
+        let (url, head) = serve_once(
+            200,
+            r#"{"id":"01J","full_name":"MilesChou/devpulse","owner":"MilesChou","name":"devpulse","provider":"github","description":null,"default_branch":"main","disabled":false,"pr_start":500,"incident_label":"incident","hotfix_label":"hotfix"}"#,
+        );
+        let patch = RepoPatch {
+            pr_start: Some(500),
+            ..Default::default()
+        };
+        let updated = Client::new(&url, "t")
+            .update_repo(&repo(), &patch)
+            .expect("patch");
+        assert_eq!(updated.pr_start, 500);
+
+        let head = head.recv().unwrap();
+        assert!(
+            head.starts_with("PATCH /api/v1/repos/MilesChou/devpulse "),
+            "{head}"
+        );
+        assert_eq!(body_json(&head), serde_json::json!({"pr_start": 500}));
+    }
+
+    #[test]
+    fn remove_accepts_no_content() {
+        let (url, head) = serve_once(204, "");
+        Client::new(&url, "t").remove_repo(&repo()).expect("remove");
+        assert!(
+            head.recv()
+                .unwrap()
+                .starts_with("DELETE /api/v1/repos/MilesChou/devpulse ")
+        );
+    }
+
+    #[test]
+    fn sync_errors_are_classified() {
+        let (url, _) = serve_once(
+            503,
+            r#"{"error":"sync is unavailable: the server has no GITHUB_TOKEN"}"#,
+        );
+        assert_eq!(
+            Client::new(&url, "t").start_sync(&repo()),
+            Err(ApiError::Unavailable(
+                "sync is unavailable: the server has no GITHUB_TOKEN".into()
+            ))
+        );
+        let (url, _) = serve_once(409, r#"{"error":"another sync is running: acme/api"}"#);
+        assert_eq!(
+            Client::new(&url, "t").start_sync(&repo()),
+            Err(ApiError::Conflict(
+                "another sync is running: acme/api".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn repo_without_settings_fields_decodes() {
+        // An older server sends no operator settings.
+        let r: Repo = serde_json::from_str(
+            r#"{"id":"1","full_name":"a/b","owner":"a","name":"b","provider":"github","description":null,"default_branch":"main","disabled":false}"#,
+        )
+        .unwrap();
+        assert_eq!((r.pr_start, r.hotfix_label.as_str()), (1, ""));
     }
 
     #[test]

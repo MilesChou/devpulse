@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -308,4 +309,48 @@ func nullableString(p *string) any {
 		return nil
 	}
 	return *p
+}
+
+// Delete removes a repo and everything synced for it (reviews, pull
+// requests, builds, incidents) in one transaction, so a half-deleted
+// repo can never be observed. There are no foreign keys, so each table
+// is cleared explicitly; reviews go first because they are keyed by
+// pull request id, not repo id.
+//
+// Returns ErrRepoNotFound when no row matches `id`.
+func (r *RepoPersister) Delete(ctx context.Context, id string) error {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("repo delete begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmts := []string{
+		`DELETE FROM pull_request_reviews
+		  WHERE pull_request_id IN (SELECT id FROM pull_requests WHERE repo_id = ?)`,
+		`DELETE FROM pull_requests WHERE repo_id = ?`,
+		`DELETE FROM builds WHERE repo_id = ?`,
+		`DELETE FROM incidents WHERE repo_id = ?`,
+	}
+	for _, q := range stmts {
+		r.Logger.Debug("sql.exec", slog.String("query", q), slog.Any("args", []any{id}))
+		if _, err := tx.ExecContext(ctx, r.Rebind(q), id); err != nil {
+			return fmt.Errorf("repo delete: %w", err)
+		}
+	}
+
+	const q = `DELETE FROM repos WHERE id = ?`
+	r.Logger.Debug("sql.exec", slog.String("query", q), slog.Any("args", []any{id}))
+	res, err := tx.ExecContext(ctx, r.Rebind(q), id)
+	if err != nil {
+		return fmt.Errorf("repo delete: %w", err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return ErrRepoNotFound
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("repo delete commit: %w", err)
+	}
+	return nil
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/mileschou/devpulse/internal/persistence"
 	"github.com/mileschou/devpulse/internal/repo"
+	"github.com/mileschou/devpulse/internal/repoadmin"
 )
 
 // repoConfigKey is the set of operator-tunable per-repo settings.
@@ -125,30 +126,24 @@ func runRepoConfigSet(ctx context.Context, repoArg, keyArg, valueArg string) err
 		if err != nil {
 			return fmt.Errorf("invalid value %q for pr-start: must be an integer", valueArg)
 		}
-		if n < 1 {
-			return fmt.Errorf("invalid value %d for pr-start: must be >= 1", n)
-		}
-		if err := d.repos.UpdatePRSyncStart(ctx, r.ID, n); err != nil {
+		if _, err := d.admin.UpdateConfig(ctx, r, repoadmin.Config{PRStart: &n}); err != nil {
 			return fmt.Errorf("update pr-start: %w", err)
 		}
 		fmt.Fprintf(stdout(), "%s pr-start=%d\n", name, n)
 		return nil
 
 	case "incident-label", "hotfix-label":
-		label := strings.TrimSpace(valueArg)
-		if label == "" {
-			return fmt.Errorf("invalid value for %s: must not be blank", keyArg)
-		}
-		incidentLabel, hotfixLabel := r.IncidentLabel, r.HotfixLabel
+		var c repoadmin.Config
 		if keyArg == "incident-label" {
-			incidentLabel = label
+			c.IncidentLabel = &valueArg
 		} else {
-			hotfixLabel = label
+			c.HotfixLabel = &valueArg
 		}
-		if err := d.repos.UpdateLabels(ctx, r.ID, incidentLabel, hotfixLabel); err != nil {
+		updated, err := d.admin.UpdateConfig(ctx, r, c)
+		if err != nil {
 			return fmt.Errorf("update %s: %w", keyArg, err)
 		}
-		fmt.Fprintf(stdout(), "%s %s=%s\n", name, keyArg, label)
+		fmt.Fprintf(stdout(), "%s %s=%s\n", name, keyArg, formatRepoConfigValue(keyArg, updated))
 		return nil
 	}
 	// Unreachable: repoConfigKeyByName already validated the key.

@@ -4,15 +4,15 @@ CI 與 PR 工作流程的研發效能觀測工具：從 GitHub 與 CI 服務抓�
 聚合成團隊指標（CI 失敗率、PR review latency、build duration、
 PR 重跑次數，以及四項 DORA 指標），寫入關聯式資料庫供後續分析使用。
 
-以單一 Go binary 方式發佈。`devpulse serve` 會把指標以唯讀 JSON API
-提供出來，另有一個選用的 Rust 桌面 dashboard（[`desktop/`](desktop/README.zh-TW.md)）
+以單一 Go binary 方式發佈。`devpulse serve` 會以 JSON API 提供指標和 repo
+管理功能，另有一個選用的 Rust 桌面 dashboard（[`desktop/`](desktop/README.zh-TW.md)）
 把指標畫成圖表。
 
 > 英文版：[README.md](README.md)
 
 ## 定位
 
-- **是什麼**：CLI 工具 + 關聯式資料層，上層再加一個唯讀 HTTP API 和桌面 dashboard
+- **是什麼**：CLI 工具 + 關聯式資料層，上層再加一個 HTTP API 和桌面 dashboard
 - **不是什麼**：SaaS、多租戶、即時 webhook 服務
 - **適用規模**：單機、單一使用者、單月單 repo 約 100~1000 筆 build
 
@@ -171,7 +171,8 @@ Hotfix PR 與事故 issue 以 label 辨識，可用
 [`desktop/`](desktop/README.zh-TW.md) 是以 Rust（egui）寫成的原生 dashboard，
 讀取 `devpulse serve` 的 API：CI 失敗率、每個 PR 的 build 次數、PR lead time
 和 review 等待時間的 KPI 卡片（各附理想值和逐月變化）、四項 DORA 指標，
-以及 PR 尺寸分布、每日 build 時間和 12 個月的趨勢。
+以及 PR 尺寸分布、每日 build 時間和 12 個月的趨勢。**Repos** 頁面可以新增、設定、
+同步和移除追蹤中的 repo。
 
 ![桌面 dashboard](docs/images/desktop-dashboard.jpg)
 
@@ -194,12 +195,13 @@ CI 的 token 只留在 server 上。端點和 JSON 格式請參考
 |---|---|
 | `devpulse sync` | 同步所有已註冊 repo（循序；跳過 disabled；彙整失敗） |
 | `devpulse repo add <owner/name>` | 註冊一個 repo |
+| `devpulse repo remove <owner/name> --yes` | 停止追蹤 repo 並刪除已同步的資料 |
 | `devpulse repo sync <owner/name>` | 同步單一 repo：重抓 open 及上游有變動的 PR、新 PR（含 enrichment）、補齊既有 PR 缺少的 DORA 資料、CI build（並對應回所屬 PR）、事故 issue |
 | `devpulse pr sync <owner/name> <number>` | 重新同步單一 PR（detail + reviews） |
 | `devpulse metrics <owner/name>` | 印出月份區間的工程效率指標與 DORA 指標 |
 | `devpulse migrate {up,down,status}` | Schema migration |
 | `devpulse worker` | 啟動 DB-backed job worker |
-| `devpulse serve` | 以唯讀 JSON API 提供 repo 與指標 |
+| `devpulse serve` | 以 JSON API 提供指標和 repo 管理 |
 
 ## 開發
 

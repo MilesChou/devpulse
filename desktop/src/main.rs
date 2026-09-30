@@ -1,9 +1,10 @@
 //! DevPulse desktop dashboard.
 //!
-//! A read-only client of the JSON API that `devpulse serve` exposes: it
-//! lists tracked repos and charts their CI and PR metrics. All data
-//! collection (GitHub, CI providers, the database) stays in the Go
-//! service; this app only needs the server URL and its API token.
+//! A client of the JSON API that `devpulse serve` exposes: it charts the
+//! CI and PR metrics of tracked repos and manages which repos are
+//! tracked. All data collection (GitHub, CI providers, the database)
+//! stays in the Go service; this app only needs the server URL and its
+//! API token.
 
 mod api;
 mod app;

@@ -94,6 +94,22 @@ devpulse repo add MilesChou/devpulse
 
 ---
 
+### `repo remove`
+
+```
+devpulse repo remove <owner/name> --yes
+```
+
+Stops tracking a repository and deletes every pull request, review, build and incident synced for it, in one transaction. Registering it again later re-syncs from scratch. Without `--yes` the command refuses, since the deletion cannot be undone.
+
+**Output**
+
+```
+Removed MilesChou/devpulse
+```
+
+---
+
 ### `repo config set` / `repo config get`
 
 ```
@@ -368,7 +384,7 @@ devpulse worker --poll 2s
 devpulse serve
 ```
 
-Runs the read-only JSON API until `Ctrl-C` (`SIGINT`) or `SIGTERM`. The [desktop dashboard](../desktop/README.md) is its client; anything that speaks HTTP can use it too.
+Runs the JSON API (metrics, plus repo management) until `Ctrl-C` (`SIGINT`) or `SIGTERM`. The [desktop dashboard](../desktop/README.md) is its client; anything that speaks HTTP can use it too.
 
 | Variable | Default | Description |
 |---|---|---|
@@ -386,6 +402,15 @@ In a container, the loopback default is unreachable from outside: set `HTTP_ADDR
 | `GET /api/v1/repos/{owner}/{name}` | bearer | One repo, same shape |
 | `GET /api/v1/repos/{owner}/{name}/metrics?from=YYYY-MM&to=YYYY-MM` | bearer | The report for the window (below) |
 | `GET /api/v1/repos/{owner}/{name}/metrics/monthly?from=YYYY-MM&to=YYYY-MM` | bearer | `{repo, from, to, months:[report, ...]}`, one report per month, oldest first |
+| `POST /api/v1/repos` with `{"full_name": "owner/name"}` | bearer | Registers the repo, like `repo add`: `201` `{repo, created: true, metadata_error}`, or `200` when it was already tracked. `metadata_error` is set (and the repo still registered) when GitHub metadata could not be fetched |
+| `PATCH /api/v1/repos/{owner}/{name}` with any of `{"pr_start", "incident_label", "hotfix_label"}` | bearer | Updates the settings `repo config set` manages and returns the repo. The same validation applies; one invalid field rejects the whole request |
+| `DELETE /api/v1/repos/{owner}/{name}` | bearer | Stops tracking the repo and deletes its synced data, like `repo remove`: `204` |
+| `POST /api/v1/repos/{owner}/{name}/sync` | bearer | Starts `repo sync` for it in the background: `202` with the sync status, `409` while another sync runs (one at a time, like `devpulse sync`), `503` when the server has no `GITHUB_TOKEN` |
+| `GET /api/v1/sync` | bearer | Background sync status: `{running, started_at, last_repo, last_finished_at, last_error}` |
+
+Repo objects carry the settings too: `pr_start`, `incident_label`, `hotfix_label`. Request bodies must be a single JSON object with known fields only, so a misspelt field (`pr-start`) is rejected with `400` rather than ignored.
+
+The API has one token for reads and writes: whoever holds `DEVPULSE_API_TOKEN` can also add and remove repos. On a loopback address without a token, any local process can. That fits the single-user scope; keep the token private.
 
 `from` / `to` behave exactly like the `metrics` command flags: `from` defaults to the current month (UTC), `to` is exclusive and defaults to `from` + 1 month. `metrics/monthly` accepts at most 36 months per request (it runs one report per month); `metrics` has no width limit. The report is computed by the same code as `devpulse metrics`, so the two never disagree.
 
@@ -428,7 +453,7 @@ In a container, the loopback default is unreachable from outside: set `HTTP_ADDR
 
 `pr_size_distribution` always lists the five buckets in ascending size order, plus an `unknown` entry only when some PRs have no bucket. `dora` follows the [DORA definitions](#dora-definitions) and is `null` while the repo's default branch is unknown (run `repo refresh`); inside it, `change_failure_rate` is `null` when there were no deployments. For a window still in progress, `per_week` is measured up to now, as in the `metrics` command. The canonical examples are the golden files in [`internal/http/testdata/`](../internal/http/testdata/); the dashboard's tests decode the same files.
 
-**Errors** are JSON `{"error": "..."}` with status `400` (bad `from` / `to`), `401` (missing or wrong token), `404` (repo not tracked, unknown path), or `500` (details are logged server-side, not returned).
+**Errors** are JSON `{"error": "..."}` with status `400` (bad `from` / `to`, invalid body or setting), `401` (missing or wrong token), `404` (repo not tracked, unknown path), `409` (a sync is already running), `503` (sync unavailable), or `500` (details are logged server-side, not returned).
 
 **Example**
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A native desktop app (`desktop/`, Rust) that charts the metrics served by the [HTTP API](../http-api/spec.md). It only reads: data collection and every GitHub / CI credential stay with the Go service.
+A native desktop app (`desktop/`, Rust) that charts the metrics served by the [HTTP API](../http-api/spec.md) and manages which repos the server tracks. Data collection and every GitHub / CI credential stay with the Go service.
 
 ## Requirements
 
@@ -104,3 +104,32 @@ The user MUST be able to keep interacting while data loads, and MUST NOT see res
 
 - **WHEN** the user restarts the dashboard
 - **THEN** the last selected repo is selected again if the server still tracks it
+
+### Requirement: Manage tracked repos from the dashboard
+
+The user MUST be able to add, reconfigure, sync, and remove tracked repos from the dashboard's Repos page.
+
+#### Scenario: Add a repo
+
+- **WHEN** the user enters `owner/name` and presses Add
+- **THEN** the repo appears in the list, with a message that says whether it was added, was already tracked, or was added without GitHub metadata and why
+
+#### Scenario: Edit settings
+
+- **WHEN** the user edits PR start or the incident / hotfix label and saves
+- **THEN** only the changed fields are sent; invalid input is reported before any request, and a changed label refreshes the metrics on screen
+
+#### Scenario: Remove needs confirmation
+
+- **WHEN** the user presses Remove on a repo
+- **THEN** the dashboard first asks to confirm that the repo and its synced data will be deleted, and deletes only after a second click
+
+#### Scenario: Sync with progress
+
+- **WHEN** the user starts a sync
+- **THEN** the page shows the sync as running, polls until it ends, reports success or the error, and refreshes the data on screen
+
+#### Scenario: Server cannot sync
+
+- **WHEN** the server has no `GITHUB_TOKEN`
+- **THEN** the Sync buttons are disabled and the page says to run `devpulse sync` on the server

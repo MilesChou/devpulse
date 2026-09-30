@@ -17,31 +17,21 @@ func newRepoCmd() *cobra.Command {
 		Use:   "repo",
 		Short: "Manage tracked repositories",
 	}
-	cmd.AddCommand(newRepoAddCmd(), newRepoRefreshCmd(), newRepoSyncCmd(), newRepoConfigCmd())
+	cmd.AddCommand(newRepoAddCmd(), newRepoRemoveCmd(), newRepoRefreshCmd(), newRepoSyncCmd(), newRepoConfigCmd())
 	return cmd
 }
 
 // registerRepo ensures a repo exists in the store and best-effort fetches
 // GitHub metadata. Used by both `repo add` and `init`.
 func registerRepo(ctx context.Context, w io.Writer, d *deps, name repo.FullName) (repo.Repo, error) {
-	r, err := d.repos.EnsureID(ctx, "github", name)
+	reg, err := d.admin.Register(ctx, name)
 	if err != nil {
-		return r, fmt.Errorf("ensure repo %s: %w", name, err)
+		return reg.Repo, err
 	}
-
-	if meta, err := d.vcs.GetRepo(ctx, name); err == nil {
-		if uerr := d.repos.UpdateMetadata(ctx, r.ID, meta); uerr != nil {
-			fmt.Fprintf(w, "warn: %s: update metadata failed: %v\n", name, uerr)
-		} else {
-			r.Description = meta.Description
-			r.DefaultBranch = meta.DefaultBranch
-			r.Disabled = meta.Disabled
-		}
-	} else {
-		fmt.Fprintf(w, "warn: %s: fetch github metadata failed: %v\n", name, err)
+	if reg.MetadataErr != nil {
+		fmt.Fprintf(w, "warn: %s: %v\n", name, reg.MetadataErr)
 	}
-
-	return r, nil
+	return reg.Repo, nil
 }
 
 func printRepoSummary(w io.Writer, r repo.Repo) {

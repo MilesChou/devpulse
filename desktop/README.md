@@ -1,9 +1,9 @@
 # DevPulse desktop dashboard
 
 A native dashboard for the metrics DevPulse collects, written in Rust
-with [egui](https://github.com/emilk/egui). It is a read-only client of
-the JSON API that `devpulse serve` exposes: the Go service does all the
-data collection (GitHub, CI providers, the database), and this app only
+with [egui](https://github.com/emilk/egui). It is a client of the JSON
+API that `devpulse serve` exposes: the Go service does all the data
+collection (GitHub, CI providers, the database), and this app only
 needs the server URL and its API token.
 
 > 正體中文：[README.zh-TW.md](README.zh-TW.md)
@@ -27,6 +27,14 @@ It shows, per repo and month window:
 - **12-month trends** of CI failure rate, PR lead time (avg / p50 /
   p90), deployments per week, and change failure rate, ending at the
   selected window.
+
+The **Repos** page (top bar) manages what the server tracks: add a repo
+by `owner/name`, edit its settings (PR start, incident and hotfix
+labels), start a sync, or remove it together with its synced data
+(asks for confirmation first). Syncing from the dashboard needs
+`GITHUB_TOKEN` on the server; without it the page says so and
+`devpulse sync` on the server remains the way to sync. One sync runs
+at a time, and the page shows its progress.
 
 ## Build
 

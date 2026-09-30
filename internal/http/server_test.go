@@ -20,6 +20,7 @@ import (
 	"github.com/mileschou/devpulse/internal/persistence/persistencetest"
 	"github.com/mileschou/devpulse/internal/pullrequest"
 	"github.com/mileschou/devpulse/internal/repo"
+	"github.com/mileschou/devpulse/internal/repoadmin"
 	"github.com/mileschou/devpulse/internal/x/commitsha"
 )
 
@@ -80,6 +81,13 @@ func TestCheckBind(t *testing.T) {
 // CI matrix replays these tests on PostgreSQL and MySQL too.
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	return newTestServerWith(t, nil)
+}
+
+// newTestServerWith is newTestServer with a hook to adjust the Config,
+// e.g. to plug in a sync runner.
+func newTestServerWith(t *testing.T, adjust func(*Config)) *httptest.Server {
+	t.Helper()
 	p := persistencetest.NewMemoryPersister(t)
 	ctx := context.Background()
 
@@ -101,12 +109,17 @@ func newTestServer(t *testing.T) *httptest.Server {
 	seedPullRequests(t, persistence.NewPullRequestPersister(p), r.ID)
 	seedIncidents(t, persistence.NewIncidentPersister(p), r.ID)
 
-	srv := httptest.NewServer(NewHandler(Config{
+	cfg := Config{
 		Token:   testToken,
 		Repos:   repos,
 		Metrics: persistence.NewMetricsPersister(p),
 		Now:     func() time.Time { return fixedNow },
-	}))
+		Admin:   repoadmin.New(repos, fakeMetadata{}),
+	}
+	if adjust != nil {
+		adjust(&cfg)
+	}
+	srv := httptest.NewServer(NewHandler(cfg))
 	t.Cleanup(srv.Close)
 	return srv
 }

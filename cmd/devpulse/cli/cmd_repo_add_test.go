@@ -132,3 +132,24 @@ func TestServe_StopsOnCancel(t *testing.T) {
 		t.Fatalf("output: %q", out.String())
 	}
 }
+
+func TestRepoRemove(t *testing.T) {
+	setEnvSharedSQLite(t)
+	if _, err := runCmd(t, "migrate", "up"); err != nil {
+		t.Fatalf("migrate up: %v", err)
+	}
+	if _, err := runCmd(t, "repo", "add", "MilesChou/devpulse"); err != nil {
+		t.Fatalf("repo add: %v", err)
+	}
+
+	if _, err := runCmd(t, "repo", "remove", "MilesChou/devpulse"); err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("remove without --yes must refuse, got %v", err)
+	}
+	out, err := runCmd(t, "repo", "remove", "MilesChou/devpulse", "--yes")
+	if err != nil || !strings.Contains(out, "Removed MilesChou/devpulse") {
+		t.Fatalf("remove: %v (%q)", err, out)
+	}
+	if _, err := runCmd(t, "repo", "remove", "MilesChou/devpulse", "--yes"); err == nil || !strings.Contains(err.Error(), "not registered") {
+		t.Fatalf("remove twice: want not-registered error, got %v", err)
+	}
+}

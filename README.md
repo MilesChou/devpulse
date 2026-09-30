@@ -7,15 +7,15 @@ DORA metrics), and persists them to a relational database for downstream
 analysis.
 
 Distributed as a single Go binary. `devpulse serve` exposes the metrics
-as a read-only JSON API, and an optional Rust desktop dashboard
-([`desktop/`](desktop/README.md)) charts them.
+and repo management as a JSON API, and an optional Rust desktop
+dashboard ([`desktop/`](desktop/README.md)) charts them.
 
 > 正體中文：[README.zh-TW.md](README.zh-TW.md)
 
 ## Scope
 
-- **Is**: a CLI tool plus a relational data layer, with a read-only
-  HTTP API and a desktop dashboard on top.
+- **Is**: a CLI tool plus a relational data layer, with an HTTP API
+  and a desktop dashboard on top.
 - **Is not**: a SaaS, a multi-tenant platform, or a realtime webhook
   service.
 - **Designed for**: single-host, single-user, ~100–1000 builds per repo
@@ -193,7 +193,8 @@ definitions and limitations are in
 (egui) that reads the `devpulse serve` API: KPI cards for CI failure
 rate, builds per PR, PR lead time and review wait (each with its ideal
 value and month-over-month change), the four DORA metrics, PR size
-distribution, daily build duration, and 12-month trends.
+distribution, daily build duration, and 12-month trends. Its **Repos**
+page adds, configures, syncs, and removes tracked repos.
 
 ![Desktop dashboard](docs/images/desktop-dashboard.jpg)
 
@@ -217,12 +218,13 @@ cron / CI.
 |---|---|
 | `devpulse sync` | Sync every tracked repo (sequential; skips disabled; aggregates failures) |
 | `devpulse repo add <owner/name>` | Register a repository |
+| `devpulse repo remove <owner/name> --yes` | Stop tracking a repository and delete its synced data |
 | `devpulse repo sync <owner/name>` | Sync one repo: refresh open PRs and PRs changed upstream, new PRs (with enrichment), missing DORA facts on stored PRs, CI builds (linked to their PR), incident issues |
 | `devpulse pr sync <owner/name> <number>` | Re-sync a single PR (detail + reviews) |
 | `devpulse metrics <owner/name>` | Print engineering-efficiency and DORA metrics for a month window |
 | `devpulse migrate {up,down,status}` | Schema migration |
 | `devpulse worker` | Run the DB-backed job worker |
-| `devpulse serve` | Serve repos and metrics as a read-only JSON API |
+| `devpulse serve` | Serve metrics and repo management as a JSON API |
 
 ## Development
 

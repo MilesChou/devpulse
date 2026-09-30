@@ -1,5 +1,6 @@
-// Package http serves the DevPulse read-only JSON API that `devpulse
-// serve` exposes. The desktop dashboard (desktop/) is its first client.
+// Package http serves the DevPulse JSON API that `devpulse serve`
+// exposes: metrics, plus managing tracked repos and triggering syncs.
+// The desktop dashboard (desktop/) is its first client.
 //
 // Every route under /api/ requires `Authorization: Bearer <token>`;
 // /healthz is open so load balancers and the dashboard's connection
@@ -18,6 +19,8 @@ import (
 
 	"github.com/mileschou/devpulse/internal/metrics"
 	"github.com/mileschou/devpulse/internal/repo"
+	"github.com/mileschou/devpulse/internal/repoadmin"
+	"github.com/mileschou/devpulse/internal/syncrun"
 )
 
 // RepoStore is the subset of persistence.RepoPersister the API reads.
@@ -38,6 +41,18 @@ type Config struct {
 	Repos   RepoStore
 	Metrics metrics.Source
 	Now     func() time.Time // default time.Now; resolves the default month window
+
+	// Admin handles repo writes (register, configure, remove).
+	Admin *repoadmin.Service
+	// Sync runs background repo syncs. Nil when the server cannot sync
+	// (no GITHUB_TOKEN); the sync endpoints then answer 503.
+	Sync SyncRunner
+}
+
+// SyncRunner is the subset of syncrun.Runner the API uses.
+type SyncRunner interface {
+	Start(r repo.Repo) error
+	Status() syncrun.Status
 }
 
 // Server wraps an http.Server.
