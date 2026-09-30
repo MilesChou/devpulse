@@ -6,10 +6,17 @@ use crate::api::{
     ApiError, ByMember, Member, MonthlyReport, Registration, Repo, RepoPatch, Report, ScopeParam,
     SyncStatus, Team,
 };
+use crate::i18n::Texts;
 use crate::month::Month;
+use crate::notice::{Label, Notice};
 
-/// How many months the trend charts cover, ending at the window's end.
+/// The shortest span the trend charts cover, ending at the window's end.
 pub const TREND_MONTHS: i32 = 12;
+
+/// The longest span the trend charts cover. Matches the server's limit
+/// for `metrics/monthly` (`MaxMonths` in `internal/metrics`), which
+/// rejects wider requests.
+pub const MAX_TREND_MONTHS: i32 = 120;
 
 /// A value fetched in the background.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -18,7 +25,7 @@ pub enum Loadable<T> {
     Idle,
     Loading,
     Ready(T),
-    Failed(String),
+    Failed(ApiError),
 }
 
 impl<T> Loadable<T> {
@@ -38,7 +45,7 @@ impl<T> From<Result<T, ApiError>> for Loadable<T> {
     fn from(r: Result<T, ApiError>) -> Self {
         match r {
             Ok(v) => Self::Ready(v),
-            Err(e) => Self::Failed(e.to_string()),
+            Err(e) => Self::Failed(e),
         }
     }
 }
@@ -71,10 +78,15 @@ impl Window {
     }
 
     /// The window the trend charts request: the `TREND_MONTHS` months
-    /// that end where this window ends.
+    /// that end where this window ends, or the whole window when it is
+    /// longer, so a multi-year selection is charted in full, up to the
+    /// last `MAX_TREND_MONTHS` months.
     pub fn trend(self) -> Self {
         Self {
-            from: self.to.add(-TREND_MONTHS),
+            from: self
+                .from
+                .min(self.to.add(-TREND_MONTHS))
+                .max(self.to.add(-MAX_TREND_MONTHS)),
             to: self.to,
         }
     }
@@ -106,13 +118,13 @@ pub enum Msg {
     Members(Result<Vec<Member>, ApiError>),
     Teams(Result<Vec<Team>, ApiError>),
     Excluded(Result<Vec<String>, ApiError>),
-    /// A member or team was deleted; carries the message to show on
+    /// A member or team was deleted; carries the notice to show on
     /// success.
-    PeopleChanged(String, Result<(), ApiError>),
+    PeopleChanged(Notice, Result<(), ApiError>),
     /// The member form was saved; on success the form is cleared, on
     /// failure it is kept so the user can fix it.
-    MemberSaved(String, Result<(), ApiError>),
-    TeamSaved(String, Result<(), ApiError>),
+    MemberSaved(Notice, Result<(), ApiError>),
+    TeamSaved(Notice, Result<(), ApiError>),
     ExcludedSaved(Result<Vec<String>, ApiError>),
 }
 
@@ -124,14 +136,14 @@ pub struct Applied {
     pub reload_people: bool,
     pub clear_member_form: bool,
     pub clear_team_form: bool,
-    /// A message for the user: (is_error, text).
-    pub notice: Option<(bool, String)>,
+    /// A message for the user.
+    pub notice: Option<Notice>,
 }
 
 impl Applied {
-    fn notice(is_error: bool, text: impl Into<String>) -> Self {
+    fn notice(notice: Notice) -> Self {
         Self {
-            notice: Some((is_error, text.into())),
+            notice: Some(notice),
             ..Default::default()
         }
     }
@@ -147,7 +159,8 @@ pub struct State {
     /// Result of the last connection test, shown in the settings panel.
     pub health: Loadable<()>,
     /// The server's background sync. `Failed` holds why syncing is
-    /// unavailable (e.g. no GITHUB_TOKEN on the server).
+    /// unavailable (e.g. no GITHUB_TOKEN on the server), as
+    /// `ApiError::Unavailable`.
     pub sync: Loadable<SyncStatus>,
     /// Whose work the dashboard shows.
     pub scope: ScopeParam,
@@ -179,19 +192,19 @@ impl State {
     }
 
     /// Label for a scope, from the loaded members and teams.
-    pub fn scope_label(&self, scope: &ScopeParam) -> String {
+    pub fn scope_label(&self, scope: &ScopeParam, t: &Texts) -> String {
         match scope {
-            ScopeParam::Everyone => "Everyone".into(),
+            ScopeParam::Everyone => t.everyone.into(),
             ScopeParam::Member(id) => self
                 .members
                 .ready()
                 .and_then(|ms| ms.iter().find(|m| &m.id == id))
-                .map_or_else(|| "Member".into(), |m| m.display_name.clone()),
+                .map_or_else(|| t.member.into(), |m| m.display_name.clone()),
             ScopeParam::Team(id) => self
                 .teams
                 .ready()
-                .and_then(|ts| ts.iter().find(|t| &t.id == id))
-                .map_or_else(|| "Team".into(), |t| format!("Team {}", t.name)),
+                .and_then(|ts| ts.iter().find(|team| &team.id == id))
+                .map_or_else(|| t.team_fallback.into(), |team| (t.team_label)(&team.name)),
         }
     }
 
@@ -235,9 +248,9 @@ impl State {
                 return match r {
                     Ok(()) => Applied {
                         reload_repos: true,
-                        ..Applied::notice(false, format!("Removed {name} and its synced data."))
+                        ..Applied::notice(Notice::RepoRemoved(name))
                     },
-                    Err(e) => Applied::notice(true, format!("Could not remove {name}: {e}")),
+                    Err(e) => Applied::notice(Notice::RepoRemoveFailed(name, e)),
                 };
             }
             Msg::Sync(r) => return self.sync_update(r),
@@ -308,12 +321,10 @@ impl State {
                         self.excluded = Loadable::Ready(accounts);
                         Applied {
                             reload_metrics: true,
-                            ..Applied::notice(false, "Saved excluded accounts.")
+                            ..Applied::notice(Notice::ExcludedSaved)
                         }
                     }
-                    Err(e) => {
-                        Applied::notice(true, format!("Could not save excluded accounts: {e}"))
-                    }
+                    Err(e) => Applied::notice(Notice::ExcludedSaveFailed(e)),
                 };
             }
         }
@@ -323,7 +334,7 @@ impl State {
     fn repo_updated(&mut self, r: Result<Repo, ApiError>) -> Applied {
         let repo = match r {
             Ok(repo) => repo,
-            Err(e) => return Applied::notice(true, format!("Could not save settings: {e}")),
+            Err(e) => return Applied::notice(Notice::RepoSettingsFailed(e)),
         };
         // Labels feed the DORA section, so refresh the metrics when the
         // edited repo is the one on screen.
@@ -337,19 +348,18 @@ impl State {
         Applied {
             reload_repos: true,
             reload_metrics: on_screen,
-            ..Applied::notice(false, format!("Saved settings for {}.", repo.full_name))
+            ..Applied::notice(Notice::RepoSettingsSaved(repo.full_name.clone()))
         }
     }
 
     fn sync_update(&mut self, r: Result<SyncStatus, ApiError>) -> Applied {
         let status = match r {
             Ok(status) => status,
-            Err(ApiError::Unavailable(msg)) => {
-                self.sync = Loadable::Failed(msg);
+            Err(e @ ApiError::Unavailable(_)) => {
+                self.sync = Loadable::Failed(e);
                 return Applied::default();
             }
-            Err(ApiError::Conflict(msg)) => return Applied::notice(true, msg),
-            Err(e) => return Applied::notice(true, format!("Sync: {e}")),
+            Err(e) => return Applied::notice(Notice::SyncRequestFailed(e)),
         };
 
         let was_running = self.sync_running();
@@ -364,12 +374,12 @@ impl State {
             .as_ref()
             .is_some_and(|s| s.full_name == status.last_repo);
         let notice = if status.last_error.is_empty() {
-            (false, format!("Synced {}.", status.last_repo))
+            Notice::Synced(status.last_repo.clone())
         } else {
-            (
-                true,
-                format!("Sync of {} failed: {}", status.last_repo, status.last_error),
-            )
+            Notice::SyncFailed {
+                repo: status.last_repo.clone(),
+                err: status.last_error.clone(),
+            }
         };
         Applied {
             reload_repos: true,
@@ -393,35 +403,30 @@ impl State {
 
 /// A change to members or teams: names and memberships feed the
 /// breakdown and the scopes, so both reload on success.
-fn people_changed(done: String, r: Result<(), ApiError>) -> Applied {
+fn people_changed(done: Notice, r: Result<(), ApiError>) -> Applied {
     match r {
         Ok(()) => Applied {
             reload_people: true,
             reload_metrics: true,
-            ..Applied::notice(false, done)
+            ..Applied::notice(done)
         },
-        Err(e) => Applied::notice(true, e.to_string()),
+        Err(e) => Applied::notice(Notice::PeopleChangeFailed(e)),
     }
 }
 
 fn registered(r: Result<Registration, ApiError>) -> Applied {
     let reg = match r {
         Ok(reg) => reg,
-        Err(e) => return Applied::notice(true, format!("Could not add the repo: {e}")),
+        Err(e) => return Applied::notice(Notice::RepoAddFailed(e)),
     };
-    let name = &reg.repo.full_name;
+    let repo = reg.repo.full_name.clone();
     let notice = match (&reg.metadata_error, reg.created) {
-        (Some(err), _) => (
-            true,
-            format!(
-                "Added {name}, but GitHub metadata could not be fetched ({err}). Check the name, or the server's GITHUB_TOKEN."
-            ),
-        ),
-        (None, true) => (
-            false,
-            format!("Added {name}. Its data arrives with the next sync."),
-        ),
-        (None, false) => (false, format!("{name} is already tracked.")),
+        (Some(err), _) => Notice::RepoAddedWithoutMetadata {
+            repo,
+            err: err.clone(),
+        },
+        (None, true) => Notice::RepoAdded(repo),
+        (None, false) => Notice::RepoAlreadyTracked(repo),
     };
     Applied {
         reload_repos: true,
@@ -467,10 +472,10 @@ impl MemberForm {
     }
 
     /// The name and accounts to send, or what is wrong.
-    pub fn validate(&self) -> Result<(String, Vec<String>), String> {
+    pub fn validate(&self) -> Result<(String, Vec<String>), Notice> {
         let name = self.name.trim();
         if name.is_empty() {
-            return Err("Display name must not be blank".into());
+            return Err(Notice::DisplayNameBlank);
         }
         Ok((name.to_string(), parse_accounts(&self.accounts)))
     }
@@ -493,10 +498,10 @@ impl TeamForm {
         }
     }
 
-    pub fn validate(&self) -> Result<(String, Vec<String>), String> {
+    pub fn validate(&self) -> Result<(String, Vec<String>), Notice> {
         let name = self.name.trim();
         if name.is_empty() {
-            return Err("Team name must not be blank".into());
+            return Err(Notice::TeamNameBlank);
         }
         Ok((name.to_string(), self.member_ids.iter().cloned().collect()))
     }
@@ -524,29 +529,24 @@ impl RepoEdit {
     /// Builds the patch of the fields that changed, or says what is wrong
     /// with the input. The server validates too; checking here gives the
     /// message before a round trip.
-    pub fn to_patch(&self, original: &Repo) -> Result<RepoPatch, String> {
+    pub fn to_patch(&self, original: &Repo) -> Result<RepoPatch, Notice> {
         let pr_start: u32 = self
             .pr_start
             .trim()
             .parse()
             .ok()
             .filter(|n| *n >= 1)
-            .ok_or_else(|| {
-                format!(
-                    "PR start must be a whole number >= 1, got {:?}",
-                    self.pr_start
-                )
-            })?;
-        let label = |name: &str, v: &str| {
+            .ok_or_else(|| Notice::PrStartInvalid(self.pr_start.clone()))?;
+        let label = |which: Label, v: &str| {
             let v = v.trim();
             if v.is_empty() {
-                Err(format!("{name} must not be blank"))
+                Err(Notice::LabelBlank(which))
             } else {
                 Ok(v.to_string())
             }
         };
-        let incident = label("Incident label", &self.incident_label)?;
-        let hotfix = label("Hotfix label", &self.hotfix_label)?;
+        let incident = label(Label::Incident, &self.incident_label)?;
+        let hotfix = label(Label::Hotfix, &self.hotfix_label)?;
         Ok(RepoPatch {
             pr_start: (pr_start != original.pr_start).then_some(pr_start),
             incident_label: (incident != original.incident_label).then_some(incident),
@@ -558,6 +558,7 @@ impl RepoEdit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::i18n::{EN, ZH_TW};
 
     const GOLDEN: &str = include_str!("../../internal/http/testdata/metrics.json");
     const GOLDEN_MONTHLY: &str = include_str!("../../internal/http/testdata/metrics_monthly.json");
@@ -604,6 +605,41 @@ mod tests {
         assert!(!wide.is_single_month());
         assert_eq!(wide.label(), "2026-01 ~ 2026-03");
         assert_eq!(wide.shift(2).label(), "2026-03 ~ 2026-05");
+        // Shorter than a year: the trend still covers twelve months.
+        assert_eq!(
+            wide.trend(),
+            Window {
+                from: m("2025-04"),
+                to: m("2026-04")
+            }
+        );
+
+        // Exactly twelve months: the trend is the window itself.
+        let year = Window {
+            from: m("2025-04"),
+            to: m("2026-04"),
+        };
+        assert_eq!(year.trend(), year);
+
+        // Longer than a year: the whole window is charted.
+        let years = Window {
+            from: m("2020-09"),
+            to: m("2026-10"),
+        };
+        assert_eq!(years.trend(), years);
+
+        // Beyond the server's limit: the last MAX_TREND_MONTHS months.
+        let decades = Window {
+            from: m("2000-01"),
+            to: m("2026-10"),
+        };
+        assert_eq!(
+            decades.trend(),
+            Window {
+                from: m("2016-10"),
+                to: m("2026-10")
+            }
+        );
     }
 
     #[test]
@@ -620,10 +656,7 @@ mod tests {
         assert!(s.report.ready().is_some());
 
         s.apply(Msg::Trend(second, Err(ApiError::Unauthorized)));
-        assert_eq!(
-            s.trend,
-            Loadable::Failed("API token was rejected (401)".into())
-        );
+        assert_eq!(s.trend, Loadable::Failed(ApiError::Unauthorized));
     }
 
     #[test]
@@ -685,29 +718,33 @@ mod tests {
         let mut s = State::new(m("2026-05"));
         let a = s.apply(Msg::Registered(Ok(reg("acme/web", true, None))));
         assert!(a.reload_repos);
+        let n = a.notice.unwrap();
+        assert!(!n.is_error());
         assert_eq!(
-            a.notice,
-            Some((
-                false,
-                "Added acme/web. Its data arrives with the next sync.".into()
-            ))
+            n.text(&EN),
+            "Added acme/web. Its data arrives with the next sync."
         );
+        assert_eq!(n.text(&ZH_TW), "已新增 acme/web，資料會在下次同步時進來。");
 
         let a = s.apply(Msg::Registered(Ok(reg("acme/web", false, None))));
         assert_eq!(
             a.notice,
-            Some((false, "acme/web is already tracked.".into()))
+            Some(Notice::RepoAlreadyTracked("acme/web".into()))
         );
 
         let a = s.apply(Msg::Registered(Ok(reg("acme/x", true, Some("404")))));
-        let (is_error, text) = a.notice.unwrap();
-        assert!(is_error && text.contains("404") && a.reload_repos, "{text}");
+        let n = a.notice.unwrap();
+        let text = n.text(&EN);
+        assert!(
+            n.is_error() && text.contains("404") && a.reload_repos,
+            "{text}"
+        );
 
         let a = s.apply(Msg::Registered(Err(ApiError::BadRequest(
             "bad name".into(),
         ))));
         assert!(!a.reload_repos);
-        assert_eq!(a.notice.map(|n| n.0), Some(true));
+        assert!(a.notice.unwrap().is_error());
     }
 
     #[test]
@@ -759,7 +796,7 @@ mod tests {
 
         let a = s.apply(Msg::Sync(Ok(status("", "acme/web", ""))));
         assert!(a.reload_repos && a.reload_metrics);
-        assert_eq!(a.notice, Some((false, "Synced acme/web.".into())));
+        assert_eq!(a.notice, Some(Notice::Synced("acme/web".into())));
         assert!(!s.sync_running());
 
         s.apply(Msg::Sync(Ok(status("acme/api", "acme/web", ""))));
@@ -768,20 +805,22 @@ mod tests {
             a.reload_repos && !a.reload_metrics,
             "acme/api is not on screen"
         );
-        assert_eq!(
-            a.notice,
-            Some((true, "Sync of acme/api failed: rate limited".into()))
-        );
+        let n = a.notice.unwrap();
+        assert!(n.is_error());
+        assert_eq!(n.text(&EN), "Sync of acme/api failed: rate limited");
 
         let a = s.apply(Msg::Sync(Err(ApiError::Conflict(
             "another sync is running: acme/api".into(),
         ))));
-        assert_eq!(a.notice.map(|n| n.0), Some(true));
+        assert!(a.notice.unwrap().is_error());
 
         s.apply(Msg::Sync(Err(ApiError::Unavailable(
             "no GITHUB_TOKEN".into(),
         ))));
-        assert_eq!(s.sync, Loadable::Failed("no GITHUB_TOKEN".into()));
+        assert_eq!(
+            s.sync,
+            Loadable::Failed(ApiError::Unavailable("no GITHUB_TOKEN".into()))
+        );
     }
 
     #[test]
@@ -811,11 +850,10 @@ mod tests {
         }
         edit.pr_start = "1".into();
         edit.incident_label = "  ".into();
-        assert!(
-            edit.to_patch(&original)
-                .unwrap_err()
-                .contains("Incident label")
-        );
+        let err = edit.to_patch(&original).unwrap_err();
+        assert_eq!(err, Notice::LabelBlank(Label::Incident));
+        assert_eq!(err.text(&EN), "Incident label must not be blank");
+        assert_eq!(err.text(&ZH_TW), "事故標籤不可空白");
     }
 
     fn member(id: &str, name: &str) -> Member {
@@ -874,33 +912,35 @@ mod tests {
         let a = s.apply(Msg::Members(Ok(vec![member("01M", "Alice")])));
         assert_eq!(s.scope, ScopeParam::Member("01M".into()));
         assert!(!a.reload_metrics);
-        assert_eq!(s.scope_label(&s.scope), "Alice");
+        assert_eq!(s.scope_label(&s.scope, &EN), "Alice");
+        assert_eq!(s.scope_label(&ScopeParam::Everyone, &ZH_TW), "所有人");
     }
 
     #[test]
     fn people_changes_reload_people_and_metrics() {
         let mut s = State::new(m("2026-05"));
-        let a = s.apply(Msg::PeopleChanged("Saved Alice.".into(), Ok(())));
+        let saved = Notice::MemberSaved("Alice".into());
+        let a = s.apply(Msg::PeopleChanged(saved.clone(), Ok(())));
         assert!(a.reload_people && a.reload_metrics);
-        assert_eq!(a.notice, Some((false, "Saved Alice.".into())));
+        assert_eq!(a.notice, Some(saved.clone()));
 
         let a = s.apply(Msg::PeopleChanged(
-            "x".into(),
+            saved.clone(),
             Err(ApiError::Conflict(
                 "account \"bob\" already belongs to Bob".into(),
             )),
         ));
         assert!(!a.reload_people);
-        assert_eq!(a.notice.map(|n| n.0), Some(true));
+        assert!(a.notice.unwrap().is_error());
 
-        let a = s.apply(Msg::MemberSaved("Saved Alice.".into(), Ok(())));
+        let a = s.apply(Msg::MemberSaved(saved.clone(), Ok(())));
         assert!(a.clear_member_form && !a.clear_team_form && a.reload_people);
         let a = s.apply(Msg::MemberSaved(
-            "x".into(),
+            saved,
             Err(ApiError::Conflict("display name taken".into())),
         ));
         assert!(!a.clear_member_form, "keep the form so the user can fix it");
-        let a = s.apply(Msg::TeamSaved("Saved team Web.".into(), Ok(())));
+        let a = s.apply(Msg::TeamSaved(Notice::TeamSaved("Web".into()), Ok(())));
         assert!(a.clear_team_form);
 
         let a = s.apply(Msg::ExcludedSaved(Ok(vec!["dependabot".into()])));

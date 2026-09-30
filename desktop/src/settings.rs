@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::i18n::Lang;
+
 pub const DEFAULT_BASE_URL: &str = "http://127.0.0.1:8080";
 
 /// Non-secret settings persisted as JSON.
@@ -20,6 +22,11 @@ pub struct Settings {
     pub base_url: String,
     /// Last selected repo (`owner/name`), restored on the next launch.
     pub last_repo: Option<String>,
+    /// UI language chosen in Settings. `None` until the user picks one,
+    /// so the OS locale decides. An unknown value (say, from a newer
+    /// build) also reads as `None` instead of discarding the whole file.
+    #[serde(deserialize_with = "lenient_lang")]
+    pub language: Option<Lang>,
 }
 
 impl Default for Settings {
@@ -27,8 +34,14 @@ impl Default for Settings {
         Self {
             base_url: DEFAULT_BASE_URL.to_string(),
             last_repo: None,
+            language: None,
         }
     }
+}
+
+fn lenient_lang<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Lang>, D::Error> {
+    let raw = Option::<serde_json::Value>::deserialize(d)?;
+    Ok(raw.and_then(|v| serde_json::from_value(v).ok()))
 }
 
 /// Default location: `<config dir>/devpulse/desktop.json`. The
@@ -40,7 +53,7 @@ pub fn default_path() -> Option<PathBuf> {
 
 /// Loads settings, falling back to defaults when the file is missing.
 /// A corrupt file also falls back to defaults: the file only holds a
-/// URL and a selection, so losing it costs one re-entry.
+/// URL, a selection and a language, so losing it costs one re-entry.
 pub fn load(path: &Path) -> Settings {
     fs::read_to_string(path)
         .ok()
@@ -176,6 +189,7 @@ mod tests {
         let s = Settings {
             base_url: "https://devpulse.example.com".into(),
             last_repo: Some("MilesChou/devpulse".into()),
+            language: Some(Lang::ZhTw),
         };
         save(&path, &s).expect("save");
         assert_eq!(load(&path), s);
@@ -197,6 +211,30 @@ mod tests {
         let s = load(&path);
         assert_eq!(s.base_url, DEFAULT_BASE_URL);
         assert_eq!(s.last_repo.as_deref(), Some("a/b"));
+        // Files written before the language setting follow the locale.
+        assert_eq!(s.language, None);
+
+        // An unknown language keeps the rest of the file.
+        fs::write(&path, r#"{"last_repo":"a/b","language":"fr"}"#).unwrap();
+        let s = load(&path);
+        assert_eq!(s.last_repo.as_deref(), Some("a/b"));
+        assert_eq!(s.language, None);
+    }
+
+    #[test]
+    fn language_is_stored_by_tag() {
+        let path = temp_path("language");
+        let s = Settings {
+            language: Some(Lang::ZhTw),
+            ..Settings::default()
+        };
+        save(&path, &s).expect("save");
+        assert!(
+            fs::read_to_string(&path)
+                .unwrap()
+                .contains(r#""language": "zh-TW""#)
+        );
+        assert_eq!(load(&path).language, Some(Lang::ZhTw));
     }
 
     #[test]

@@ -433,7 +433,7 @@ Accounts are normalized: lower-cased, with a trailing `[bot]` removed, because G
 
 The API has one token for reads and writes: whoever holds `DEVPULSE_API_TOKEN` can also add and remove repos. On a loopback address without a token, any local process can. That fits the single-user scope; keep the token private.
 
-`from` / `to` behave exactly like the `metrics` command flags: `from` defaults to the current month (UTC), `to` is exclusive and defaults to `from` + 1 month. `metrics/monthly` accepts at most 36 months per request (it runs one report per month); `metrics` has no width limit. The report is computed by the same code as `devpulse metrics`, so the two never disagree.
+`from` / `to` behave exactly like the `metrics` command flags: `from` defaults to the current month (UTC), `to` is exclusive and defaults to `from` + 1 month. `metrics/monthly` accepts at most 120 months per request (it runs one report per month); `metrics` has no width limit. The report is computed by the same code as `devpulse metrics`, so the two never disagree.
 
 **Report**
 

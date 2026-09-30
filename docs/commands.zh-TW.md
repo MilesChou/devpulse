@@ -433,7 +433,7 @@ Repo 物件也會帶上設定值：`pr_start`、`incident_label`、`hotfix_label
 
 API 的讀取和寫入共用同一個 token：持有 `DEVPULSE_API_TOKEN` 的人也能新增、移除 repo。在沒有 token 的 loopback 位址上，本機的任何程式都可以這麼做。這符合單一使用者的使用情境，請妥善保管 token。
 
-`from` / `to` 的行為和 `metrics` 指令的旗標完全相同：`from` 預設為當月（UTC），`to` 不包含在範圍內，預設為 `from` 加一個月。`metrics/monthly` 每次最多 36 個月（每個月都要各算一份報表）；`metrics` 沒有範圍上限。報表和 `devpulse metrics` 使用同一段程式計算，兩者的數字不會不一致。
+`from` / `to` 的行為和 `metrics` 指令的旗標完全相同：`from` 預設為當月（UTC），`to` 不包含在範圍內，預設為 `from` 加一個月。`metrics/monthly` 每次最多 120 個月（每個月都要各算一份報表）；`metrics` 沒有範圍上限。報表和 `devpulse metrics` 使用同一段程式計算，兩者的數字不會不一致。
 
 **報表**
 

@@ -6,14 +6,17 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use eframe::egui::{self, Color32, RichText};
+use eframe::egui::{self, Align2, Color32, FontId, RichText, Sense, Stroke};
 use egui_plot::{
-    Bar, BarChart, Legend, Line, Plot, PlotPoints, log_grid_spacer, uniform_grid_spacer,
+    Bar, BarChart, Legend, Line, Plot, PlotPoints, PlotResponse, log_grid_spacer,
+    uniform_grid_spacer,
 };
 
 use crate::api::{ByMember, Client, MonthlyReport, Repo, Report, ScopeParam};
+use crate::i18n::{Lang, Texts};
 use crate::kpi::{self, Direction, Kpi};
 use crate::month::Month;
+use crate::notice::Notice;
 use crate::settings::{self, SecretStore, Settings};
 use crate::state::{Loadable, MemberForm, Msg, RepoEdit, State, TeamForm, Window};
 
@@ -31,14 +34,16 @@ enum View {
 /// Builds the token store for a server URL.
 pub type SecretStoreFactory = Box<dyn Fn(&str) -> Box<dyn SecretStore>>;
 
-/// Session-only connection values, from `DEVPULSE_SERVER_URL` and
-/// `DEVPULSE_API_TOKEN`. They win over the settings file and keychain
-/// but are never written to either, so scripted or CI launches leave no
-/// trace in the user's keychain.
+/// Session-only values, from `DEVPULSE_SERVER_URL`,
+/// `DEVPULSE_API_TOKEN` and `DEVPULSE_DESKTOP_LANG`. They win over the
+/// settings file and keychain but are never written to either, so
+/// scripted or CI launches leave no trace in the user's keychain.
 #[derive(Debug, Default, Clone)]
 pub struct Overrides {
     pub base_url: Option<String>,
     pub token: Option<String>,
+    /// Ignored when the variable holds an unknown language.
+    pub lang: Option<Lang>,
 }
 
 impl Overrides {
@@ -52,6 +57,7 @@ impl Overrides {
         Self {
             base_url: var("DEVPULSE_SERVER_URL"),
             token: var("DEVPULSE_API_TOKEN"),
+            lang: var("DEVPULSE_DESKTOP_LANG").and_then(|v| Lang::parse(&v)),
         }
     }
 }
@@ -67,12 +73,16 @@ pub struct DashboardApp {
     /// The token in use this session. Kept even if the keychain write
     /// failed, so the dashboard still works until it is closed.
     token: Option<String>,
+    lang: Lang,
+    /// The font families searched when no CJK font was found, shown in
+    /// the settings panel; `None` when one was loaded.
+    missing_cjk_font: Option<String>,
 
     // Settings form.
     show_settings: bool,
     url_input: String,
     token_input: String,
-    notice: Option<(bool, String)>, // (is_error, text)
+    notice: Option<Notice>,
 
     // Window form.
     from_input: String,
@@ -106,11 +116,14 @@ impl DashboardApp {
         settings_path: Option<PathBuf>,
         make_store: SecretStoreFactory,
         overrides: Overrides,
+        locale: Option<String>,
+        missing_cjk_font: Option<String>,
     ) -> Self {
         let settings = settings_path
             .as_deref()
             .map(settings::load)
             .unwrap_or_default();
+        let lang = Lang::resolve(overrides.lang, settings.language, locale.as_deref());
         apply_text_sizes(&ctx);
         let state = State::new(Month::current());
         let (tx, rx) = channel();
@@ -128,6 +141,8 @@ impl DashboardApp {
             make_store,
             url_override: overrides.base_url,
             token: None,
+            lang,
+            missing_cjk_font,
             show_settings: false,
             token_input: String::new(),
             notice: None,
@@ -159,7 +174,7 @@ impl DashboardApp {
             Ok(None) => app.show_settings = true,
             Err(e) => {
                 app.show_settings = true;
-                app.notice = Some((true, format!("Cannot read the keychain: {e}")));
+                app.notice = Some(Notice::KeychainReadFailed(e));
             }
         }
         app
@@ -213,7 +228,7 @@ impl DashboardApp {
         let patch = match edit.to_patch(original) {
             Ok(p) => p,
             Err(e) => {
-                self.notice = Some((true, e));
+                self.notice = Some(e);
                 return;
             }
         };
@@ -295,14 +310,14 @@ impl DashboardApp {
         let (name, accounts) = match self.member_form.validate() {
             Ok(v) => v,
             Err(e) => {
-                self.notice = Some((true, e));
+                self.notice = Some(e);
                 return;
             }
         };
         let Some(client) = self.client() else { return };
         let id = self.member_form.id.clone();
         self.spawn(move || {
-            let done = format!("Saved {name}.");
+            let done = Notice::MemberSaved(name.clone());
             Msg::MemberSaved(
                 done,
                 client
@@ -316,14 +331,14 @@ impl DashboardApp {
         let (name, member_ids) = match self.team_form.validate() {
             Ok(v) => v,
             Err(e) => {
-                self.notice = Some((true, e));
+                self.notice = Some(e);
                 return;
             }
         };
         let Some(client) = self.client() else { return };
         let id = self.team_form.id.clone();
         self.spawn(move || {
-            let done = format!("Saved team {name}.");
+            let done = Notice::TeamSaved(name.clone());
             Msg::TeamSaved(
                 done,
                 client
@@ -337,16 +352,14 @@ impl DashboardApp {
         let Some(client) = self.client() else { return };
         self.confirm_delete = None;
         self.spawn(move || {
-            Msg::PeopleChanged(format!("Deleted {name}."), client.delete_member(&id))
+            Msg::PeopleChanged(Notice::MemberDeleted(name), client.delete_member(&id))
         });
     }
 
     fn delete_team(&mut self, id: String, name: String) {
         let Some(client) = self.client() else { return };
         self.confirm_delete = None;
-        self.spawn(move || {
-            Msg::PeopleChanged(format!("Deleted team {name}."), client.delete_team(&id))
-        });
+        self.spawn(move || Msg::PeopleChanged(Notice::TeamDeleted(name), client.delete_team(&id)));
     }
 
     fn save_excluded(&mut self) {
@@ -373,7 +386,7 @@ impl DashboardApp {
     fn save_settings(&mut self) {
         let url = self.url_input.trim().trim_end_matches('/').to_string();
         if url.is_empty() {
-            self.notice = Some((true, "Server URL is required.".into()));
+            self.notice = Some(Notice::UrlRequired);
             return;
         }
         let url_changed = url != self.base_url().trim_end_matches('/');
@@ -384,18 +397,10 @@ impl DashboardApp {
         let typed = self.token_input.trim().to_string();
         let mut store = (self.make_store)(&self.settings.base_url);
         if !typed.is_empty() {
-            self.notice = match store.set(&typed) {
-                Ok(()) => Some((
-                    false,
-                    "Saved. The token is stored in the OS keychain.".into(),
-                )),
-                Err(e) => Some((
-                    true,
-                    format!(
-                        "Could not save the token to the keychain ({e}); it is kept for this session only."
-                    ),
-                )),
-            };
+            self.notice = Some(match store.set(&typed) {
+                Ok(()) => Notice::TokenSaved,
+                Err(e) => Notice::TokenSaveFailed(e),
+            });
             self.token_input.clear();
         }
         self.token = settings::token_after_save(self.token.take(), url_changed, &typed, || {
@@ -403,7 +408,7 @@ impl DashboardApp {
         });
 
         if self.token.is_none() {
-            self.notice = Some((true, "No API token for this server.".into()));
+            self.notice = Some(Notice::NoToken);
             return;
         }
         self.state.selected = None;
@@ -415,8 +420,8 @@ impl DashboardApp {
     fn forget_token(&mut self) {
         let mut store = (self.make_store)(self.base_url());
         self.notice = Some(match store.delete() {
-            Ok(()) => (false, "Token removed from the keychain.".into()),
-            Err(e) => (true, format!("Could not remove the token: {e}")),
+            Ok(()) => Notice::TokenRemoved,
+            Err(e) => Notice::TokenRemoveFailed(e),
         });
         self.token = None;
         self.state.repos = Loadable::Idle;
@@ -447,7 +452,7 @@ impl DashboardApp {
         if let Some(path) = &self.settings_path
             && let Err(e) = settings::save(path, &self.settings)
         {
-            self.notice = Some((true, format!("Could not save settings: {e}")));
+            self.notice = Some(Notice::SettingsSaveFailed(e.to_string()));
         }
     }
 
@@ -467,6 +472,17 @@ impl DashboardApp {
             self.state.select(repo);
             self.load_metrics();
         }
+    }
+
+    /// Switches the UI language and remembers the choice. Every string
+    /// is derived per frame, so nothing is refetched.
+    fn set_lang(&mut self, lang: Lang) {
+        if lang == self.lang {
+            return;
+        }
+        self.lang = lang;
+        self.settings.language = Some(lang);
+        self.persist_settings();
     }
 }
 
@@ -543,49 +559,55 @@ impl eframe::App for DashboardApp {
 
 impl DashboardApp {
     fn top_bar(&mut self, ui: &mut egui::Ui) {
+        let t = self.lang.texts();
         ui.horizontal(|ui| {
             ui.heading("DevPulse");
             ui.separator();
-            ui.selectable_value(&mut self.view, View::Dashboard, "Dashboard");
-            ui.selectable_value(&mut self.view, View::Repos, "Repos");
-            ui.selectable_value(&mut self.view, View::People, "People");
+            ui.selectable_value(&mut self.view, View::Dashboard, t.view_dashboard);
+            ui.selectable_value(&mut self.view, View::Repos, t.view_repos);
+            ui.selectable_value(&mut self.view, View::People, t.view_people);
             ui.separator();
 
             let w = self.state.window;
-            if ui.button("◀").on_hover_text("Previous period").clicked() {
+            if ui.button("◀").on_hover_text(t.previous_period).clicked() {
                 self.set_window(w.shift(-1));
             }
-            ui.label("From");
+            ui.label(t.from);
             ui.add(egui::TextEdit::singleline(&mut self.from_input).desired_width(64.0));
-            ui.label("to (exclusive)");
+            ui.label(t.to_exclusive);
             ui.add(egui::TextEdit::singleline(&mut self.to_input).desired_width(64.0));
-            if ui.button("Apply").clicked() {
+            if ui.button(t.apply).clicked() {
                 match (
                     self.from_input.parse::<Month>(),
                     self.to_input.parse::<Month>(),
                 ) {
                     (Ok(from), Ok(to)) if from < to => self.set_window(Window { from, to }),
-                    (Ok(_), Ok(_)) => self.notice = Some((true, "From must be before To.".into())),
-                    (Err(e), _) | (_, Err(e)) => self.notice = Some((true, e)),
+                    (Ok(_), Ok(_)) => self.notice = Some(Notice::FromBeforeTo),
+                    (Err(_), _) => {
+                        self.notice = Some(Notice::BadMonth(self.from_input.trim().into()))
+                    }
+                    (_, Err(_)) => {
+                        self.notice = Some(Notice::BadMonth(self.to_input.trim().into()))
+                    }
                 }
             }
-            if ui.button("▶").on_hover_text("Next period").clicked() {
+            if ui.button("▶").on_hover_text(t.next_period).clicked() {
                 self.set_window(w.shift(1));
             }
-            if ui.button("This month").clicked() {
+            if ui.button(t.this_month).clicked() {
                 self.set_window(Window::single(Month::current()));
             }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let label = if self.show_settings {
-                    "Close settings"
+                    t.close_settings
                 } else {
-                    "Settings"
+                    t.settings
                 };
                 if ui.button(label).clicked() {
                     self.show_settings = !self.show_settings;
                 }
-                if ui.button("Refresh").clicked() {
+                if ui.button(t.refresh).clicked() {
                     self.load_repos();
                     self.load_metrics();
                 }
@@ -594,16 +616,16 @@ impl DashboardApp {
                 }
             });
         });
-        if let Some((is_error, text)) = &self.notice {
-            let color = if *is_error {
+        if let Some(notice) = &self.notice {
+            let color = if notice.is_error() {
                 ui.visuals().error_fg_color
             } else {
                 success_color(ui)
             };
             let dismissed = ui
                 .horizontal(|ui| {
-                    ui.colored_label(color, text);
-                    ui.small_button("Dismiss").clicked()
+                    ui.colored_label(color, notice.text(t));
+                    ui.small_button("✕").clicked()
                 })
                 .inner;
             if dismissed {
@@ -613,17 +635,18 @@ impl DashboardApp {
     }
 
     fn settings_panel(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Connection");
-        ui.label("DevPulse server URL (`devpulse serve`)");
+        let t = self.lang.texts();
+        ui.heading(t.connection);
+        ui.label(t.server_url);
         ui.text_edit_singleline(&mut self.url_input);
         ui.add_space(6.0);
 
         let hint = if self.token.is_some() {
-            "(in use; leave empty to keep)"
+            t.token_in_use_hint
         } else {
             "DEVPULSE_API_TOKEN"
         };
-        ui.label("API token");
+        ui.label(t.api_token);
         ui.add(
             egui::TextEdit::singleline(&mut self.token_input)
                 .password(true)
@@ -632,13 +655,13 @@ impl DashboardApp {
         ui.add_space(6.0);
 
         ui.horizontal(|ui| {
-            if ui.button("Save & connect").clicked() {
+            if ui.button(t.save_and_connect).clicked() {
                 self.save_settings();
             }
-            if ui.button("Test").clicked() {
+            if ui.button(t.test).clicked() {
                 self.test_connection();
             }
-            if self.token.is_some() && ui.button("Forget token").clicked() {
+            if self.token.is_some() && ui.button(t.forget_token).clicked() {
                 self.forget_token();
             }
         });
@@ -649,39 +672,48 @@ impl DashboardApp {
                 ui.spinner();
             }
             Loadable::Ready(()) => {
-                ui.colored_label(
-                    success_color(ui),
-                    "Connected: server is up and the token works.",
-                );
+                ui.colored_label(success_color(ui), t.connected);
             }
             Loadable::Failed(e) => {
-                ui.colored_label(ui.visuals().error_fg_color, e);
+                ui.colored_label(ui.visuals().error_fg_color, e.describe(t));
             }
         }
 
         ui.add_space(12.0);
-        ui.small(
-            "The token is kept in the OS keychain, one entry per server URL. \
-             GitHub and CI tokens stay on the server.",
-        );
+        ui.small(t.keychain_note);
+
+        ui.add_space(12.0);
+        ui.separator();
+        ui.heading(t.language);
+        let mut lang = self.lang;
+        ui.horizontal(|ui| {
+            for l in Lang::ALL {
+                ui.radio_value(&mut lang, l, l.native_name());
+            }
+        });
+        self.set_lang(lang);
+        if let Some(candidates) = &self.missing_cjk_font {
+            ui.colored_label(ui.visuals().warn_fg_color, (t.no_cjk_font)(candidates));
+        }
     }
 
     fn repo_list(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Repositories");
+        let t = self.lang.texts();
+        ui.heading(t.repositories);
         ui.separator();
         let mut clicked = None;
         match &self.state.repos {
             Loadable::Idle => {
-                ui.label("Connect to a server in Settings.");
+                ui.label(t.connect_in_settings);
             }
             Loadable::Loading => {
                 ui.spinner();
             }
             Loadable::Failed(e) => {
-                ui.colored_label(ui.visuals().error_fg_color, e);
+                ui.colored_label(ui.visuals().error_fg_color, e.describe(t));
             }
             Loadable::Ready(repos) if repos.is_empty() => {
-                ui.label("No repos yet. Register one with `devpulse repo add <owner/name>`.");
+                ui.label(t.no_repos);
             }
             Loadable::Ready(repos) => {
                 egui::ScrollArea::vertical().show(ui, |ui| {
@@ -715,19 +747,20 @@ impl DashboardApp {
     /// The Everyone / team / member picker. Returns true when the choice
     /// changed.
     fn scope_picker(&mut self, ui: &mut egui::Ui) -> bool {
+        let t = self.lang.texts();
         let before = self.state.scope.clone();
         let mut scope = before.clone();
         let teams = self.state.teams.ready().cloned().unwrap_or_default();
         let members = self.state.members.ready().cloned().unwrap_or_default();
         egui::ComboBox::from_id_salt("scope")
-            .selected_text(self.state.scope_label(&before))
+            .selected_text(self.state.scope_label(&before, t))
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut scope, ScopeParam::Everyone, "Everyone");
-                for t in &teams {
+                ui.selectable_value(&mut scope, ScopeParam::Everyone, t.everyone);
+                for team in &teams {
                     ui.selectable_value(
                         &mut scope,
-                        ScopeParam::Team(t.id.clone()),
-                        format!("Team {}", t.name),
+                        ScopeParam::Team(team.id.clone()),
+                        (t.team_label)(&team.name),
                     );
                 }
                 for m in &members {
@@ -746,11 +779,9 @@ impl DashboardApp {
     }
 
     fn by_member_section(&mut self, ui: &mut egui::Ui) {
-        ui.heading("By member");
-        ui.small(
-            "Members with activity in this window, and active accounts not mapped to a member yet. \
-             Excluded accounts (bots) are left out.",
-        );
+        let t = self.lang.texts();
+        ui.heading(t.by_member);
+        ui.small(t.by_member_caption);
         ui.add_space(4.0);
         let rows = match &self.state.by_member {
             Loadable::Ready(ByMember { rows, .. }) => rows.clone(),
@@ -759,13 +790,13 @@ impl DashboardApp {
                 return;
             }
             Loadable::Failed(e) => {
-                ui.colored_label(ui.visuals().error_fg_color, e);
+                ui.colored_label(ui.visuals().error_fg_color, e.describe(t));
                 return;
             }
             Loadable::Idle => return,
         };
         if rows.is_empty() {
-            ui.label("No activity in this window.");
+            ui.label(t.no_activity);
             return;
         }
 
@@ -775,13 +806,13 @@ impl DashboardApp {
             .spacing([18.0, 6.0])
             .show(ui, |ui| {
                 for title in [
-                    "Name",
-                    "PRs opened",
-                    "Merged",
-                    "Lead time",
-                    "Builds per PR",
-                    "CI failures",
-                    "Review wait",
+                    t.col_name,
+                    t.col_prs_opened,
+                    t.col_merged,
+                    t.col_lead_time,
+                    t.builds_per_pr,
+                    t.col_ci_failures,
+                    t.review_wait,
                     "",
                 ] {
                     ui.label(RichText::new(title).strong());
@@ -818,8 +849,8 @@ impl DashboardApp {
                     match &row.member_id {
                         Some(id) => {
                             if ui
-                                .small_button("Show")
-                                .on_hover_text("Show only this member")
+                                .small_button(t.show_button)
+                                .on_hover_text(t.show_member_hover)
                                 .clicked()
                             {
                                 self.state.scope = ScopeParam::Member(id.clone());
@@ -828,8 +859,8 @@ impl DashboardApp {
                         }
                         None => {
                             if ui
-                                .small_button("Map…")
-                                .on_hover_text("Create a member for this account")
+                                .small_button(t.map_button)
+                                .on_hover_text(t.map_hover)
                                 .clicked()
                             {
                                 self.map_account(&row.name);
@@ -842,8 +873,9 @@ impl DashboardApp {
     }
 
     fn people_page(&mut self, ui: &mut egui::Ui) {
-        ui.heading("People");
-        ui.label("Map GitHub accounts to people and teams, and choose which accounts to leave out of the metrics.");
+        let t = self.lang.texts();
+        ui.heading(t.people);
+        ui.label(t.people_intro);
         ui.add_space(12.0);
         self.members_section(ui);
         ui.add_space(16.0);
@@ -855,13 +887,14 @@ impl DashboardApp {
     }
 
     fn members_section(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Members");
-        ui.small("A member is one person. List every GitHub account they use; accounts compare case-insensitively.");
+        let t = self.lang.texts();
+        ui.heading(t.members);
+        ui.small(t.members_intro);
         ui.add_space(4.0);
         let members = match &self.state.members {
             Loadable::Ready(ms) => ms.clone(),
             Loadable::Failed(e) => {
-                ui.colored_label(ui.visuals().error_fg_color, e);
+                ui.colored_label(ui.visuals().error_fg_color, e.describe(t));
                 return;
             }
             _ => {
@@ -877,7 +910,7 @@ impl DashboardApp {
                 .striped(true)
                 .spacing([18.0, 6.0])
                 .show(ui, |ui| {
-                    for title in ["Name", "Accounts", "Teams", ""] {
+                    for title in [t.col_name, t.col_accounts, t.col_teams, ""] {
                         ui.label(RichText::new(title).strong());
                     }
                     ui.end_row();
@@ -900,19 +933,22 @@ impl DashboardApp {
                         });
                         ui.horizontal(|ui| {
                             if self.confirm_delete.as_deref() == Some(m.id.as_str()) {
-                                ui.colored_label(ui.visuals().warn_fg_color, "Delete this member?");
-                                if ui.button("Delete").clicked() {
+                                ui.colored_label(
+                                    ui.visuals().warn_fg_color,
+                                    t.confirm_delete_member,
+                                );
+                                if ui.button(t.delete).clicked() {
                                     self.delete_member(m.id.clone(), m.display_name.clone());
                                 }
-                                if ui.button("Cancel").clicked() {
+                                if ui.button(t.cancel).clicked() {
                                     self.confirm_delete = None;
                                 }
                                 return;
                             }
-                            if ui.button("Edit").clicked() {
+                            if ui.button(t.edit).clicked() {
                                 self.member_form = MemberForm::edit(m);
                             }
-                            if ui.button("Delete…").clicked() {
+                            if ui.button(t.delete_ellipsis).clicked() {
                                 self.confirm_delete = Some(m.id.clone());
                             }
                         });
@@ -923,21 +959,21 @@ impl DashboardApp {
         }
 
         let editing = self.member_form.id.is_some();
-        ui.label(RichText::new(if editing { "Edit member" } else { "New member" }).strong());
+        ui.label(RichText::new(if editing { t.edit_member } else { t.new_member }).strong());
         ui.horizontal(|ui| {
-            ui.label("Name");
+            ui.label(t.col_name);
             ui.add(egui::TextEdit::singleline(&mut self.member_form.name).desired_width(180.0));
-            ui.label("Accounts");
+            ui.label(t.col_accounts);
             ui.add(
                 egui::TextEdit::singleline(&mut self.member_form.accounts)
                     .hint_text("alice, alice-work")
                     .desired_width(260.0),
             );
-            if ui.button("Save").clicked() {
+            if ui.button(t.save).clicked() {
                 self.save_member();
             }
             if (editing || self.member_form != MemberForm::default())
-                && ui.button("Cancel").clicked()
+                && ui.button(t.cancel).clicked()
             {
                 self.member_form = MemberForm::default();
             }
@@ -945,8 +981,9 @@ impl DashboardApp {
     }
 
     fn teams_section(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Teams");
-        ui.small("A team is a set of members; the dashboard can show a team's work on its own.");
+        let t = self.lang.texts();
+        ui.heading(t.teams);
+        ui.small(t.teams_intro);
         ui.add_space(4.0);
         let (Some(teams), Some(members)) = (
             self.state.teams.ready().cloned(),
@@ -962,15 +999,15 @@ impl DashboardApp {
                 .striped(true)
                 .spacing([18.0, 6.0])
                 .show(ui, |ui| {
-                    for title in ["Name", "Members", ""] {
+                    for title in [t.col_name, t.col_members, ""] {
                         ui.label(RichText::new(title).strong());
                     }
                     ui.end_row();
-                    for t in &teams {
-                        ui.label(&t.name);
+                    for team in &teams {
+                        ui.label(&team.name);
                         let names: Vec<&str> = members
                             .iter()
-                            .filter(|m| t.member_ids.contains(&m.id))
+                            .filter(|m| team.member_ids.contains(&m.id))
                             .map(|m| m.display_name.as_str())
                             .collect();
                         ui.label(if names.is_empty() {
@@ -979,24 +1016,21 @@ impl DashboardApp {
                             names.join(", ")
                         });
                         ui.horizontal(|ui| {
-                            if self.confirm_delete.as_deref() == Some(t.id.as_str()) {
-                                ui.colored_label(
-                                    ui.visuals().warn_fg_color,
-                                    "Delete this team? Its members stay.",
-                                );
-                                if ui.button("Delete").clicked() {
-                                    self.delete_team(t.id.clone(), t.name.clone());
+                            if self.confirm_delete.as_deref() == Some(team.id.as_str()) {
+                                ui.colored_label(ui.visuals().warn_fg_color, t.confirm_delete_team);
+                                if ui.button(t.delete).clicked() {
+                                    self.delete_team(team.id.clone(), team.name.clone());
                                 }
-                                if ui.button("Cancel").clicked() {
+                                if ui.button(t.cancel).clicked() {
                                     self.confirm_delete = None;
                                 }
                                 return;
                             }
-                            if ui.button("Edit").clicked() {
-                                self.team_form = TeamForm::edit(t);
+                            if ui.button(t.edit).clicked() {
+                                self.team_form = TeamForm::edit(team);
                             }
-                            if ui.button("Delete…").clicked() {
-                                self.confirm_delete = Some(t.id.clone());
+                            if ui.button(t.delete_ellipsis).clicked() {
+                                self.confirm_delete = Some(team.id.clone());
                             }
                         });
                         ui.end_row();
@@ -1006,13 +1040,13 @@ impl DashboardApp {
         }
 
         let editing = self.team_form.id.is_some();
-        ui.label(RichText::new(if editing { "Edit team" } else { "New team" }).strong());
+        ui.label(RichText::new(if editing { t.edit_team } else { t.new_team }).strong());
         ui.horizontal(|ui| {
-            ui.label("Name");
+            ui.label(t.col_name);
             ui.add(egui::TextEdit::singleline(&mut self.team_form.name).desired_width(180.0));
         });
         if members.is_empty() {
-            ui.small("Add members first to put them in a team.");
+            ui.small(t.add_members_first);
         } else {
             ui.horizontal_wrapped(|ui| {
                 for m in &members {
@@ -1028,24 +1062,22 @@ impl DashboardApp {
             });
         }
         ui.horizontal(|ui| {
-            if ui.button("Save team").clicked() {
+            if ui.button(t.save_team).clicked() {
                 self.save_team();
             }
-            if (editing || self.team_form != TeamForm::default()) && ui.button("Cancel").clicked() {
+            if (editing || self.team_form != TeamForm::default()) && ui.button(t.cancel).clicked() {
                 self.team_form = TeamForm::default();
             }
         });
     }
 
     fn excluded_section(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Excluded accounts");
-        ui.small(
-            "Bots and other accounts left out of every metric except DORA: their PRs, builds and reviews. \
-             One account per line; a trailing [bot] is ignored, so `dependabot` also covers `dependabot[bot]`.",
-        );
+        let t = self.lang.texts();
+        ui.heading(t.excluded_accounts);
+        ui.small(t.excluded_intro);
         ui.add_space(4.0);
         if let Loadable::Failed(e) = &self.state.excluded {
-            ui.colored_label(ui.visuals().error_fg_color, e);
+            ui.colored_label(ui.visuals().error_fg_color, e.describe(t));
             return;
         }
         ui.add(
@@ -1053,29 +1085,30 @@ impl DashboardApp {
                 .desired_rows(4)
                 .desired_width(320.0),
         );
-        if ui.button("Save excluded accounts").clicked() {
+        if ui.button(t.save_excluded).clicked() {
             self.save_excluded();
         }
     }
 
     fn repos_page(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Repositories");
-        ui.label("Add, configure, sync or remove the repos this server tracks.");
+        let t = self.lang.texts();
+        ui.heading(t.repositories);
+        ui.label(t.repos_intro);
         ui.add_space(8.0);
 
         ui.horizontal(|ui| {
-            ui.label("Add repo");
+            ui.label(t.add_repo);
             let resp = ui.add(
                 egui::TextEdit::singleline(&mut self.add_input)
                     .hint_text("owner/name")
                     .desired_width(260.0),
             );
             let entered = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if ui.button("Add").clicked() || entered {
+            if ui.button(t.add).clicked() || entered {
                 self.register_repo();
             }
         });
-        ui.small("GitHub metadata is fetched right away; pull requests and builds arrive with the next sync.");
+        ui.small(t.add_repo_note);
         ui.add_space(8.0);
         self.sync_status_line(ui);
         ui.add_space(8.0);
@@ -1087,16 +1120,16 @@ impl DashboardApp {
                 return;
             }
             Loadable::Failed(e) => {
-                ui.colored_label(ui.visuals().error_fg_color, e);
+                ui.colored_label(ui.visuals().error_fg_color, e.describe(t));
                 return;
             }
             Loadable::Idle => {
-                ui.label("Connect to a server in Settings.");
+                ui.label(t.connect_in_settings);
                 return;
             }
         };
         if repos.is_empty() {
-            ui.label("No repos yet.");
+            ui.label(t.no_repos_short);
             return;
         }
 
@@ -1107,11 +1140,11 @@ impl DashboardApp {
             .spacing([18.0, 8.0])
             .show(ui, |ui| {
                 for title in [
-                    "Repo",
-                    "Default branch",
-                    "PR start",
-                    "Incident label",
-                    "Hotfix label",
+                    t.col_repo,
+                    t.col_default_branch,
+                    t.col_pr_start,
+                    t.col_incident_label,
+                    t.col_hotfix_label,
                     "",
                 ] {
                     ui.label(RichText::new(title).strong());
@@ -1125,6 +1158,7 @@ impl DashboardApp {
     }
 
     fn repo_row(&mut self, ui: &mut egui::Ui, repo: &Repo, can_sync: bool) {
+        let t = self.lang.texts();
         let mut name = RichText::new(&repo.full_name);
         if repo.disabled {
             name = name.weak().italics();
@@ -1147,10 +1181,10 @@ impl DashboardApp {
             ui.add(egui::TextEdit::singleline(&mut edit.incident_label).desired_width(120.0));
             ui.add(egui::TextEdit::singleline(&mut edit.hotfix_label).desired_width(120.0));
             ui.horizontal(|ui| {
-                if ui.button("Save").clicked() {
+                if ui.button(t.save).clicked() {
                     self.save_repo_edit(repo);
                 }
-                if ui.button("Cancel").clicked() {
+                if ui.button(t.cancel).clicked() {
                     self.editing = None;
                 }
             });
@@ -1162,63 +1196,57 @@ impl DashboardApp {
         ui.label(&repo.hotfix_label);
         ui.horizontal(|ui| {
             if self.confirm_remove.as_deref() == Some(repo.full_name.as_str()) {
-                ui.colored_label(
-                    ui.visuals().warn_fg_color,
-                    "Delete it and all its synced data?",
-                );
-                if ui.button("Remove").clicked() {
+                ui.colored_label(ui.visuals().warn_fg_color, t.confirm_remove_repo);
+                if ui.button(t.remove).clicked() {
                     self.remove_repo(repo);
                 }
-                if ui.button("Cancel").clicked() {
+                if ui.button(t.cancel).clicked() {
                     self.confirm_remove = None;
                 }
                 return;
             }
-            if ui.button("Edit").clicked() {
+            if ui.button(t.edit).clicked() {
                 self.editing = Some(RepoEdit::from_repo(repo));
             }
             if ui
-                .add_enabled(can_sync, egui::Button::new("Sync"))
-                .on_disabled_hover_text("A sync is running, or the server cannot sync")
+                .add_enabled(can_sync, egui::Button::new(t.sync))
+                .on_disabled_hover_text(t.sync_disabled_hover)
                 .clicked()
             {
                 self.start_sync(repo);
             }
-            if ui.button("Remove…").clicked() {
+            if ui.button(t.remove_ellipsis).clicked() {
                 self.confirm_remove = Some(repo.full_name.clone());
             }
         });
     }
 
     fn sync_status_line(&self, ui: &mut egui::Ui) {
+        let t = self.lang.texts();
         match &self.state.sync {
-            Loadable::Failed(msg) => {
+            Loadable::Failed(e) => {
                 ui.colored_label(
                     ui.visuals().warn_fg_color,
-                    format!(
-                        "{}. Run `devpulse sync` on the server instead.",
-                        capitalize(msg)
-                    ),
+                    (t.sync_unavailable)(&e.describe(t)),
                 );
             }
             Loadable::Ready(s) if !s.running.is_empty() => {
                 ui.horizontal(|ui| {
                     ui.spinner();
-                    ui.label(format!(
-                        "Syncing {} (started {})…",
-                        s.running,
-                        short_time(s.started_at.as_deref())
+                    ui.label((t.syncing)(
+                        &s.running,
+                        &short_time(s.started_at.as_deref()),
                     ));
                 });
             }
             Loadable::Ready(s) if !s.last_repo.is_empty() => {
                 let when = short_time(s.last_finished_at.as_deref());
                 if s.last_error.is_empty() {
-                    ui.label(format!("Last sync: {} finished {when}.", s.last_repo));
+                    ui.label((t.last_sync_ok)(&s.last_repo, &when));
                 } else {
                     ui.colored_label(
                         ui.visuals().error_fg_color,
-                        format!("Last sync: {} failed {when}: {}", s.last_repo, s.last_error),
+                        (t.last_sync_failed)(&s.last_repo, &when, &s.last_error),
                     );
                 }
             }
@@ -1227,8 +1255,9 @@ impl DashboardApp {
     }
 
     fn dashboard(&mut self, ui: &mut egui::Ui) {
+        let t = self.lang.texts();
         let Some(repo) = self.state.selected.clone() else {
-            ui.label("Select a repository.");
+            ui.label(t.select_repo);
             return;
         };
         let changed = ui
@@ -1239,7 +1268,7 @@ impl DashboardApp {
                     self.state.window.label()
                 ));
                 ui.separator();
-                ui.label("Show");
+                ui.label(t.show);
                 self.scope_picker(ui)
             })
             .inner;
@@ -1247,10 +1276,7 @@ impl DashboardApp {
             self.load_metrics();
         }
         if repo.disabled {
-            ui.colored_label(
-                ui.visuals().warn_fg_color,
-                "This repo is disabled upstream; `devpulse sync` skips it.",
-            );
+            ui.colored_label(ui.visuals().warn_fg_color, t.repo_disabled);
         }
         ui.add_space(8.0);
 
@@ -1260,25 +1286,23 @@ impl DashboardApp {
                 ui.spinner();
             }
             Loadable::Failed(e) => {
-                ui.colored_label(ui.visuals().error_fg_color, e);
+                ui.colored_label(ui.visuals().error_fg_color, e.describe(t));
             }
             Loadable::Ready(report) => {
-                kpi_cards(ui, &kpi::kpis(report, self.state.previous_month()));
+                kpi_cards(ui, &kpi::kpis(report, self.state.previous_month(), t), t);
                 ui.add_space(12.0);
                 ui.columns(2, |cols| {
-                    size_chart(&mut cols[0], report);
-                    daily_duration_chart(&mut cols[1], report);
+                    size_chart(&mut cols[0], report, t);
+                    daily_duration_chart(&mut cols[1], report, t);
                 });
 
                 ui.add_space(12.0);
                 ui.separator();
                 if self.state.scope == ScopeParam::Everyone {
-                    dora_section(ui, report, self.state.previous_month());
+                    dora_section(ui, report, self.state.previous_month(), t);
                 } else {
                     ui.heading("DORA");
-                    ui.label(
-                        "DORA measures delivery of the whole repo; choose Everyone to see it.",
-                    );
+                    ui.label(t.dora_everyone_only);
                 }
             }
         }
@@ -1292,48 +1316,55 @@ impl DashboardApp {
         ui.add_space(12.0);
         ui.separator();
         let trend = self.state.window.trend();
-        ui.heading(format!("Trend · {} ~ {}", trend.from, trend.to.prev()));
+        ui.heading((t.trend_heading)(
+            &trend.from.to_string(),
+            &trend.to.prev().to_string(),
+        ));
+        // Months picked by dragging across a trend chart, as indices into
+        // the trend; applied once the charts are drawn.
+        let mut picked = None;
         match &self.state.trend {
             Loadable::Idle => {}
             Loadable::Loading => {
                 ui.spinner();
             }
             Loadable::Failed(e) => {
-                ui.colored_label(ui.visuals().error_fg_color, e);
+                ui.colored_label(ui.visuals().error_fg_color, e.describe(t));
             }
             Loadable::Ready(monthly) => {
+                ui.small(t.trend_drag_hint);
                 ui.columns(2, |cols| {
-                    failure_trend_chart(&mut cols[0], monthly);
-                    lead_time_trend_chart(&mut cols[1], monthly);
+                    picked = picked.or(failure_trend_chart(&mut cols[0], monthly, t));
+                    picked = picked.or(lead_time_trend_chart(&mut cols[1], monthly, t));
                 });
                 if monthly.months.iter().any(|r| r.dora.is_some()) {
                     ui.add_space(8.0);
                     ui.columns(2, |cols| {
-                        deploy_trend_chart(&mut cols[0], monthly);
-                        change_failure_trend_chart(&mut cols[1], monthly);
+                        picked = picked.or(deploy_trend_chart(&mut cols[0], monthly, t));
+                        picked = picked.or(change_failure_trend_chart(&mut cols[1], monthly, t));
                     });
                 }
             }
         }
+        if let Some((first, last)) = picked {
+            self.set_window(Window {
+                from: trend.from.add(first as i32),
+                to: trend.from.add(last as i32 + 1),
+            });
+        }
     }
 }
 
-fn dora_section(ui: &mut egui::Ui, report: &Report, previous: Option<&Report>) {
-    match (&report.dora, kpi::dora_kpis(report, previous)) {
+fn dora_section(ui: &mut egui::Ui, report: &Report, previous: Option<&Report>, t: &'static Texts) {
+    match (&report.dora, kpi::dora_kpis(report, previous, t)) {
         (Some(d), Some(cards)) => {
-            ui.heading(format!(
-                "DORA · deployment = PR merged into {}",
-                d.default_branch
-            ));
+            ui.heading((t.dora_heading)(&d.default_branch));
             ui.add_space(4.0);
-            kpi_cards(ui, &cards);
+            kpi_cards(ui, &cards, t);
         }
         _ => {
             ui.heading("DORA");
-            ui.label(format!(
-                "Default branch unknown; run `devpulse repo refresh {}` on the server.",
-                report.repo
-            ));
+            ui.label((t.dora_branch_unknown)(&report.repo));
         }
     }
 }
@@ -1380,12 +1411,12 @@ fn success_color(ui: &egui::Ui) -> Color32 {
     }
 }
 
-fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi]) {
+fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi], t: &Texts) {
     ui.columns(cards.len(), |cols| {
         for (ui, card) in cols.iter_mut().zip(cards) {
             egui::Frame::group(ui.style()).show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
-                ui.label(RichText::new(card.title).strong());
+                titled_row(ui, card.title, card.help);
                 ui.label(RichText::new(&card.value).size(32.0));
                 ui.small(&card.detail);
                 ui.horizontal(|ui| {
@@ -1397,8 +1428,8 @@ fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi]) {
                             Direction::Up | Direction::Down => ui.visuals().hyperlink_color,
                             Direction::Flat => ui.visuals().weak_text_color(),
                         };
-                        ui.small(RichText::new(format!("{} MoM", d.text)).color(color))
-                            .on_hover_text("change vs the previous month");
+                        ui.small(RichText::new((t.mom)(&d.text)).color(color))
+                            .on_hover_text(t.mom_hover);
                     }
                 });
             });
@@ -1406,19 +1437,70 @@ fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi]) {
     });
 }
 
+/// A chart title followed by an (i) that explains the chart on hover.
+fn chart_title(ui: &mut egui::Ui, title: &str, help: &str) {
+    titled_row(ui, title, help);
+}
+
+/// A bold title followed by an (i). Wrapped, so a long title (most
+/// Chinese ones, in a narrow card) breaks onto the next line instead of
+/// widening its column past the window edge.
+fn titled_row(ui: &mut egui::Ui, title: &str, help: &str) {
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new(title).strong());
+        info_icon(ui, help);
+    });
+}
+
+/// A small circled "i" that explains something: hovering shows `help`
+/// right away, clicking pins it in a popup until the next click outside.
+/// The hover text is shown directly rather than through `on_hover_text`,
+/// whose delay and stillness checks left it hidden in practice.
+/// Painted rather than typed: egui's bundled fonts have no info glyph
+/// (ℹ, ⓘ), and the CJK fallback font may be missing.
+fn info_icon(ui: &mut egui::Ui, help: &str) {
+    let size = ui.text_style_height(&egui::TextStyle::Body);
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(size, size), Sense::click());
+    if ui.is_rect_visible(rect) {
+        let color = if resp.hovered() {
+            ui.visuals().strong_text_color()
+        } else {
+            ui.visuals().weak_text_color()
+        };
+        let painter = ui.painter();
+        painter.circle_stroke(rect.center(), size * 0.4, Stroke::new(1.0, color));
+        painter.text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            "i",
+            FontId::proportional(size * 0.6),
+            color,
+        );
+    }
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+    let pinned = egui::Popup::from_toggle_button_response(&resp)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .width(320.0)
+        .show(|ui| ui.label(help))
+        .is_some();
+    if !pinned && resp.hovered() {
+        resp.show_tooltip_ui(|ui| {
+            ui.set_max_width(ui.spacing().tooltip_width);
+            ui.label(help);
+        });
+    }
+}
+
 /// Month axis labels for trend charts: x is the month index.
 fn month_labels(monthly: &MonthlyReport) -> Vec<String> {
     monthly.months.iter().map(|r| r.from.clone()).collect()
 }
 
-fn size_chart(ui: &mut egui::Ui, report: &Report) {
-    ui.label(RichText::new("PR size distribution").strong());
+fn size_chart(ui: &mut egui::Ui, report: &Report, t: &Texts) {
+    chart_title(ui, t.pr_size_distribution, t.help_size);
     match kpi::small_pr_share(report) {
-        Some(share) => ui.small(format!(
-            "{:.0}% small (XS + S) · ideal: mostly small",
-            share * 100.0
-        )),
-        None => ui.small("no PRs in this window"),
+        Some(share) => ui.small((t.small_share)(share * 100.0)),
+        None => ui.small(t.no_prs_in_window),
     };
     let labels: Vec<String> = report
         .pr_size_distribution
@@ -1435,14 +1517,14 @@ fn size_chart(ui: &mut egui::Ui, report: &Report) {
                 .width(0.6)
         })
         .collect();
-    category_plot("size", EVERY)
+    category_plot(ui, "size", EVERY)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
-        .show(ui, |p| p.bar_chart(BarChart::new("PRs", bars)));
+        .show(ui, |p| p.bar_chart(BarChart::new(t.series_prs, bars)));
 }
 
-fn daily_duration_chart(ui: &mut egui::Ui, report: &Report) {
-    ui.label(RichText::new("Daily build duration").strong());
-    ui.small("average seconds per UTC day");
+fn daily_duration_chart(ui: &mut egui::Ui, report: &Report, t: &Texts) {
+    chart_title(ui, t.daily_build_duration, t.help_daily);
+    ui.small(t.daily_build_caption);
     let labels: Vec<String> = report
         .daily_build_duration
         .iter()
@@ -1454,17 +1536,21 @@ fn daily_duration_chart(ui: &mut egui::Ui, report: &Report) {
         .enumerate()
         .map(|(i, d)| {
             Bar::new(i as f64, d.avg_seconds)
-                .name(format!("{} ({} builds)", d.day, d.count))
+                .name((t.day_bar)(&d.day, d.count))
                 .width(0.7)
         })
         .collect();
-    category_plot("daily", SPARSE)
+    category_plot(ui, "daily", SPARSE)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
-        .show(ui, |p| p.bar_chart(BarChart::new("seconds", bars)));
+        .show(ui, |p| p.bar_chart(BarChart::new(t.series_seconds, bars)));
 }
 
-fn failure_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
-    ui.label(RichText::new("CI failure rate (%)").strong());
+fn failure_trend_chart(
+    ui: &mut egui::Ui,
+    monthly: &MonthlyReport,
+    t: &Texts,
+) -> Option<(usize, usize)> {
+    chart_title(ui, t.ci_failure_trend, t.help_failure_trend);
     let labels = month_labels(monthly);
     // Months without PR builds have no rate; leave a gap rather than
     // plotting a misleading 0%.
@@ -1475,15 +1561,20 @@ fn failure_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
         .filter(|(_, r)| r.build_failure.total > 0)
         .map(|(i, r)| [i as f64, r.build_failure.rate * 100.0])
         .collect();
-    category_plot("failure-trend", SPARSE)
+    let plot = trend_plot(ui, "failure-trend", monthly)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
-            p.line(Line::new("failure %", PlotPoints::from(points)))
+            p.line(Line::new(t.series_failure, PlotPoints::from(points)))
         });
+    month_brush(ui, &plot, monthly.months.len())
 }
 
-fn lead_time_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
-    ui.label(RichText::new("PR lead time (hours)").strong());
+fn lead_time_trend_chart(
+    ui: &mut egui::Ui,
+    monthly: &MonthlyReport,
+    t: &Texts,
+) -> Option<(usize, usize)> {
+    chart_title(ui, t.lead_time_trend, t.help_lead_trend);
     let labels = month_labels(monthly);
     let series = |f: fn(&Report) -> f64| -> Vec<[f64; 2]> {
         monthly
@@ -1497,18 +1588,23 @@ fn lead_time_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
     let avg = series(|r| r.pr_lead_time.avg_hours);
     let p50 = series(|r| r.pr_lead_time.p50_hours);
     let p90 = series(|r| r.pr_lead_time.p90_hours);
-    category_plot("lead-trend", SPARSE)
+    let plot = trend_plot(ui, "lead-trend", monthly)
         .legend(Legend::default())
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
-            p.line(Line::new("avg", PlotPoints::from(avg)));
+            p.line(Line::new(t.series_avg, PlotPoints::from(avg)));
             p.line(Line::new("p50", PlotPoints::from(p50)));
             p.line(Line::new("p90", PlotPoints::from(p90)));
         });
+    month_brush(ui, &plot, monthly.months.len())
 }
 
-fn deploy_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
-    ui.label(RichText::new("Deployments per week").strong());
+fn deploy_trend_chart(
+    ui: &mut egui::Ui,
+    monthly: &MonthlyReport,
+    t: &Texts,
+) -> Option<(usize, usize)> {
+    chart_title(ui, t.deploys_per_week_trend, t.help_deploy_trend);
     let labels = month_labels(monthly);
     let bars = monthly
         .months
@@ -1518,18 +1614,23 @@ fn deploy_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
             let d = r.dora.as_ref()?;
             Some(
                 Bar::new(i as f64, d.per_week)
-                    .name(format!("{} ({} deploys)", r.from, d.deployments))
+                    .name((t.deploy_bar)(&r.from, d.deployments))
                     .width(0.6),
             )
         })
         .collect();
-    category_plot("deploy-trend", SPARSE)
+    let plot = trend_plot(ui, "deploy-trend", monthly)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
-        .show(ui, |p| p.bar_chart(BarChart::new("deploys / week", bars)));
+        .show(ui, |p| p.bar_chart(BarChart::new(t.series_deploys, bars)));
+    month_brush(ui, &plot, monthly.months.len())
 }
 
-fn change_failure_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
-    ui.label(RichText::new("Change failure rate (%)").strong());
+fn change_failure_trend_chart(
+    ui: &mut egui::Ui,
+    monthly: &MonthlyReport,
+    t: &Texts,
+) -> Option<(usize, usize)> {
+    chart_title(ui, t.cfr_trend, t.help_cfr_trend);
     let labels = month_labels(monthly);
     // Months without deployments have no rate (null), so they are gaps.
     let points: Vec<[f64; 2]> = monthly
@@ -1541,11 +1642,65 @@ fn change_failure_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
             Some([i as f64, rate * 100.0])
         })
         .collect();
-    category_plot("cfr-trend", SPARSE)
+    let plot = trend_plot(ui, "cfr-trend", monthly)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
-            p.line(Line::new("change failure %", PlotPoints::from(points)))
+            p.line(Line::new(t.series_cfr, PlotPoints::from(points)))
         });
+    month_brush(ui, &plot, monthly.months.len())
+}
+
+/// Grafana-style range selection on a trend chart, whose x axis is the
+/// month index. Dragging across the chart highlights whole months;
+/// releasing returns the first and last selected index. The drag state
+/// lives in egui's temporary memory, keyed by the plot, so the app keeps
+/// nothing while a drag is in progress.
+fn month_brush(ui: &egui::Ui, plot: &PlotResponse<()>, months: usize) -> Option<(usize, usize)> {
+    if months == 0 {
+        return None;
+    }
+    let resp = &plot.response;
+    let id = resp.id.with("month-brush");
+    let index = |pos: egui::Pos2| {
+        let x = plot.transform.value_from_position(pos).x.round();
+        x.clamp(0.0, (months - 1) as f64) as usize
+    };
+
+    if resp.drag_started_by(egui::PointerButton::Primary)
+        && let Some(pos) = resp.interact_pointer_pos()
+    {
+        let i = index(pos);
+        ui.data_mut(|d| d.insert_temp(id, (i, i)));
+    }
+    // (anchor, current): the pointer position can be gone on the frame
+    // the drag ends, so the last known month is kept.
+    let (anchor, mut current): (usize, usize) = ui.data(|d| d.get_temp(id))?;
+    if let Some(pos) = resp.interact_pointer_pos() {
+        current = index(pos);
+        ui.data_mut(|d| d.insert_temp(id, (anchor, current)));
+    }
+    let (first, last) = (anchor.min(current), anchor.max(current));
+
+    let frame = *plot.transform.frame();
+    let x0 = plot
+        .transform
+        .position_from_point_x(first as f64 - 0.5)
+        .max(frame.left());
+    let x1 = plot
+        .transform
+        .position_from_point_x(last as f64 + 0.5)
+        .min(frame.right());
+    ui.painter().rect_filled(
+        egui::Rect::from_x_y_ranges(x0..=x1, frame.y_range()),
+        0.0,
+        ui.visuals().selection.bg_fill.gamma_multiply(0.35),
+    );
+
+    if resp.drag_stopped() {
+        ui.data_mut(|d| d.remove::<(usize, usize)>(id));
+        return Some((first, last));
+    }
+    None
 }
 
 /// A fixed (no pan / zoom) plot whose x axis is a category index, with
@@ -1553,12 +1708,19 @@ fn change_failure_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
 /// or point. `steps` are the three grid spacings; egui_plot only labels
 /// the finer ones when there is room, so a long axis thins out its
 /// labels instead of overlapping them.
-fn category_plot(id: &str, steps: [f64; 3]) -> Plot<'static> {
+fn category_plot(ui: &egui::Ui, id: &str, steps: [f64; 3]) -> Plot<'static> {
     Plot::new(id)
+        // egui_plot draws grid lines in the text colour by default, which
+        // makes the major lines as dark as the labels. A faded text colour
+        // keeps them readable as a background in light and dark themes.
+        .grid_color(ui.visuals().text_color().gamma_multiply(GRID_ALPHA))
         .height(200.0)
         .allow_drag(false)
         .allow_zoom(false)
         .allow_scroll(false)
+        // Primary-button drags select months (see `month_brush`); the
+        // secondary-button box zoom would compete with that.
+        .allow_boxed_zoom(false)
         .include_y(0.0)
         // Room for three-digit values (hours, seconds) on the y axis.
         .y_axis_min_width(32.0)
@@ -1568,6 +1730,19 @@ fn category_plot(id: &str, steps: [f64; 3]) -> Plot<'static> {
         .y_grid_spacer(log_grid_spacer(5))
         .x_grid_spacer(uniform_grid_spacer(move |_| steps))
 }
+
+/// A trend chart: one category per month of the trend. The x axis always
+/// spans every month, not just the months with data, so the four trend
+/// charts line up and a month without data shows as a gap.
+fn trend_plot(ui: &egui::Ui, id: &str, monthly: &MonthlyReport) -> Plot<'static> {
+    let last = monthly.months.len().saturating_sub(1) as f64;
+    category_plot(ui, id, SPARSE)
+        .include_x(-0.5)
+        .include_x(last + 0.5)
+}
+
+/// Opacity of the strongest grid lines relative to the text colour.
+const GRID_ALPHA: f32 = 0.3;
 
 /// Label every category: few, short labels (the size buckets).
 const EVERY: [f64; 3] = [1.0, 1.0, 1.0];
@@ -1580,16 +1755,6 @@ fn hours(count: u64, avg: f64) -> String {
         "—".into()
     } else {
         format!("{avg:.1}h")
-    }
-}
-
-/// Upper-cases the first letter of a server message ("sync is
-/// unavailable" reads as a sentence on its own line).
-fn capitalize(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(c) => c.to_uppercase().chain(chars).collect(),
-        None => String::new(),
     }
 }
 
@@ -1614,13 +1779,7 @@ fn index_label(labels: &[String], value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn capitalizes_first_letter() {
-        assert_eq!(capitalize("sync is unavailable"), "Sync is unavailable");
-        assert_eq!(capitalize(""), "");
-        assert_eq!(capitalize("Already"), "Already");
-    }
+    use std::cell::Cell;
 
     #[test]
     fn shortens_server_timestamps() {
@@ -1639,5 +1798,70 @@ mod tests {
         assert_eq!(index_label(&labels, 0.5), "");
         assert_eq!(index_label(&labels, 5.0), "");
         assert_eq!(index_label(&labels, -1.0), "");
+    }
+
+    /// Runs one headless frame of `body` in an 800×400 screen.
+    fn frame(
+        ctx: &egui::Context,
+        t: f64,
+        pointer: Option<egui::Pos2>,
+        body: &dyn Fn(&mut egui::Ui),
+    ) {
+        let mut input = egui::RawInput {
+            time: Some(t),
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(800.0, 400.0),
+            )),
+            ..Default::default()
+        };
+        if let Some(p) = pointer {
+            input.events.push(egui::Event::PointerMoved(p));
+        }
+        let mut out = ctx.run_ui(input, |ui| {
+            egui::CentralPanel::default().show(ui, |ui| body(ui));
+        });
+        out.textures_delta.clear();
+    }
+
+    fn tooltip_layers(ctx: &egui::Context) -> usize {
+        ctx.memory(|m| {
+            m.layer_ids()
+                .filter(|l| l.order == egui::Order::Tooltip)
+                .count()
+        })
+    }
+
+    #[test]
+    fn long_title_wraps_inside_a_narrow_column() {
+        let ctx = egui::Context::default();
+        let width = Cell::new(0.0f32);
+        let body = |ui: &mut egui::Ui| {
+            ui.allocate_ui(egui::vec2(120.0, 200.0), |ui| {
+                let r = ui.scope(|ui| titled_row(ui, "每個 PR 的建置次數 builds per PR", "help"));
+                width.set(r.response.rect.width());
+            });
+        };
+        frame(&ctx, 0.0, None, &body);
+        assert!(width.get() <= 120.0, "title row is {} wide", width.get());
+    }
+
+    #[test]
+    fn hovering_the_info_icon_shows_help_immediately() {
+        let ctx = egui::Context::default();
+        let icon = Cell::new(egui::Pos2::ZERO);
+        let body = |ui: &mut egui::Ui| {
+            ui.horizontal(|ui| {
+                let at = ui.cursor().min;
+                info_icon(ui, "help");
+                icon.set(at + egui::vec2(6.0, 6.0));
+            });
+        };
+        frame(&ctx, 0.0, None, &body);
+        assert_eq!(tooltip_layers(&ctx), 0);
+        // One frame after the pointer arrives, with no tooltip delay.
+        frame(&ctx, 0.01, Some(icon.get()), &body);
+        frame(&ctx, 0.02, None, &body);
+        assert_eq!(tooltip_layers(&ctx), 1);
     }
 }
