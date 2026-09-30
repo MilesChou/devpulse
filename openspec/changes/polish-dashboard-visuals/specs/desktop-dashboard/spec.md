@@ -66,3 +66,12 @@ Duration cards (PR open to merge, DORA commit to deploy, recovery time) MUST sho
 - **WHEN** the UI language is Traditional Chinese
 - **THEN** the PR duration is named "PR 開啟到合併" and DORA's Lead Time for Changes "commit 到部署", since "前置時間" does not say what is measured
 
+### Requirement: Trend points show their value on hover
+
+Hovering a data point of a trend line MUST show the month, the series and the value with its unit.
+
+#### Scenario: Hover a point
+
+- **WHEN** the user hovers the 2026-07 point of the CI failure rate trend
+- **THEN** a label shows 2026-07, the series name and the rate, e.g. "9.4%"
+

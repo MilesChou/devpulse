@@ -41,4 +41,4 @@
 - [x] 7.2 Duration cards lead with the median; detail shows mean and p90; status and month-over-month change use the median; unit test with a long tail
 - [x] 7.3 Lead-time trend: the median is the main line
 - [x] 7.4 zh-TW names "PR 開啟到合併" and "commit 到部署" (help keeps DORA's name); "本年" → "今年"
-
+- [x] 7.5 Trend lines label the hovered point with month, series and value (`value_label`); unit-tested

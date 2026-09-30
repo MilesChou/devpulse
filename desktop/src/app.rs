@@ -2041,6 +2041,7 @@ fn failure_trend_chart(
         .map(|(i, r)| [i as f64, r.build_failure.rate * 100.0])
         .collect();
     let plot = trend_plot(ui, "failure-trend", monthly)
+        .label_formatter(value_label(labels.clone(), "%"))
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
             p.line(
@@ -2078,6 +2079,7 @@ fn lead_time_trend_chart(
     let p90 = series(|r| r.pr_lead_time.p90_hours);
     let plot = trend_plot(ui, "lead-trend", monthly)
         .legend(Legend::default())
+        .label_formatter(value_label(labels.clone(), "h"))
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
             // The median is the headline, as on the card; the mean and p90
@@ -2141,6 +2143,7 @@ fn change_failure_trend_chart(
         })
         .collect();
     let plot = trend_plot(ui, "cfr-trend", monthly)
+        .label_formatter(value_label(labels.clone(), "%"))
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
             p.line(
@@ -2269,6 +2272,26 @@ fn short_time(ts: Option<&str>) -> String {
     }
 }
 
+/// The hover label of a trend line's data point: the month, the series
+/// and the value with its unit. Away from a data point, nothing: the
+/// crosshair alone says where the pointer is.
+fn value_label(
+    months: Vec<String>,
+    unit: &'static str,
+) -> impl Fn(&egui_plot::HoverPosition<'_>) -> Option<String> {
+    move |pos| match pos {
+        egui_plot::HoverPosition::NearDataPoint {
+            plot_name,
+            position,
+            ..
+        } => {
+            let month = index_label(&months, position.x.round());
+            Some(format!("{month}\n{plot_name}: {:.1}{unit}", position.y))
+        }
+        egui_plot::HoverPosition::Elsewhere { .. } => None,
+    }
+}
+
 /// Labels integer grid marks with the matching category; other marks
 /// stay blank so zoomed-in fractional ticks do not repeat labels.
 fn index_label(labels: &[String], value: f64) -> String {
@@ -2378,5 +2401,20 @@ mod tests {
             let ok = ctx.fonts_mut(|f| f.has_glyph(&egui::FontId::proportional(14.0), c));
             assert!(ok, "{c} would render as a box");
         }
+    }
+
+    #[test]
+    fn trend_hover_label_names_month_series_and_value() {
+        let label = value_label(vec!["2026-06".into(), "2026-07".into()], "%");
+        let near = egui_plot::HoverPosition::NearDataPoint {
+            plot_name: "failure %",
+            position: egui_plot::PlotPoint::new(1.0, 9.44),
+            index: 1,
+        };
+        assert_eq!(label(&near).as_deref(), Some("2026-07\nfailure %: 9.4%"));
+        let away = egui_plot::HoverPosition::Elsewhere {
+            position: egui_plot::PlotPoint::new(0.4, 3.0),
+        };
+        assert_eq!(label(&away), None);
     }
 }
