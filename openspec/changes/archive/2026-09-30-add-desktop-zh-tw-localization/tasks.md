@@ -29,10 +29,10 @@
 ## 5. Verify
 
 - [x] 5.1 `make desktop-lint desktop-test` passes
-- [ ] 5.2 Run against a live `devpulse serve` in both languages, including `DEVPULSE_DESKTOP_LANG=zh-TW` (confirm `desktop.json` is not modified), switching in Settings, the 401 path, and an empty month
-  - note: verified on macOS with `DEVPULSE_DESKTOP_LANG=zh-TW` (full dashboard in Chinese, `desktop.json` unchanged) and the 401 path. Not yet verified: switching language in Settings and the empty-month view, because the session had no accessibility permission to click in the app.
-- [ ] 5.3 Check the layout at the minimum window size (800×560) in zh-TW: no clipped KPI cards or top-bar controls
-  - note: partly verified. At 800×560 the KPI card titles wrap without clipping; the right edge of the top bar could not be captured.
+- [x] 5.2 Run against a live `devpulse serve` in both languages, including `DEVPULSE_DESKTOP_LANG=zh-TW` (confirm `desktop.json` is not modified), switching in Settings, the 401 path, and an empty month
+  - note: verified on macOS: `DEVPULSE_DESKTOP_LANG=zh-TW` (full dashboard in Chinese, `desktop.json` unchanged) and the 401 path by the implementer; switching language in Settings and the empty-month view by the user.
+- [x] 5.3 Check the layout at the minimum window size (800×560) in zh-TW: no clipped KPI cards or top-bar controls
+  - note: the user found cards and charts cut off at the right edge after the (i) icons were added: a title row in `ui.horizontal` does not wrap and widened its column. Fixed with `ui.horizontal_wrapped` (`titled_row`), covered by `long_title_wraps_inside_a_narrow_column`. Re-checked and confirmed by the user.
 
 ## 6. Docs
 
@@ -59,4 +59,5 @@
 - [x] 9.2 Make the icon clickable: a click pins the explanation in a popup that closes on a click outside; hovering still shows the tooltip
 - [x] 9.3 Dragging across a trend chart highlights whole months and, on release, sets the period to them; add a caption under the trend heading
 - [x] 9.5 Trend charts span every month of the trend on the x axis (`trend_plot`), not only the months with data
-- [ ] 9.4 Verify in the running app: hover and click the icons, drag across each trend chart
+- [x] 9.4 Verify in the running app: hover and click the icons, drag across each trend chart
+  - note: the user found that hovering showed nothing (clicking worked). The icon now shows its help as soon as it is hovered (`show_tooltip_ui`) instead of relying on `on_hover_text`'s delay, covered by `hovering_the_info_icon_shows_help_immediately`. Re-checked and confirmed by the user, including dragging.

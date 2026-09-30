@@ -3,9 +3,7 @@
 ## Purpose
 
 `devpulse serve` exposes the tracked repos and their metrics as a read-only JSON API, so clients other than the CLI (the desktop dashboard first) can show them without direct database access or any GitHub / CI credential.
-
 ## Requirements
-
 ### Requirement: Metrics over HTTP match the CLI
 
 The user MUST get the same numbers from the API as from `devpulse metrics` for the same repo and month window, so switching between the terminal and a dashboard never shows two different answers.
@@ -45,7 +43,7 @@ The user MUST be able to fetch one report per month for a range of months in a s
 
 #### Scenario: Oversized range is rejected
 
-- **WHEN** the requested range spans more than 36 months
+- **WHEN** the requested range spans more than 120 months
 - **THEN** the system answers 400 with an error message instead of running an unbounded number of queries
 
 ### Requirement: The API is authenticated unless it is only reachable locally
@@ -89,3 +87,4 @@ The user MUST be able to rely on the JSON field names and ordering staying stabl
 
 - **WHEN** a month has PRs in only some size buckets
 - **THEN** the size distribution still lists XS, S, M, L, XL in that order (zero counts included), adding `unknown` only when some PRs lack a bucket
+
