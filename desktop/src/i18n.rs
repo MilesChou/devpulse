@@ -341,6 +341,23 @@ pub struct Texts {
     pub help_prs_merged: &'static str,
     pub help_build_time: &'static str,
     pub help_trend: &'static str,
+
+    // KPI status against the ideal, in words for the tooltip.
+    pub status_on_target: &'static str,
+    pub status_near: &'static str,
+    pub status_off: &'static str,
+
+    // Short Overview column titles; the full title is in the hover.
+    pub short_prs_opened: &'static str,
+    pub short_prs_merged: &'static str,
+    pub short_lead_time: &'static str,
+    pub short_builds_per_pr: &'static str,
+    pub short_ci_failure: &'static str,
+    pub short_build_time: &'static str,
+    pub short_review_wait: &'static str,
+    pub short_deploys: &'static str,
+    pub collapse_sidebar: &'static str,
+    pub expand_sidebar: &'static str,
 }
 
 pub static EN: Texts = Texts {
@@ -622,6 +639,20 @@ pub static EN: Texts = Texts {
                       a day with many builds weighs more. PR and branch builds alike.",
     help_trend: "The sorted column for the 12 months ending with this period; gaps are \
                  months without data.",
+    status_on_target: "On target",
+    status_near: "Near the target",
+    status_off: "Off target",
+
+    short_prs_opened: "Opened",
+    short_prs_merged: "Merged",
+    short_lead_time: "Lead time",
+    short_builds_per_pr: "Builds/PR",
+    short_ci_failure: "CI fail",
+    short_build_time: "Build time",
+    short_review_wait: "Review wait",
+    short_deploys: "Deploys/wk",
+    collapse_sidebar: "Hide the repo list",
+    expand_sidebar: "Show the repo list",
 };
 
 pub static ZH_TW: Texts = Texts {
@@ -879,6 +910,20 @@ pub static ZH_TW: Texts = Texts {
     help_build_time: "這段期間開始的 CI 建置平均耗時，以每次建置計算：建置多的日子權重較大。\
                       PR 與分支建置都算在內。",
     help_trend: "排序中的欄位在這段期間結尾往前 12 個月的走勢；空白表示那個月沒有資料。",
+    status_on_target: "達標",
+    status_near: "接近目標",
+    status_off: "偏離目標",
+
+    short_prs_opened: "開啟 PR",
+    short_prs_merged: "合併",
+    short_lead_time: "前置時間",
+    short_builds_per_pr: "建置/PR",
+    short_ci_failure: "CI 失敗",
+    short_build_time: "建置時間",
+    short_review_wait: "審查等待",
+    short_deploys: "部署/週",
+    collapse_sidebar: "收合儲存庫清單",
+    expand_sidebar: "展開儲存庫清單",
 };
 
 #[cfg(test)]

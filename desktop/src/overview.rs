@@ -107,6 +107,20 @@ impl Column {
         }
     }
 
+    /// A short title that fits a narrow table column.
+    pub fn short_title(self, t: &Texts) -> &'static str {
+        match self {
+            Self::PrsOpened => t.short_prs_opened,
+            Self::PrsMerged => t.short_prs_merged,
+            Self::LeadTime => t.short_lead_time,
+            Self::BuildsPerPr => t.short_builds_per_pr,
+            Self::CiFailureRate => t.short_ci_failure,
+            Self::BuildTime => t.short_build_time,
+            Self::ReviewWait => t.short_review_wait,
+            Self::DeploysPerWeek => t.short_deploys,
+        }
+    }
+
     pub fn help(self, t: &Texts) -> &'static str {
         match self {
             Self::PrsOpened => t.help_prs_opened,
@@ -138,6 +152,8 @@ pub struct Change {
     pub text: String,
     /// Worse by more than the noise floor.
     pub worse: bool,
+    /// Better by more than the noise floor.
+    pub better: bool,
 }
 
 /// The change of `column` from `previous` to `current`, or `None` when
@@ -147,25 +163,39 @@ pub fn change(column: Column, previous: &Summary, current: &Summary) -> Option<C
     let (p, c) = (column.value(previous)?, column.value(current)?);
     if column == Column::CiFailureRate {
         let diff = c - p;
-        let worse = diff > RATE_FLOOR_PP;
         return Some(Change {
-            text: format!("{diff:+.1} pp"),
-            worse,
+            text: signed(diff, 1, " pp"),
+            worse: diff > RATE_FLOOR_PP,
+            better: diff < -RATE_FLOOR_PP,
         });
     }
     if p == 0.0 {
         return None;
     }
     let rel = (c - p) / p;
-    let worse = match column.better() {
-        Better::Lower => rel > RELATIVE_FLOOR,
-        Better::Higher => rel < -RELATIVE_FLOOR,
-        Better::Neither => false,
+    let (worse, better) = match column.better() {
+        Better::Lower => (rel > RELATIVE_FLOOR, rel < -RELATIVE_FLOOR),
+        Better::Higher => (rel < -RELATIVE_FLOOR, rel > RELATIVE_FLOOR),
+        Better::Neither => (false, false),
     };
     Some(Change {
-        text: format!("{:+.0}%", rel * 100.0),
+        text: signed(rel * 100.0, 0, "%"),
         worse,
+        better,
     })
+}
+
+/// "+2.4 pp", "-59%", or "±0%" when the value rounds to zero at the
+/// shown precision. Formatting alone would print "-0%" for -0.004, so a
+/// change that shows as zero would still point down.
+fn signed(v: f64, decimals: usize, unit: &str) -> String {
+    let scale = 10f64.powi(decimals as i32);
+    let rounded = (v * scale).round() / scale;
+    if rounded == 0.0 {
+        format!("±{:.*}{unit}", decimals, 0.0)
+    } else {
+        format!("{rounded:+.decimals$}{unit}")
+    }
 }
 
 /// How a table is sorted. `worst_first` is the default direction: the
@@ -279,11 +309,16 @@ mod tests {
                 .unwrap()
                 .worse
         );
-        // Getting faster is never coloured.
+        // Getting faster is better, not worse; within the floor is neither.
+        let faster = change(Column::LeadTime, &lead(120.0), &lead(60.0)).unwrap();
+        assert!(faster.better && !faster.worse);
+        assert_eq!(faster.text, "-50%");
+        let same = change(Column::LeadTime, &lead(20.0), &lead(21.0)).unwrap();
+        assert!(!same.better && !same.worse);
         assert!(
-            !change(Column::LeadTime, &lead(20.0), &lead(10.0))
+            change(Column::CiFailureRate, &rate(0.13), &rate(0.10))
                 .unwrap()
-                .worse
+                .better
         );
 
         let deploys = |d| s(|s| s.deploys_per_week = Some(d));
@@ -300,6 +335,37 @@ mod tests {
 
         let prs = |n| s(|s| s.prs_opened = n);
         assert!(!change(Column::PrsOpened, &prs(10), &prs(2)).unwrap().worse);
+    }
+
+    #[test]
+    fn changes_that_show_as_zero_have_no_sign() {
+        let lead = |h| s(|s| s.lead_time_hours = Some(h));
+        // -0.4 % and +0.4 % both show as zero.
+        assert_eq!(
+            change(Column::LeadTime, &lead(100.0), &lead(99.6))
+                .unwrap()
+                .text,
+            "±0%"
+        );
+        assert_eq!(
+            change(Column::LeadTime, &lead(99.6), &lead(100.0))
+                .unwrap()
+                .text,
+            "±0%"
+        );
+        let rate = |r| s(|s| s.ci_failure_rate = Some(r));
+        assert_eq!(
+            change(Column::CiFailureRate, &rate(0.1004), &rate(0.1))
+                .unwrap()
+                .text,
+            "±0.0 pp"
+        );
+        assert_eq!(
+            change(Column::CiFailureRate, &rate(0.10), &rate(0.13))
+                .unwrap()
+                .text,
+            "+3.0 pp"
+        );
     }
 
     #[test]
