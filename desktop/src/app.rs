@@ -364,9 +364,9 @@ impl DashboardApp {
         });
         if let Some((is_error, text)) = &self.notice {
             let color = if *is_error {
-                Color32::LIGHT_RED
+                ui.visuals().error_fg_color
             } else {
-                Color32::LIGHT_GREEN
+                success_color(ui)
             };
             let dismissed = ui
                 .horizontal(|ui| {
@@ -418,12 +418,12 @@ impl DashboardApp {
             }
             Loadable::Ready(()) => {
                 ui.colored_label(
-                    Color32::LIGHT_GREEN,
+                    success_color(ui),
                     "Connected: server is up and the token works.",
                 );
             }
             Loadable::Failed(e) => {
-                ui.colored_label(Color32::LIGHT_RED, e);
+                ui.colored_label(ui.visuals().error_fg_color, e);
             }
         }
 
@@ -446,7 +446,7 @@ impl DashboardApp {
                 ui.spinner();
             }
             Loadable::Failed(e) => {
-                ui.colored_label(Color32::LIGHT_RED, e);
+                ui.colored_label(ui.visuals().error_fg_color, e);
             }
             Loadable::Ready(repos) if repos.is_empty() => {
                 ui.label("No repos yet. Register one with `devpulse repo add <owner/name>`.");
@@ -492,7 +492,7 @@ impl DashboardApp {
         ));
         if repo.disabled {
             ui.colored_label(
-                Color32::YELLOW,
+                ui.visuals().warn_fg_color,
                 "This repo is disabled upstream; `devpulse sync` skips it.",
             );
         }
@@ -504,7 +504,7 @@ impl DashboardApp {
                 ui.spinner();
             }
             Loadable::Failed(e) => {
-                ui.colored_label(Color32::LIGHT_RED, e);
+                ui.colored_label(ui.visuals().error_fg_color, e);
             }
             Loadable::Ready(report) => {
                 kpi_cards(ui, &kpi::kpis(report, self.state.previous_month()));
@@ -530,7 +530,7 @@ impl DashboardApp {
                 ui.spinner();
             }
             Loadable::Failed(e) => {
-                ui.colored_label(Color32::LIGHT_RED, e);
+                ui.colored_label(ui.visuals().error_fg_color, e);
             }
             Loadable::Ready(monthly) => {
                 ui.columns(2, |cols| {
@@ -569,6 +569,17 @@ fn dora_section(ui: &mut egui::Ui, report: &Report, previous: Option<&Report>) {
     }
 }
 
+/// Green for confirmations. egui's visuals have error and warning
+/// colours but no success colour, so pick one readable on the current
+/// light or dark background.
+fn success_color(ui: &egui::Ui) -> Color32 {
+    if ui.visuals().dark_mode {
+        Color32::LIGHT_GREEN
+    } else {
+        Color32::DARK_GREEN
+    }
+}
+
 fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi]) {
     ui.columns(cards.len(), |cols| {
         for (ui, card) in cols.iter_mut().zip(cards) {
@@ -578,13 +589,13 @@ fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi]) {
                 ui.label(RichText::new(&card.value).size(28.0));
                 ui.small(&card.detail);
                 ui.horizontal(|ui| {
-                    ui.small(format!("ideal {}", card.ideal));
+                    ui.small(card.target);
                     if let Some(d) = &card.delta {
                         // Neutral colour: whether "up" is good depends on the
                         // metric, and the ideal is shown right beside it.
                         let color = match d.direction {
-                            Direction::Up | Direction::Down => Color32::LIGHT_BLUE,
-                            Direction::Flat => Color32::GRAY,
+                            Direction::Up | Direction::Down => ui.visuals().hyperlink_color,
+                            Direction::Flat => ui.visuals().weak_text_color(),
                         };
                         ui.small(RichText::new(format!("{} MoM", d.text)).color(color))
                             .on_hover_text("change vs the previous month");

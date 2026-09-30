@@ -9,8 +9,9 @@ pub struct Kpi {
     pub title: &'static str,
     pub value: String,
     pub detail: String,
-    /// The target from the project goals (CLAUDE.md), shown for context.
-    pub ideal: &'static str,
+    /// What to aim for, shown under the value: the ideal from the project
+    /// goals (CLAUDE.md) when there is one, else the better direction.
+    pub target: &'static str,
     /// Change against the previous month, when a trend is loaded.
     pub delta: Option<Delta>,
 }
@@ -46,7 +47,7 @@ pub fn kpis(report: &Report, previous: Option<&Report>) -> Vec<Kpi> {
                 format!("{:.1}%", bf.rate * 100.0)
             },
             detail: format!("{} / {} PR builds failed", bf.failed, bf.total),
-            ideal: "0%",
+            target: "ideal 0%",
             delta: previous
                 .filter(|p| p.build_failure.total > 0 && bf.total > 0)
                 .map(|p| delta(p.build_failure.rate * 100.0, bf.rate * 100.0, " pp")),
@@ -59,7 +60,7 @@ pub fn kpis(report: &Report, previous: Option<&Report>) -> Vec<Kpi> {
                 format!("{:.1}", report.avg_builds_per_pr)
             },
             detail: "re-push proxy: CI runs per PR".into(),
-            ideal: "1",
+            target: "ideal 1",
             delta: previous
                 .filter(|p| p.avg_builds_per_pr > 0.0 && report.avg_builds_per_pr > 0.0)
                 .map(|p| delta(p.avg_builds_per_pr, report.avg_builds_per_pr, "")),
@@ -75,7 +76,7 @@ pub fn kpis(report: &Report, previous: Option<&Report>) -> Vec<Kpi> {
                 "p50 {:.1}h · p90 {:.1}h · {} merged PRs",
                 lt.p50_hours, lt.p90_hours, lt.count
             ),
-            ideal: "24h",
+            target: "ideal 24h",
             delta: previous
                 .filter(|p| p.pr_lead_time.count > 0 && lt.count > 0)
                 .map(|p| delta(p.pr_lead_time.avg_hours, lt.avg_hours, "h")),
@@ -88,7 +89,7 @@ pub fn kpis(report: &Report, previous: Option<&Report>) -> Vec<Kpi> {
                 format!("{:.1}h", rw.avg_hours)
             },
             detail: format!("ready to first review · {} PRs", rw.count),
-            ideal: "as low as possible",
+            target: "lower is better",
             delta: previous
                 .filter(|p| p.review_wait.count > 0 && rw.count > 0)
                 .map(|p| delta(p.review_wait.avg_hours, rw.avg_hours, "h")),
@@ -98,7 +99,7 @@ pub fn kpis(report: &Report, previous: Option<&Report>) -> Vec<Kpi> {
 
 /// Builds the DORA cards, or `None` when the server has no DORA section
 /// (default branch unknown). The project goals set no DORA targets, so
-/// the cards state the good direction instead of an ideal value.
+/// the cards state the better direction instead of an ideal value.
 pub fn dora_kpis(report: &Report, previous: Option<&Report>) -> Option<Vec<Kpi>> {
     let d = report.dora.as_ref()?;
     let prev = previous.and_then(|p| p.dora.as_ref());
@@ -111,7 +112,7 @@ pub fn dora_kpis(report: &Report, previous: Option<&Report>) -> Option<Vec<Kpi>>
             format!("{:.1}h", s.avg_hours)
         },
         detail,
-        ideal: "lower is better",
+        target: "lower is better",
         delta: prev
             .filter(|p| p.count > 0 && s.count > 0)
             .map(|p| delta(p.avg_hours, s.avg_hours, "h")),
@@ -125,7 +126,7 @@ pub fn dora_kpis(report: &Report, previous: Option<&Report>) -> Option<Vec<Kpi>>
                 "{} deploys into {} · {} deploy days",
                 d.deployments, d.default_branch, d.deploy_days
             ),
-            ideal: "higher is better",
+            target: "higher is better",
             delta: prev.map(|p| delta(p.per_week, d.per_week, "/wk")),
         },
         hours_card(
@@ -143,7 +144,7 @@ pub fn dora_kpis(report: &Report, previous: Option<&Report>) -> Option<Vec<Kpi>>
                 "{} reverts + {} hotfixes (label \"{}\")",
                 d.reverts, d.hotfixes, d.hotfix_label
             ),
-            ideal: "lower is better",
+            target: "lower is better",
             delta: match (
                 prev.and_then(|p| p.change_failure_rate),
                 d.change_failure_rate,
