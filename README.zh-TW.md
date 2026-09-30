@@ -157,7 +157,7 @@ docker compose -f docker-compose.metabase.yml logs metabase-init
 | 指標 | DevPulse 的計算方式 |
 |---|---|
 | Deployment Frequency（部署頻率） | merge 進 default branch 的 PR |
-| Lead Time for Changes（變更前置時間） | PR 中最早的 commit author 時間 → merge |
+| Lead Time for Changes（介面上稱「commit 到部署」） | PR 中最早的 commit author 時間 → merge |
 | Change Failure Rate（變更失敗率） | （revert + hotfix PR）÷ 部署數 |
 | Recovery Time（恢復時間） | 被 revert 的 PR merge → revert merge，以及事故 issue 開啟 → 關閉 |
 

@@ -14,8 +14,10 @@ It shows, per repo and month window:
 
 - **KPI cards** for the goals in the project brief: CI failure rate
   (ideal 0%), builds per PR as the re-push proxy (ideal 1), PR lead
-  time created → merged (ideal 24h), and review wait. Single-month
-  windows also show the change against the previous month.
+  time created → merged (ideal 24h), and review wait. Lead times show
+  the median as the big number, with the mean and p90 below, so a few
+  PRs left open for weeks do not dominate. Single-month windows also
+  show the change against the previous month.
 - **PR size distribution** (ideal: mostly XS / S) and **daily build
   duration**.
 - **DORA cards**: deployment frequency, lead time for changes, change
@@ -24,7 +26,7 @@ It shows, per repo and month window:
   is better instead of an ideal value. When the server does not know
   the repo's default branch yet, the panel says to run
   `devpulse repo refresh`.
-- **Trends** of CI failure rate, PR lead time (avg / p50 / p90),
+- **Trends** of CI failure rate, PR lead time (p50 as the main line, avg, p90),
   deployments per week, and change failure rate: the 12 months ending at
   the selected window, or the whole window when it is longer (at most
   the last 120 months, the server's limit for one monthly trend).
@@ -43,7 +45,9 @@ Cards with an ideal in the project goals (CI failure rate, builds per
 PR, PR lead time) and the small-PR share are coloured by where the value
 stands: on target, near, or off; hover the value for the words. The
 repo list groups repos by owner; fold a group, or hide the whole list
-with the button at the left of the top bar.
+with the button at the left of the top bar. The period picker next to
+the month fields offers this month, last month, this year, the last 12
+months (including this month) and last year.
 
 **All repos** at the top of the repo list is that person-first view:
 with a member picked in **Show**, the cards, charts and trends cover

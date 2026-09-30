@@ -438,7 +438,7 @@ These cover every tracked repo that is not disabled, pooling their PRs, builds a
 | `GET /api/v1/overview/repos?from=&to=` | Comparison rows, one per repo: `{from, to, previous:{from, to}, rows:[{repo, current, previous, monthly:[{month, summary}]}]}` |
 | `GET /api/v1/overview/members?from=&to=` | The same for people across all repos: members active in the current or previous period, then active accounts no member claims (`member_id: null`); rows carry `member_id, name, accounts` instead of `repo` |
 
-`previous` is the period of the same number of months right before `from`; `monthly` is the 12 months ending at `to`, for sparklines. A summary has `prs_opened`, `prs_merged`, `lead_time_hours`, `builds_per_pr`, `ci_failure_rate` (0–1), `avg_build_seconds` (per build, so a busy day weighs more), `review_wait_hours` and, for repo rows, `deploys_per_week`. A metric without data in the period is `null`, never 0. Excluded accounts never appear.
+`previous` is the period of the same number of months right before `from`; `monthly` is the 12 months ending at `to`, for sparklines. A summary has `prs_opened`, `prs_merged`, `lead_time_p50_hours` (the median, so a few PRs left open for weeks do not dominate), `builds_per_pr`, `ci_failure_rate` (0–1), `avg_build_seconds` (per build, so a busy day weighs more), `review_wait_hours` and, for repo rows, `deploys_per_week`. A metric without data in the period is `null`, never 0. Excluded accounts never appear.
 
 Accounts are normalized: lower-cased, with a trailing `[bot]` removed, because GitHub's REST API calls a bot `dependabot[bot]` and its GraphQL API calls the same bot `dependabot`. An account belongs to at most one member, and display and team names are unique; a clash answers `409`.
 

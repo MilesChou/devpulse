@@ -24,13 +24,15 @@ const overviewWorkers = 4
 // client never shows a misleading 0. Counts are plain numbers: zero PRs
 // is data.
 type Summary struct {
-	PRsOpened       int      `json:"prs_opened"`
-	PRsMerged       int      `json:"prs_merged"`
-	LeadTimeHours   *float64 `json:"lead_time_hours"`
-	BuildsPerPR     *float64 `json:"builds_per_pr"`
-	CIFailureRate   *float64 `json:"ci_failure_rate"` // 0..1
-	AvgBuildSeconds *float64 `json:"avg_build_seconds"`
-	ReviewWaitHours *float64 `json:"review_wait_hours"`
+	PRsOpened int `json:"prs_opened"`
+	PRsMerged int `json:"prs_merged"`
+	// LeadTimeP50Hours is the median, not the mean: a few PRs left open
+	// for weeks would otherwise dominate the comparison.
+	LeadTimeP50Hours *float64 `json:"lead_time_p50_hours"`
+	BuildsPerPR      *float64 `json:"builds_per_pr"`
+	CIFailureRate    *float64 `json:"ci_failure_rate"` // 0..1
+	AvgBuildSeconds  *float64 `json:"avg_build_seconds"`
+	ReviewWaitHours  *float64 `json:"review_wait_hours"`
 	// DeploysPerWeek is set for repo rows only: DORA is per repo.
 	DeploysPerWeek *float64 `json:"deploys_per_week"`
 }
@@ -42,7 +44,7 @@ func SummaryOf(r Report) Summary {
 		s.PRsOpened += b.Count
 	}
 	if r.PRLeadTime.Count > 0 {
-		s.LeadTimeHours = ptr(r.PRLeadTime.AvgHours)
+		s.LeadTimeP50Hours = ptr(r.PRLeadTime.P50Hours)
 	}
 	if r.AvgBuildsPerPR > 0 {
 		s.BuildsPerPR = ptr(r.AvgBuildsPerPR)

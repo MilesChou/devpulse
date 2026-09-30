@@ -35,7 +35,7 @@ func TestSummaryOf(t *testing.T) {
 		t.Fatalf("counts: %+v", s)
 	}
 	for name, got := range map[string]*float64{
-		"lead": s.LeadTimeHours, "builds": s.BuildsPerPR, "failure": s.CIFailureRate,
+		"lead": s.LeadTimeP50Hours, "builds": s.BuildsPerPR, "failure": s.CIFailureRate,
 		"build seconds": s.AvgBuildSeconds, "review": s.ReviewWaitHours, "deploys": s.DeploysPerWeek,
 	} {
 		if got == nil {
@@ -47,7 +47,7 @@ func TestSummaryOf(t *testing.T) {
 	}
 
 	empty := SummaryOf(Report{})
-	if empty.LeadTimeHours != nil || empty.BuildsPerPR != nil || empty.CIFailureRate != nil ||
+	if empty.LeadTimeP50Hours != nil || empty.BuildsPerPR != nil || empty.CIFailureRate != nil ||
 		empty.AvgBuildSeconds != nil || empty.ReviewWaitHours != nil || empty.DeploysPerWeek != nil {
 		t.Fatalf("no data must be null, got %+v", empty)
 	}

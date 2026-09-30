@@ -11,7 +11,7 @@
         "builds_per_pr": 1.5,
         "ci_failure_rate": 0.6666666666666666,
         "deploys_per_week": 2.1,
-        "lead_time_hours": 20,
+        "lead_time_p50_hours": 20,
         "prs_merged": 3,
         "prs_opened": 3,
         "review_wait_hours": 2
@@ -24,7 +24,7 @@
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
-            "lead_time_hours": null,
+            "lead_time_p50_hours": null,
             "prs_merged": 0,
             "prs_opened": 0,
             "review_wait_hours": null
@@ -37,7 +37,7 @@
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
-            "lead_time_hours": null,
+            "lead_time_p50_hours": null,
             "prs_merged": 0,
             "prs_opened": 0,
             "review_wait_hours": null
@@ -50,7 +50,7 @@
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
-            "lead_time_hours": null,
+            "lead_time_p50_hours": null,
             "prs_merged": 0,
             "prs_opened": 0,
             "review_wait_hours": null
@@ -63,7 +63,7 @@
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
-            "lead_time_hours": null,
+            "lead_time_p50_hours": null,
             "prs_merged": 0,
             "prs_opened": 0,
             "review_wait_hours": null
@@ -76,7 +76,7 @@
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
-            "lead_time_hours": null,
+            "lead_time_p50_hours": null,
             "prs_merged": 0,
             "prs_opened": 0,
             "review_wait_hours": null
@@ -89,7 +89,7 @@
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
-            "lead_time_hours": null,
+            "lead_time_p50_hours": null,
             "prs_merged": 0,
             "prs_opened": 0,
             "review_wait_hours": null
@@ -102,7 +102,7 @@
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
-            "lead_time_hours": null,
+            "lead_time_p50_hours": null,
             "prs_merged": 0,
             "prs_opened": 0,
             "review_wait_hours": null
@@ -115,7 +115,7 @@
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
-            "lead_time_hours": null,
+            "lead_time_p50_hours": null,
             "prs_merged": 0,
             "prs_opened": 0,
             "review_wait_hours": null
@@ -128,7 +128,7 @@
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
-            "lead_time_hours": null,
+            "lead_time_p50_hours": null,
             "prs_merged": 0,
             "prs_opened": 0,
             "review_wait_hours": null
@@ -141,7 +141,7 @@
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
-            "lead_time_hours": null,
+            "lead_time_p50_hours": null,
             "prs_merged": 0,
             "prs_opened": 0,
             "review_wait_hours": null
@@ -154,7 +154,7 @@
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
-            "lead_time_hours": null,
+            "lead_time_p50_hours": null,
             "prs_merged": 0,
             "prs_opened": 0,
             "review_wait_hours": null
@@ -167,7 +167,7 @@
             "builds_per_pr": 1.5,
             "ci_failure_rate": 0.6666666666666666,
             "deploys_per_week": 2.1,
-            "lead_time_hours": 20,
+            "lead_time_p50_hours": 20,
             "prs_merged": 3,
             "prs_opened": 3,
             "review_wait_hours": 2
@@ -179,7 +179,7 @@
         "builds_per_pr": null,
         "ci_failure_rate": null,
         "deploys_per_week": 0,
-        "lead_time_hours": null,
+        "lead_time_p50_hours": null,
         "prs_merged": 0,
         "prs_opened": 0,
         "review_wait_hours": null

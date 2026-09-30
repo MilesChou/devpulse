@@ -100,6 +100,53 @@ impl Window {
     }
 }
 
+/// A period the top bar offers in one click, relative to the current
+/// month. "This year" runs to the end of the current month; "last 12
+/// months" includes the current month.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Preset {
+    ThisMonth,
+    LastMonth,
+    ThisYear,
+    LastTwelveMonths,
+    LastYear,
+}
+
+impl Preset {
+    pub const ALL: [Preset; 5] = [
+        Preset::ThisMonth,
+        Preset::LastMonth,
+        Preset::ThisYear,
+        Preset::LastTwelveMonths,
+        Preset::LastYear,
+    ];
+
+    pub fn window(self, now: Month) -> Window {
+        match self {
+            Self::ThisMonth => Window::single(now),
+            Self::LastMonth => Window::single(now.prev()),
+            Self::ThisYear => Window {
+                from: now.january(),
+                to: now.next(),
+            },
+            Self::LastTwelveMonths => Window {
+                from: now.add(-11),
+                to: now.next(),
+            },
+            Self::LastYear => Window {
+                from: now.january().add(-12),
+                to: now.january(),
+            },
+        }
+    }
+
+    /// The preset `w` equals, for labelling the picker; the first match
+    /// wins (in January "this year" is also "this month").
+    pub fn matching(w: Window, now: Month) -> Option<Preset> {
+        Self::ALL.into_iter().find(|p| p.window(now) == w)
+    }
+}
+
 /// A finished background request. Metric results carry the generation
 /// they were issued under, so a slow response for a previous selection
 /// cannot overwrite the current one.
@@ -1040,5 +1087,38 @@ mod tests {
             ..Default::default()
         };
         assert!(s.apply(Msg::Sync(Ok(done))).reload_metrics);
+    }
+
+    #[test]
+    fn presets() {
+        let now = m("2026-09");
+        let w = |from: &str, to: &str| Window {
+            from: m(from),
+            to: m(to),
+        };
+        assert_eq!(Preset::ThisMonth.window(now), w("2026-09", "2026-10"));
+        assert_eq!(Preset::LastMonth.window(now), w("2026-08", "2026-09"));
+        assert_eq!(Preset::ThisYear.window(now), w("2026-01", "2026-10"));
+        assert_eq!(
+            Preset::LastTwelveMonths.window(now),
+            w("2025-10", "2026-10")
+        );
+        assert_eq!(Preset::LastYear.window(now), w("2025-01", "2026-01"));
+
+        // January: last month and last year cross the year boundary.
+        let jan = m("2027-01");
+        assert_eq!(Preset::LastMonth.window(jan), w("2026-12", "2027-01"));
+        assert_eq!(Preset::LastYear.window(jan), w("2026-01", "2027-01"));
+        assert_eq!(
+            Preset::matching(Preset::ThisYear.window(jan), jan),
+            Some(Preset::ThisMonth),
+            "in January this year is this month"
+        );
+
+        assert_eq!(Preset::matching(w("2026-04", "2026-06"), now), None);
+        assert_eq!(
+            Preset::matching(w("2025-10", "2026-10"), now),
+            Some(Preset::LastTwelveMonths)
+        );
     }
 }

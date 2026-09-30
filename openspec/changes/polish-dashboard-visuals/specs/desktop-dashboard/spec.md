@@ -32,3 +32,37 @@ The repo list MUST group repos under their owner and show each repo by its name 
 
 - **WHEN** the user folds an owner group, or hides the whole list with the button at the left of the top bar
 - **THEN** that group's repos, or the list, are hidden to give the page more room; whether the list is hidden is remembered across restarts
+
+### Requirement: Common periods in one click
+
+The top bar MUST offer this month, last month, this year, the last 12 months and last year as one-click periods, and show which one the current period is.
+
+#### Scenario: Picking a preset
+
+- **WHEN** the current month is 2026-09 and the user picks "Last 12 months"
+- **THEN** the period becomes 2025-10 to 2026-09 and every page reloads for it
+
+#### Scenario: Other presets
+
+- **WHEN** the current month is 2026-09
+- **THEN** this month is 2026-09, last month 2026-08, this year 2026-01 to 2026-09, and last year 2025-01 to 2025-12
+
+#### Scenario: Custom period
+
+- **WHEN** the period was typed in and matches no preset
+- **THEN** the picker reads "Custom"
+
+### Requirement: Lead times lead with the median
+
+Duration cards (PR open to merge, DORA commit to deploy, recovery time) MUST show the median as the headline, with the mean and p90 as detail, and compare months and judge the status by the median, so a few PRs left open for weeks do not dominate.
+
+#### Scenario: Long tail
+
+- **WHEN** PRs merged in the window take a median of 20 h and a mean of 100 h
+- **THEN** the card shows 20.0h, the detail reads "avg 100.0h", and the card is on target against the 24 h ideal
+
+#### Scenario: Plain names
+
+- **WHEN** the UI language is Traditional Chinese
+- **THEN** the PR duration is named "PR 開啟到合併" and DORA's Lead Time for Changes "commit 到部署", since "前置時間" does not say what is measured
+

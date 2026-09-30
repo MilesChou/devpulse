@@ -21,7 +21,7 @@ use crate::month::Month;
 use crate::notice::Notice;
 use crate::overview::{Column, Sort, change};
 use crate::settings::{self, SecretStore, Settings};
-use crate::state::{Loadable, MemberForm, Msg, RepoEdit, State, TeamForm, Window};
+use crate::state::{Loadable, MemberForm, Msg, Preset, RepoEdit, State, TeamForm, Window};
 use crate::theme::{self, Tone};
 
 /// How often to poll the server while a sync runs.
@@ -656,8 +656,25 @@ impl DashboardApp {
             if ui.button("⏵").on_hover_text(t.next_period).clicked() {
                 self.set_window(w.shift(1));
             }
-            if ui.button(t.this_month).clicked() {
-                self.set_window(Window::single(Month::current()));
+            // Common periods in one click; the label says which one the
+            // current period is, or "Custom".
+            let now = Month::current();
+            let current = Preset::matching(self.state.window, now);
+            let mut picked = None;
+            egui::ComboBox::from_id_salt("period-preset")
+                .selected_text(current.map_or(t.preset_custom, |p| preset_name(p, t)))
+                .show_ui(ui, |ui| {
+                    for p in Preset::ALL {
+                        if ui
+                            .selectable_label(current == Some(p), preset_name(p, t))
+                            .clicked()
+                        {
+                            picked = Some(p);
+                        }
+                    }
+                });
+            if let Some(p) = picked {
+                self.set_window(p.window(now));
             }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1646,6 +1663,16 @@ fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi], t: &Texts) {
     });
 }
 
+fn preset_name(p: Preset, t: &Texts) -> &'static str {
+    match p {
+        Preset::ThisMonth => t.this_month,
+        Preset::LastMonth => t.preset_last_month,
+        Preset::ThisYear => t.preset_this_year,
+        Preset::LastTwelveMonths => t.preset_last_12,
+        Preset::LastYear => t.preset_last_year,
+    }
+}
+
 fn status_tone(status: kpi::Status) -> Tone {
     match status {
         kpi::Status::OnTarget => Tone::Good,
@@ -2053,12 +2080,14 @@ fn lead_time_trend_chart(
         .legend(Legend::default())
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
+            // The median is the headline, as on the card; the mean and p90
+            // show the tail.
+            p.line(Line::new("p50", PlotPoints::from(p50)).color(c0).width(2.5));
             p.line(
                 Line::new(t.series_avg, PlotPoints::from(avg))
-                    .color(c0)
-                    .width(2.0),
+                    .color(c1)
+                    .width(1.5),
             );
-            p.line(Line::new("p50", PlotPoints::from(p50)).color(c1).width(1.5));
             p.line(Line::new("p90", PlotPoints::from(p90)).color(c2).width(1.5));
         });
     month_brush(ui, &plot, monthly.months.len())

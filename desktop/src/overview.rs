@@ -70,7 +70,7 @@ impl Column {
         match self {
             Self::PrsOpened => Some(s.prs_opened as f64),
             Self::PrsMerged => Some(s.prs_merged as f64),
-            Self::LeadTime => s.lead_time_hours,
+            Self::LeadTime => s.lead_time_p50_hours,
             Self::BuildsPerPr => s.builds_per_pr,
             Self::CiFailureRate => s.ci_failure_rate.map(|r| r * 100.0),
             Self::BuildTime => s.avg_build_seconds,
@@ -298,7 +298,7 @@ mod tests {
         assert!(c.worse);
         assert_eq!(c.text, "+3.0 pp");
 
-        let lead = |h| s(|s| s.lead_time_hours = Some(h));
+        let lead = |h| s(|s| s.lead_time_p50_hours = Some(h));
         assert!(
             !change(Column::LeadTime, &lead(20.0), &lead(21.0))
                 .unwrap()
@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn changes_that_show_as_zero_have_no_sign() {
-        let lead = |h| s(|s| s.lead_time_hours = Some(h));
+        let lead = |h| s(|s| s.lead_time_p50_hours = Some(h));
         // -0.4 % and +0.4 % both show as zero.
         assert_eq!(
             change(Column::LeadTime, &lead(100.0), &lead(99.6))
@@ -371,7 +371,7 @@ mod tests {
     #[test]
     fn no_change_without_data() {
         let none = Summary::default();
-        let some = s(|s| s.lead_time_hours = Some(5.0));
+        let some = s(|s| s.lead_time_p50_hours = Some(5.0));
         assert_eq!(change(Column::LeadTime, &none, &some), None);
         assert_eq!(change(Column::LeadTime, &some, &none), None);
         // A relative change from 0 means nothing.

@@ -28,3 +28,16 @@
 - [x] 5.2 Window-only screenshots of Overview and Dashboard in light and dark mode
   - note: taken with the window id from CoreGraphics and `screencapture -l`, so no other window is captured; the Dashboard and dark shots used a temporary local build (default view, forced theme) that was reverted
 - [x] 5.3 `openspec validate polish-dashboard-visuals --strict`
+
+## 6. Period presets
+
+- [x] 6.1 `state::Preset` (this month, last month, this year, last 12 months, last year) with the windows from the spec; unit-test, including January
+- [x] 6.2 Replace the "This month" button with a picker that names the matching preset or "Custom"; strings in both languages
+
+## 7. Median lead time and plain names
+
+- [x] 7.1 Overview summaries carry `lead_time_p50_hours` (median) instead of the mean; golden files regenerated; docs updated
+- [x] 7.2 Duration cards lead with the median; detail shows mean and p90; status and month-over-month change use the median; unit test with a long tail
+- [x] 7.3 Lead-time trend: the median is the main line
+- [x] 7.4 zh-TW names "PR 開啟到合併" and "commit 到部署" (help keeps DORA's name); "本年" → "今年"
+

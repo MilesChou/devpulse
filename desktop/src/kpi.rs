@@ -144,17 +144,19 @@ pub fn kpis(report: &Report, previous: Option<&Report>, t: &'static Texts) -> Ve
         Kpi {
             title: t.pr_lead_time,
             help: t.help_pr_lead_time,
+            // The median leads: a few PRs left open for weeks would
+            // dominate the mean, which stays in the detail line.
             value: if lt.count == 0 {
                 "—".into()
             } else {
-                format!("{:.1}h", lt.avg_hours)
+                format!("{:.1}h", lt.p50_hours)
             },
-            detail: (t.pr_lead_detail)(lt.p50_hours, lt.p90_hours, lt.count),
+            detail: (t.pr_lead_detail)(lt.avg_hours, lt.p90_hours, lt.count),
             target: t.ideal_24h,
             delta: previous
                 .filter(|p| p.pr_lead_time.count > 0 && lt.count > 0)
-                .map(|p| delta(p.pr_lead_time.avg_hours, lt.avg_hours, "h")),
-            status: (lt.count > 0).then(|| LEAD_TIME_BAND.lower_is_better(lt.avg_hours)),
+                .map(|p| delta(p.pr_lead_time.p50_hours, lt.p50_hours, "h")),
+            status: (lt.count > 0).then(|| LEAD_TIME_BAND.lower_is_better(lt.p50_hours)),
         },
         Kpi {
             title: t.review_wait,
@@ -193,13 +195,13 @@ pub fn dora_kpis(
             value: if s.count == 0 {
                 "—".into()
             } else {
-                format!("{:.1}h", s.avg_hours)
+                format!("{:.1}h", s.p50_hours)
             },
             detail,
             target: t.lower_is_better,
             delta: prev
                 .filter(|p| p.count > 0 && s.count > 0)
-                .map(|p| delta(p.avg_hours, s.avg_hours, "h")),
+                .map(|p| delta(p.p50_hours, s.p50_hours, "h")),
             // The project goals set no DORA targets.
             status: None,
         };
@@ -222,7 +224,7 @@ pub fn dora_kpis(
                 t.no_deploys_with_data.into()
             } else {
                 (t.deploy_percentiles)(
-                    d.lead_time.p50_hours,
+                    d.lead_time.avg_hours,
                     d.lead_time.p90_hours,
                     d.lead_time.count,
                 )
@@ -310,7 +312,7 @@ mod tests {
         let values: Vec<_> = cards.iter().map(|k| k.value.as_str()).collect();
         assert_eq!(values, ["66.7%", "1.5", "20.0h", "2.0h"]);
         assert_eq!(cards[0].detail, "2 / 3 PR builds failed");
-        assert_eq!(cards[2].detail, "p50 20.0h · p90 28.0h · 3 merged PRs");
+        assert_eq!(cards[2].detail, "avg 20.0h · p90 28.0h · 3 merged PRs");
         assert!(cards.iter().all(|k| k.delta.is_none()));
     }
 
@@ -355,7 +357,7 @@ mod tests {
         let values: Vec<_> = cards.iter().map(|k| k.value.as_str()).collect();
         assert_eq!(values, ["2.1/wk", "22.0h", "33.3%", "36.0h"]);
         assert_eq!(cards[0].detail, "3 deploys into main · 3 deploy days");
-        assert_eq!(cards[1].detail, "p50 22.0h · p90 30.0h · 3 deploys");
+        assert_eq!(cards[1].detail, "avg 22.0h · p90 30.0h · 3 deploys");
         assert_eq!(cards[2].detail, "1 reverts + 0 hotfixes (label \"hotfix\")");
         assert_eq!(
             cards[3].detail,
@@ -404,7 +406,7 @@ mod tests {
             [
                 "CI 失敗率",
                 "每個 PR 的建置次數",
-                "PR 前置時間",
+                "PR 開啟到合併",
                 "等待審查時間"
             ]
         );
@@ -412,7 +414,7 @@ mod tests {
         let values: Vec<_> = cards.iter().map(|k| k.value.as_str()).collect();
         assert_eq!(values, ["66.7%", "1.5", "20.0h", "2.0h"]);
         assert_eq!(cards[0].detail, "3 次 PR 建置中失敗 2 次");
-        assert_eq!(cards[2].detail, "p50 20.0h · p90 28.0h · 3 個已合併 PR");
+        assert_eq!(cards[2].detail, "平均 20.0h · p90 28.0h · 3 個已合併 PR");
         assert_eq!(cards[3].target, "越低越好");
     }
 
@@ -422,7 +424,7 @@ mod tests {
         let values: Vec<_> = cards.iter().map(|k| k.value.as_str()).collect();
         assert_eq!(values, ["2.1/週", "22.0h", "33.3%", "36.0h"]);
         assert_eq!(cards[0].detail, "3 次部署到 main · 3 個部署日");
-        assert_eq!(cards[1].detail, "p50 22.0h · p90 30.0h · 3 次部署");
+        assert_eq!(cards[1].detail, "平均 22.0h · p90 30.0h · 3 次部署");
         assert_eq!(
             cards[2].detail,
             "1 次 revert + 0 次 hotfix（標籤「hotfix」）"
@@ -474,5 +476,23 @@ mod tests {
             dora.iter().all(|k| k.status.is_none()),
             "DORA has no targets"
         );
+    }
+
+    #[test]
+    fn lead_time_leads_with_the_median() {
+        // A long tail: the mean is five times the median.
+        let mut r = report();
+        r.pr_lead_time.avg_hours = 100.0;
+        r.pr_lead_time.p50_hours = 20.0;
+        let mut prev = report();
+        prev.pr_lead_time.avg_hours = 10.0;
+        prev.pr_lead_time.p50_hours = 30.0;
+        let card = &kpis(&r, Some(&prev), &EN)[2];
+        assert_eq!(card.value, "20.0h");
+        assert!(card.detail.starts_with("avg 100.0h"), "{}", card.detail);
+        // On target by the median (20 h ≤ 24 h), though the mean is 100 h.
+        assert_eq!(card.status, Some(Status::OnTarget));
+        // The month-over-month change follows the median too: 30 → 20.
+        assert_eq!(card.delta.as_ref().unwrap().text, "-10.0h");
     }
 }

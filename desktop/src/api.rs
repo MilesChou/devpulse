@@ -184,7 +184,8 @@ impl Target {
 pub struct Summary {
     pub prs_opened: u64,
     pub prs_merged: u64,
-    pub lead_time_hours: Option<f64>,
+    /// Median, not mean.
+    pub lead_time_p50_hours: Option<f64>,
     pub builds_per_pr: Option<f64>,
     /// 0..=1.
     pub ci_failure_rate: Option<f64>,
@@ -1060,7 +1061,7 @@ mod tests {
         assert_eq!(row.monthly.len(), 12);
         assert_eq!(row.current.avg_build_seconds, Some(75.0));
         assert!(row.current.deploys_per_week.is_some());
-        assert_eq!(row.previous.lead_time_hours, None, "no data is null");
+        assert_eq!(row.previous.lead_time_p50_hours, None, "no data is null");
 
         let members: Overview<MemberRow> = serde_json::from_str(include_str!(
             "../../internal/http/testdata/overview_members.json"

@@ -157,7 +157,8 @@ pub struct Texts {
     pub repush_proxy: &'static str,
     pub ideal_one: &'static str,
     pub pr_lead_time: &'static str,
-    pub pr_lead_detail: fn(p50: f64, p90: f64, count: u64) -> String,
+    /// Under the median: the mean and p90.
+    pub pr_lead_detail: fn(avg: f64, p90: f64, count: u64) -> String,
     pub ideal_24h: &'static str,
     pub review_wait: &'static str,
     pub review_wait_detail: fn(count: u64) -> String,
@@ -172,7 +173,7 @@ pub struct Texts {
     pub per_week: &'static str,
     pub deploy_detail: fn(deploys: u64, branch: &str, days: u64) -> String,
     pub lead_time_for_changes: &'static str,
-    pub deploy_percentiles: fn(p50: f64, p90: f64, count: u64) -> String,
+    pub deploy_percentiles: fn(avg: f64, p90: f64, count: u64) -> String,
     pub no_deploys_with_data: &'static str,
     pub change_failure_rate: &'static str,
     pub cfr_detail: fn(reverts: u64, hotfixes: u64, label: &str) -> String,
@@ -358,6 +359,13 @@ pub struct Texts {
     pub short_deploys: &'static str,
     pub collapse_sidebar: &'static str,
     pub expand_sidebar: &'static str,
+
+    // Period presets ("This month" is `this_month`).
+    pub preset_last_month: &'static str,
+    pub preset_this_year: &'static str,
+    pub preset_last_12: &'static str,
+    pub preset_last_year: &'static str,
+    pub preset_custom: &'static str,
 }
 
 pub static EN: Texts = Texts {
@@ -425,7 +433,7 @@ pub static EN: Texts = Texts {
     repush_proxy: "re-push proxy: CI runs per PR",
     ideal_one: "ideal 1",
     pr_lead_time: "PR lead time",
-    pr_lead_detail: |p50, p90, n| format!("p50 {p50:.1}h · p90 {p90:.1}h · {n} merged PRs"),
+    pr_lead_detail: |avg, p90, n| format!("avg {avg:.1}h · p90 {p90:.1}h · {n} merged PRs"),
     ideal_24h: "ideal 24h",
     review_wait: "Review wait",
     review_wait_detail: |n| format!("ready to first review · {n} PRs"),
@@ -438,7 +446,7 @@ pub static EN: Texts = Texts {
     per_week: "/wk",
     deploy_detail: |n, b, days| format!("{n} deploys into {b} · {days} deploy days"),
     lead_time_for_changes: "Lead time for changes",
-    deploy_percentiles: |p50, p90, n| format!("p50 {p50:.1}h · p90 {p90:.1}h · {n} deploys"),
+    deploy_percentiles: |avg, p90, n| format!("avg {avg:.1}h · p90 {p90:.1}h · {n} deploys"),
     no_deploys_with_data: "no deploys with data",
     change_failure_rate: "Change failure rate",
     cfr_detail: |r, h, l| format!("{r} reverts + {h} hotfixes (label \"{l}\")"),
@@ -473,9 +481,10 @@ pub static EN: Texts = Texts {
                          month that failed. Months without PR builds are left \
                          blank. Ideal: 0%.",
     help_lead_trend: "Per month: hours from PR creation to merge, for PRs merged \
-                      that month, as average, median (p50) and 90th percentile \
-                      (p90). A p90 far above p50 means a few PRs wait much longer \
-                      than the rest. Ideal: 24h.",
+                      that month: the median (p50, the main line), the average \
+                      and the 90th percentile (p90). An average or p90 far above \
+                      the median means a few PRs wait much longer than the rest. \
+                      Ideal: 24h.",
     help_deploy_trend: "Per month: deployments per week, where a deployment is a PR \
                         merged into the default branch. Higher is better. Hover a \
                         bar for the month's total.",
@@ -490,8 +499,9 @@ pub static EN: Texts = Texts {
                          this window that belong to a PR. Every push re-runs CI, so \
                          this stands in for how often a PR is re-pushed. Ideal: 1.",
     help_pr_lead_time: "Hours from PR creation to merge, for PRs merged in this \
-                        window: average, with median (p50) and 90th percentile (p90) \
-                        below. Ideal: 24h.",
+                        window. The big number is the median, so a few PRs left open \
+                        for weeks do not dominate it; the average and the 90th \
+                        percentile (p90) are below. Ideal: 24h.",
     help_review_wait: "Average hours from a PR becoming ready for review to its first \
                        review, for PRs that became ready in this window and have been \
                        reviewed. Lower is better.",
@@ -499,13 +509,15 @@ pub static EN: Texts = Texts {
                                 deployment is a PR merged into the default branch. \
                                 Deploy days counts the distinct days with at least \
                                 one deployment. Higher is better.",
-    help_lead_time_for_changes: "Hours from the earliest commit of a deployed PR to \
-                                 its merge into the default branch, for deployments \
-                                 in this window. Lower is better.",
+    help_lead_time_for_changes: "DORA's Lead Time for Changes: hours from the earliest \
+                                 commit of a deployed PR to its merge into the default \
+                                 branch, for deployments in this window. The big number \
+                                 is the median; the average and p90 are below. Lower is \
+                                 better.",
     help_change_failure_rate: "Remediation deployments ÷ all deployments in this \
                                window. A remediation is a revert, or a PR carrying the \
                                hotfix label. Lower is better.",
-    help_recovery_time: "Average hours to recover, from two sources: a reverted PR's \
+    help_recovery_time: "Median hours to recover, from two sources: a reverted PR's \
                          merge to the revert's merge, and an issue with the incident \
                          label from opening to closing. Counted in the window where \
                          recovery ended. Lower is better.",
@@ -653,6 +665,11 @@ pub static EN: Texts = Texts {
     short_deploys: "Deploys/wk",
     collapse_sidebar: "Hide the repo list",
     expand_sidebar: "Show the repo list",
+    preset_last_month: "Last month",
+    preset_this_year: "This year",
+    preset_last_12: "Last 12 months",
+    preset_last_year: "Last year",
+    preset_custom: "Custom",
 };
 
 pub static ZH_TW: Texts = Texts {
@@ -715,8 +732,8 @@ pub static ZH_TW: Texts = Texts {
     builds_per_pr: "每個 PR 的建置次數",
     repush_proxy: "重推次數的替代指標：每個 PR 的 CI 執行次數",
     ideal_one: "理想值 1",
-    pr_lead_time: "PR 前置時間",
-    pr_lead_detail: |p50, p90, n| format!("p50 {p50:.1}h · p90 {p90:.1}h · {n} 個已合併 PR"),
+    pr_lead_time: "PR 開啟到合併",
+    pr_lead_detail: |avg, p90, n| format!("平均 {avg:.1}h · p90 {p90:.1}h · {n} 個已合併 PR"),
     ideal_24h: "理想值 24h",
     review_wait: "等待審查時間",
     review_wait_detail: |n| format!("從可審查到第一次審查 · {n} 個 PR"),
@@ -728,8 +745,8 @@ pub static ZH_TW: Texts = Texts {
     deployment_frequency: "部署頻率",
     per_week: "/週",
     deploy_detail: |n, b, days| format!("{n} 次部署到 {b} · {days} 個部署日"),
-    lead_time_for_changes: "變更前置時間",
-    deploy_percentiles: |p50, p90, n| format!("p50 {p50:.1}h · p90 {p90:.1}h · {n} 次部署"),
+    lead_time_for_changes: "commit 到部署",
+    deploy_percentiles: |avg, p90, n| format!("平均 {avg:.1}h · p90 {p90:.1}h · {n} 次部署"),
     no_deploys_with_data: "沒有可計算的部署",
     change_failure_rate: "變更失敗率",
     cfr_detail: |r, h, l| format!("{r} 次 revert + {h} 次 hotfix（標籤「{l}」）"),
@@ -746,7 +763,7 @@ pub static ZH_TW: Texts = Texts {
     series_seconds: "秒",
     ci_failure_trend: "CI 失敗率（%）",
     series_failure: "失敗 %",
-    lead_time_trend: "PR 前置時間（小時）",
+    lead_time_trend: "PR 開啟到合併（小時）",
     series_avg: "平均",
     deploys_per_week_trend: "每週部署次數",
     deploy_bar: |m, n| format!("{m}（{n} 次部署）"),
@@ -761,8 +778,8 @@ pub static ZH_TW: Texts = Texts {
                  滑到長條上可看當天的建置次數。長條越高，代表回饋越慢。",
     help_failure_trend: "每個月：當月開始的 PR 建置中，失敗所佔的比例。\
                          沒有 PR 建置的月份留白。理想值 0%。",
-    help_lead_trend: "每個月：當月合併的 PR 從建立到合併的時數，分別畫出平均、\
-                      中位數（p50）與第 90 百分位（p90）。p90 遠高於 p50，\
+    help_lead_trend: "每個月：當月合併的 PR 從開啟到合併的時數，畫出中位數（p50，主線）、\
+                      平均與第 90 百分位（p90）。平均或 p90 遠高於中位數，\
                       表示少數 PR 等得特別久。理想值 24h。",
     help_deploy_trend: "每個月：平均每週的部署次數，部署指 PR 合併進預設分支。\
                         越高越好。滑到長條上可看當月總次數。",
@@ -773,17 +790,19 @@ pub static ZH_TW: Texts = Texts {
                            不含分支建置。理想值 0%。",
     help_builds_per_pr: "這段期間開始、且屬於某個 PR 的 CI 建置，平均每個 PR 跑了幾次。\
                          每次 push 都會重跑 CI，所以用它代替 PR 的重推次數。理想值 1。",
-    help_pr_lead_time: "這段期間合併的 PR，從建立到合併的時數：大字為平均，\
-                        下方為中位數（p50）與第 90 百分位（p90）。理想值 24h。",
+    help_pr_lead_time: "這段期間合併的 PR，從開啟到合併的時數。大字是中位數，\
+                        不會被少數開了好幾週的 PR 拉高；下方是平均與第 90 百分位（p90）。\
+                        理想值 24h。",
     help_review_wait: "這段期間變成可審查、且已經有人審查的 PR，\
                        從可審查到第一次審查的平均時數。越低越好。",
     help_deployment_frequency: "這段期間平均每週的部署次數，部署指 PR 合併進預設分支。\
                                 部署日是至少有一次部署的天數。越高越好。",
-    help_lead_time_for_changes: "這段期間的部署，從 PR 最早的 commit 到合併進預設分支\
-                                 的時數。越低越好。",
+    help_lead_time_for_changes: "DORA 的 Lead Time for Changes：這段期間的部署，\
+                                 從 PR 最早的 commit 到合併進預設分支的時數。\
+                                 大字是中位數，下方是平均與 p90。越低越好。",
     help_change_failure_rate: "這段期間的部署中，補救部署 ÷ 全部部署。\
                                補救指 revert，或帶有 hotfix 標籤的 PR。越低越好。",
-    help_recovery_time: "平均復原時數，來源有兩種：被 revert 的 PR 從合併到 revert \
+    help_recovery_time: "復原時數的中位數，來源有兩種：被 revert 的 PR 從合併到 revert \
                          合併，以及帶有 incident 標籤的 issue 從開啟到關閉。\
                          以復原結束的時間歸入期間。越低越好。",
     err_conflict: |m| format!("伺服器正忙：{m}"),
@@ -807,7 +826,7 @@ pub static ZH_TW: Texts = Texts {
     col_name: "名稱",
     col_prs_opened: "開啟的 PR",
     col_merged: "已合併",
-    col_lead_time: "前置時間",
+    col_lead_time: "開啟到合併",
     col_ci_failures: "CI 失敗",
     show_button: "顯示",
     show_member_hover: "只顯示這位成員",
@@ -916,7 +935,7 @@ pub static ZH_TW: Texts = Texts {
 
     short_prs_opened: "開啟 PR",
     short_prs_merged: "合併",
-    short_lead_time: "前置時間",
+    short_lead_time: "開到合併",
     short_builds_per_pr: "建置/PR",
     short_ci_failure: "CI 失敗",
     short_build_time: "建置時間",
@@ -924,6 +943,11 @@ pub static ZH_TW: Texts = Texts {
     short_deploys: "部署/週",
     collapse_sidebar: "收合儲存庫清單",
     expand_sidebar: "展開儲存庫清單",
+    preset_last_month: "上月",
+    preset_this_year: "今年",
+    preset_last_12: "近一年",
+    preset_last_year: "去年",
+    preset_custom: "自訂",
 };
 
 #[cfg(test)]
