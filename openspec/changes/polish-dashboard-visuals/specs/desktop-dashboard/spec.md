@@ -32,3 +32,69 @@ The repo list MUST group repos under their owner and show each repo by its name 
 
 - **WHEN** the user folds an owner group, or hides the whole list with the button at the left of the top bar
 - **THEN** that group's repos, or the list, are hidden to give the page more room; whether the list is hidden is remembered across restarts
+
+### Requirement: Common periods in one click
+
+The top bar MUST offer this month, last month, this year, the last 12 months and last year as one-click periods, and show which one the current period is.
+
+#### Scenario: Picking a preset
+
+- **WHEN** the current month is 2026-09 and the user picks "Last 12 months"
+- **THEN** the period becomes 2025-10 to 2026-09 and every page reloads for it
+
+#### Scenario: Other presets
+
+- **WHEN** the current month is 2026-09
+- **THEN** this month is 2026-09, last month 2026-08, this year 2026-01 to 2026-12 (the whole calendar year; months not yet reached are empty), and last year 2025-01 to 2025-12
+
+#### Scenario: Custom period
+
+- **WHEN** the period was typed in and matches no preset
+- **THEN** the picker reads "Custom"
+
+### Requirement: Lead times lead with the median
+
+Duration cards (PR open to merge, DORA commit to deploy, recovery time) MUST show the median as the headline, with the mean and p90 as detail, and compare months and judge the status by the median, so a few PRs left open for weeks do not dominate.
+
+#### Scenario: Long tail
+
+- **WHEN** PRs merged in the window take a median of 20 h and a mean of 100 h
+- **THEN** the card shows 20.0h, the detail reads "avg 100.0h", and the card is on target against the 24 h ideal
+
+#### Scenario: Plain names
+
+- **WHEN** the UI language is Traditional Chinese
+- **THEN** the PR duration is named "PR 開啟到合併" and DORA's Lead Time for Changes "commit 到部署", since "前置時間" does not say what is measured
+
+### Requirement: Trend points show their value on hover
+
+Hovering a data point of a trend line MUST show the month, the series and the value with its unit.
+
+#### Scenario: Hover a point
+
+- **WHEN** the user hovers the 2026-07 point of the CI failure rate trend
+- **THEN** a label shows 2026-07, the series name and the rate, e.g. "9.4%"
+
+### Requirement: Median build time at a readable granularity
+
+The build time chart MUST show the median build duration: one bar per UTC day for a single month, and one bar per month for a longer period, where daily bars are too many to read. Its title says it is the median.
+
+#### Scenario: Single month
+
+- **WHEN** the period is one month
+- **THEN** the chart "Median build time" has one bar per day with builds, each the median of that day's builds
+
+#### Scenario: Several months
+
+- **WHEN** the period is 2026-01 to 2026-12
+- **THEN** the chart has one bar per month with builds, each the median of that month's builds
+
+### Requirement: Hover labels are never clipped
+
+Charts MUST leave room above the tallest bar so its hover label stays visible.
+
+#### Scenario: Tallest bar
+
+- **WHEN** the user hovers the tallest bar of the PR size distribution
+- **THEN** its label is fully visible
+

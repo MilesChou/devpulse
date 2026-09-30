@@ -3,7 +3,6 @@ package metrics
 import (
 	"context"
 	"errors"
-	"math"
 	"slices"
 	"sync"
 	"testing"
@@ -13,6 +12,7 @@ import (
 	"github.com/mileschou/devpulse/internal/people"
 	"github.com/mileschou/devpulse/internal/persistence"
 	"github.com/mileschou/devpulse/internal/repo"
+	"github.com/mileschou/devpulse/internal/x/statx"
 )
 
 func TestSummaryOf(t *testing.T) {
@@ -22,33 +22,29 @@ func TestSummaryOf(t *testing.T) {
 		PRLeadTime:         HoursSummary{Count: 2, AvgHours: 20},
 		ReviewWait:         ReviewWait{Count: 1, AvgHours: 3},
 		PRSizeDistribution: []SizeBucketCount{{Bucket: "XS", Count: 2}, {Bucket: "L", Count: 1}},
-		// 3 builds of 60 s on one day, 1 of 300 s on another: 120 s per
-		// build, not the 180 s average of the two days.
-		DailyBuildDuration: []DayBuildDuration{
-			{Day: "2026-05-01", AvgSeconds: 60, Count: 3},
-			{Day: "2026-05-02", AvgSeconds: 300, Count: 1},
-		},
-		DORA: &DORA{PerWeek: 2.5},
+		// The median of the window's builds, not of the daily values.
+		BuildDuration: BuildDuration{Count: 4, AvgSeconds: 120, P50Seconds: 60},
+		DORA:          &DORA{PerWeek: 2.5},
 	}
 	s := SummaryOf(r)
 	if s.PRsOpened != 3 || s.PRsMerged != 2 {
 		t.Fatalf("counts: %+v", s)
 	}
 	for name, got := range map[string]*float64{
-		"lead": s.LeadTimeHours, "builds": s.BuildsPerPR, "failure": s.CIFailureRate,
-		"build seconds": s.AvgBuildSeconds, "review": s.ReviewWaitHours, "deploys": s.DeploysPerWeek,
+		"lead": s.LeadTimeP50Hours, "builds": s.BuildsPerPR, "failure": s.CIFailureRate,
+		"build seconds": s.BuildP50Seconds, "review": s.ReviewWaitHours, "deploys": s.DeploysPerWeek,
 	} {
 		if got == nil {
 			t.Fatalf("%s is nil", name)
 		}
 	}
-	if math.Abs(*s.AvgBuildSeconds-120) > 1e-9 {
-		t.Fatalf("avg build seconds: got %v, want 120", *s.AvgBuildSeconds)
+	if *s.BuildP50Seconds != 60 {
+		t.Fatalf("build seconds: got %v, want the median 60", *s.BuildP50Seconds)
 	}
 
 	empty := SummaryOf(Report{})
-	if empty.LeadTimeHours != nil || empty.BuildsPerPR != nil || empty.CIFailureRate != nil ||
-		empty.AvgBuildSeconds != nil || empty.ReviewWaitHours != nil || empty.DeploysPerWeek != nil {
+	if empty.LeadTimeP50Hours != nil || empty.BuildsPerPR != nil || empty.CIFailureRate != nil ||
+		empty.BuildP50Seconds != nil || empty.ReviewWaitHours != nil || empty.DeploysPerWeek != nil {
 		t.Fatalf("no data must be null, got %+v", empty)
 	}
 }
@@ -96,8 +92,8 @@ func (*overviewSource) ReviewWaitTime(context.Context, []string, time.Time, time
 func (*overviewSource) PRSizeDistribution(context.Context, []string, time.Time, time.Time) (map[string]int, error) {
 	return nil, nil
 }
-func (*overviewSource) DailyBuildDuration(context.Context, []string, time.Time, time.Time) ([]persistence.DayDuration, error) {
-	return nil, nil
+func (*overviewSource) BuildDurations(context.Context, []string, time.Time, time.Time) ([]persistence.DayDuration, statx.Summary, error) {
+	return nil, statx.Summary{}, nil
 }
 func (*overviewSource) DORAInput(_ context.Context, _, _ string, from, to time.Time) (dora.Input, error) {
 	return dora.Input{From: from, To: to}, nil

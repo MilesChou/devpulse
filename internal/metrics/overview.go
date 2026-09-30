@@ -24,12 +24,15 @@ const overviewWorkers = 4
 // client never shows a misleading 0. Counts are plain numbers: zero PRs
 // is data.
 type Summary struct {
-	PRsOpened       int      `json:"prs_opened"`
-	PRsMerged       int      `json:"prs_merged"`
-	LeadTimeHours   *float64 `json:"lead_time_hours"`
-	BuildsPerPR     *float64 `json:"builds_per_pr"`
-	CIFailureRate   *float64 `json:"ci_failure_rate"` // 0..1
-	AvgBuildSeconds *float64 `json:"avg_build_seconds"`
+	PRsOpened int `json:"prs_opened"`
+	PRsMerged int `json:"prs_merged"`
+	// LeadTimeP50Hours is the median, not the mean: a few PRs left open
+	// for weeks would otherwise dominate the comparison.
+	LeadTimeP50Hours *float64 `json:"lead_time_p50_hours"`
+	BuildsPerPR      *float64 `json:"builds_per_pr"`
+	CIFailureRate    *float64 `json:"ci_failure_rate"` // 0..1
+	// BuildP50Seconds is the median build duration, like the lead time.
+	BuildP50Seconds *float64 `json:"build_p50_seconds"`
 	ReviewWaitHours *float64 `json:"review_wait_hours"`
 	// DeploysPerWeek is set for repo rows only: DORA is per repo.
 	DeploysPerWeek *float64 `json:"deploys_per_week"`
@@ -42,7 +45,7 @@ func SummaryOf(r Report) Summary {
 		s.PRsOpened += b.Count
 	}
 	if r.PRLeadTime.Count > 0 {
-		s.LeadTimeHours = ptr(r.PRLeadTime.AvgHours)
+		s.LeadTimeP50Hours = ptr(r.PRLeadTime.P50Hours)
 	}
 	if r.AvgBuildsPerPR > 0 {
 		s.BuildsPerPR = ptr(r.AvgBuildsPerPR)
@@ -50,7 +53,9 @@ func SummaryOf(r Report) Summary {
 	if r.BuildFailure.Total > 0 {
 		s.CIFailureRate = ptr(r.BuildFailure.Rate)
 	}
-	s.AvgBuildSeconds = avgBuildSeconds(r.DailyBuildDuration)
+	if r.BuildDuration.Count > 0 {
+		s.BuildP50Seconds = ptr(r.BuildDuration.P50Seconds)
+	}
 	if r.ReviewWait.Count > 0 {
 		s.ReviewWaitHours = ptr(r.ReviewWait.AvgHours)
 	}
@@ -58,21 +63,6 @@ func SummaryOf(r Report) Summary {
 		s.DeploysPerWeek = ptr(r.DORA.PerWeek)
 	}
 	return s
-}
-
-// avgBuildSeconds is the average over builds, not over days: each day's
-// average is weighted by its build count.
-func avgBuildSeconds(days []DayBuildDuration) *float64 {
-	var total float64
-	var count int
-	for _, d := range days {
-		total += d.AvgSeconds * float64(d.Count)
-		count += d.Count
-	}
-	if count == 0 {
-		return nil
-	}
-	return ptr(total / float64(count))
 }
 
 func ptr(v float64) *float64 { return &v }

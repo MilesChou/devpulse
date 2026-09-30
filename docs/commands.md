@@ -233,7 +233,7 @@ devpulse pr sync MilesChou/devpulse 42
 devpulse metrics <owner/name> [--from YYYY-MM] [--to YYYY-MM]
 ```
 
-Prints the engineering-efficiency metrics for a repo over a month window: CI failure rate (PR builds only), average builds per PR, PR lead time (avg / p50 / p90), review wait time, PR size distribution, daily average build duration, and the four DORA metrics (see [DORA definitions](#dora-definitions)).
+Prints the engineering-efficiency metrics for a repo over a month window: CI failure rate (PR builds only), average builds per PR, PR lead time (avg / p50 / p90), review wait time, PR size distribution, build duration (median, mean and p90, plus the daily median), and the four DORA metrics (see [DORA definitions](#dora-definitions)).
 
 `--from` defaults to the current month; `--to` is exclusive and defaults to one month after `--from`.
 
@@ -262,10 +262,11 @@ Avg Builds per PR:      2.4
 PR Lead Time:           avg 18.2h  p50 6.1h  p90 52.0h  (10 PRs)
 Review Wait Time:       avg 3.4h (8 PRs)
 PR Size Distribution:   XS:4  S:3  M:2  L:1
+Build Duration:         p50 76s  avg 77s  p90 95s  (10 builds)
 
-Daily Build Duration (avg seconds):
-  2026-05-02: 74s (6 builds)
-  2026-05-03: 81s (4 builds)
+Daily Build Duration (median seconds):
+  2026-05-02: 72s (6 builds)
+  2026-05-03: 80s (4 builds)
 
 DORA (deployment = PR merged into default branch)
 ────────────────────────────────────────
@@ -438,7 +439,7 @@ These cover every tracked repo that is not disabled, pooling their PRs, builds a
 | `GET /api/v1/overview/repos?from=&to=` | Comparison rows, one per repo: `{from, to, previous:{from, to}, rows:[{repo, current, previous, monthly:[{month, summary}]}]}` |
 | `GET /api/v1/overview/members?from=&to=` | The same for people across all repos: members active in the current or previous period, then active accounts no member claims (`member_id: null`); rows carry `member_id, name, accounts` instead of `repo` |
 
-`previous` is the period of the same number of months right before `from`; `monthly` is the 12 months ending at `to`, for sparklines. A summary has `prs_opened`, `prs_merged`, `lead_time_hours`, `builds_per_pr`, `ci_failure_rate` (0–1), `avg_build_seconds` (per build, so a busy day weighs more), `review_wait_hours` and, for repo rows, `deploys_per_week`. A metric without data in the period is `null`, never 0. Excluded accounts never appear.
+`previous` is the period of the same number of months right before `from`; `monthly` is the 12 months ending at `to`, for sparklines. A summary has `prs_opened`, `prs_merged`, `lead_time_p50_hours` (the median, so a few PRs left open for weeks do not dominate), `builds_per_pr`, `ci_failure_rate` (0–1), `build_p50_seconds` (the median build duration), `review_wait_hours` and, for repo rows, `deploys_per_week`. A metric without data in the period is `null`, never 0. Excluded accounts never appear.
 
 Accounts are normalized: lower-cased, with a trailing `[bot]` removed, because GitHub's REST API calls a bot `dependabot[bot]` and its GraphQL API calls the same bot `dependabot`. An account belongs to at most one member, and display and team names are unique; a clash answers `409`.
 

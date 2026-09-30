@@ -1,5 +1,11 @@
 {
   "avg_builds_per_pr": 1.5,
+  "build_duration": {
+    "avg_seconds": 75,
+    "count": 4,
+    "p50_seconds": 75,
+    "p90_seconds": 111.00000000000001
+  },
   "build_failure": {
     "failed": 2,
     "rate": 0.6666666666666666,
@@ -9,12 +15,14 @@
     {
       "avg_seconds": 90,
       "count": 2,
-      "day": "2026-05-01"
+      "day": "2026-05-01",
+      "p50_seconds": 90
     },
     {
       "avg_seconds": 60,
       "count": 2,
-      "day": "2026-05-02"
+      "day": "2026-05-02",
+      "p50_seconds": 60
     }
   ],
   "dora": {

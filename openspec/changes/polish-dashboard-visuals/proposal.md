@@ -18,6 +18,8 @@ The dashboard works but reads flat: every section has the same weight, nothing s
 
 ### Modified Capabilities
 
+- `http-api`: overview summaries report the median lead time (`lead_time_p50_hours`).
+
 - `desktop-dashboard`: KPI cards show their status against the ideal; the repo list is grouped by owner.
 - `cross-repo-overview`: the change against the previous period is also marked when it is better beyond the noise floor; the tables fit the window.
 

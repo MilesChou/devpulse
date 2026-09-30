@@ -9,6 +9,7 @@ import (
 	"github.com/mileschou/devpulse/internal/dora"
 	"github.com/mileschou/devpulse/internal/persistence"
 	"github.com/mileschou/devpulse/internal/repo"
+	"github.com/mileschou/devpulse/internal/x/statx"
 )
 
 var now = time.Date(2026, 5, 17, 13, 0, 0, 0, time.UTC)
@@ -123,8 +124,8 @@ func (f *fakeSource) ReviewWaitTime(context.Context, []string, time.Time, time.T
 func (f *fakeSource) PRSizeDistribution(context.Context, []string, time.Time, time.Time) (map[string]int, error) {
 	return nil, nil
 }
-func (f *fakeSource) DailyBuildDuration(context.Context, []string, time.Time, time.Time) ([]persistence.DayDuration, error) {
-	return nil, nil
+func (f *fakeSource) BuildDurations(context.Context, []string, time.Time, time.Time) ([]persistence.DayDuration, statx.Summary, error) {
+	return nil, statx.Summary{}, nil
 }
 func (f *fakeSource) DORAInput(_ context.Context, _, branch string, from, to time.Time) (dora.Input, error) {
 	f.doraBranches = append(f.doraBranches, branch)

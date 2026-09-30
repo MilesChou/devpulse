@@ -39,7 +39,7 @@ type Source interface {
 	PRLeadTime(ctx context.Context, repoIDs []string, from, to time.Time) (count int, avgHours, p50Hours, p90Hours float64, err error)
 	ReviewWaitTime(ctx context.Context, repoIDs []string, from, to time.Time) (count int, avgHours float64, err error)
 	PRSizeDistribution(ctx context.Context, repoIDs []string, from, to time.Time) (map[string]int, error)
-	DailyBuildDuration(ctx context.Context, repoIDs []string, from, to time.Time) ([]persistence.DayDuration, error)
+	BuildDurations(ctx context.Context, repoIDs []string, from, to time.Time) ([]persistence.DayDuration, statx.Summary, error)
 	DORAInput(ctx context.Context, repoID, defaultBranch string, from, to time.Time) (dora.Input, error)
 }
 
@@ -59,6 +59,9 @@ type Report struct {
 	ReviewWait         ReviewWait         `json:"review_wait"`
 	PRSizeDistribution []SizeBucketCount  `json:"pr_size_distribution"`
 	DailyBuildDuration []DayBuildDuration `json:"daily_build_duration"`
+	// BuildDuration summarizes every build of the window. The median is
+	// the headline: a few very slow builds would dominate the mean.
+	BuildDuration BuildDuration `json:"build_duration"`
 
 	// DORA is nil (JSON null) when the repo's default branch is not
 	// known yet: deployments are merges into it, so there is nothing
@@ -137,11 +140,21 @@ type SizeBucketCount struct {
 	Count  int    `json:"count"`
 }
 
-// DayBuildDuration is the average build duration of one UTC day.
+// DayBuildDuration is the build duration of one UTC day.
 type DayBuildDuration struct {
 	Day        string  `json:"day"` // YYYY-MM-DD
 	AvgSeconds float64 `json:"avg_seconds"`
+	P50Seconds float64 `json:"p50_seconds"`
 	Count      int     `json:"count"`
+}
+
+// BuildDuration is the count, mean, median and p90 of the builds of a
+// window, in seconds. All zero with Count 0 means no builds.
+type BuildDuration struct {
+	Count      int     `json:"count"`
+	AvgSeconds float64 `json:"avg_seconds"`
+	P50Seconds float64 `json:"p50_seconds"`
+	P90Seconds float64 `json:"p90_seconds"`
 }
 
 // Window is a [From, To) range of whole months, both at 00:00 UTC on
@@ -267,7 +280,7 @@ func Compute(ctx context.Context, src Source, t Target, w Window, now time.Time,
 	}
 	r.PRSizeDistribution = orderSizeDistribution(dist)
 
-	days, err := src.DailyBuildDuration(ctx, repoIDs, w.From, w.To)
+	days, builds, err := src.BuildDurations(ctx, repoIDs, w.From, w.To)
 	if err != nil {
 		return Report{}, err
 	}
@@ -276,8 +289,15 @@ func Compute(ctx context.Context, src Source, t Target, w Window, now time.Time,
 		r.DailyBuildDuration = append(r.DailyBuildDuration, DayBuildDuration{
 			Day:        d.Day,
 			AvgSeconds: d.AvgSeconds,
+			P50Seconds: d.P50Seconds,
 			Count:      d.Count,
 		})
+	}
+	r.BuildDuration = BuildDuration{
+		Count:      builds.Count,
+		AvgSeconds: builds.Avg,
+		P50Seconds: builds.P50,
+		P90Seconds: builds.P90,
 	}
 
 	if rp, ok := t.single(); ok && rp.DefaultBranch != "" && scope == nil {

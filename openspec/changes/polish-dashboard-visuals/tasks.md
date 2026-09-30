@@ -28,3 +28,24 @@
 - [x] 5.2 Window-only screenshots of Overview and Dashboard in light and dark mode
   - note: taken with the window id from CoreGraphics and `screencapture -l`, so no other window is captured; the Dashboard and dark shots used a temporary local build (default view, forced theme) that was reverted
 - [x] 5.3 `openspec validate polish-dashboard-visuals --strict`
+
+## 6. Period presets
+
+- [x] 6.1 `state::Preset` (this month, last month, this year, last 12 months, last year) with the windows from the spec; unit-test, including January
+  - note: "this year" first ran to the current month; the user expects the whole calendar year (2026-01 to 2026-12), which also makes its trend chart cover exactly that year
+- [x] 6.2 Replace the "This month" button with a picker that names the matching preset or "Custom"; strings in both languages
+
+## 7. Median lead time and plain names
+
+- [x] 7.1 Overview summaries carry `lead_time_p50_hours` (median) instead of the mean; golden files regenerated; docs updated
+- [x] 7.2 Duration cards lead with the median; detail shows mean and p90; status and month-over-month change use the median; unit test with a long tail
+- [x] 7.3 Lead-time trend: the median is the main line
+- [x] 7.4 zh-TW names "PR 開啟到合併" and "commit 到部署" (help keeps DORA's name); "本年" → "今年"
+- [x] 7.5 Trend lines label the hovered point with month, series and value (`value_label`); unit-tested
+
+## 8. Median build time
+
+- [x] 8.1 Go: `BuildDurations` returns daily mean and median plus the window's summary; `Report.build_duration`; `DayBuildDuration.p50_seconds`; overview `build_p50_seconds` replaces `avg_build_seconds`; CLI prints the median; golden files and docs updated
+- [x] 8.2 Desktop: "Median build time" chart with daily bars for one month and monthly bars (from the trend) for longer periods; Overview build time column uses the median
+- [x] 8.3 Plot margin so the tallest bar's hover label is not clipped (user report)
+

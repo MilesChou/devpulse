@@ -51,7 +51,7 @@ Comparison rows do not carry full reports. A `Summary` has the columns the table
 | `review_wait_hours` | review wait avg | lower |
 | `deploys_per_week` | DORA, repo rows only | higher |
 
-`avg_build_seconds` is new: it answers "which repo got slower" directly, where the daily chart only shows the shape. It is derived from the report's daily series (each day carries its average and build count), so `Report` and the per-repo responses do not change.
+(Later replaced by the median, `build_p50_seconds`, from the report's new `build_duration`; see polish-dashboard-visuals.) `avg_build_seconds` is new: it answers "which repo got slower" directly, where the daily chart only shows the shape. It is derived from the report's daily series (each day carries its average and build count), so `Report` and the per-repo responses do not change.
 
 ### 4. Endpoints
 

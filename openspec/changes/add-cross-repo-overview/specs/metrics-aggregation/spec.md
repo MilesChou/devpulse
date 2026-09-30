@@ -19,11 +19,11 @@ The system SHALL compute every CI and PR metric over a set of repos by pooling t
 - **WHEN** metrics are computed across more than one repo
 - **THEN** no DORA section is produced
 
-### Requirement: Average build duration
+### Requirement: Build duration summary
 
-The system SHALL report the average duration of the builds started in a window, weighted by build, alongside the daily build-duration series.
+The system SHALL report the count, mean, median and p90 of the durations of the builds started in a window, over the builds themselves rather than over daily values, alongside a daily series that carries each day's mean and median.
 
-#### Scenario: Weighted average
+#### Scenario: Over builds, not days
 
-- **WHEN** a window has 3 builds of 60 s on one day and 1 build of 300 s on another
-- **THEN** the average build duration is 120 s, not the 180 s average of the two daily averages
+- **WHEN** a window has builds of 30 s, 60 s, 90 s and 120 s spread over two days
+- **THEN** its median build duration is 75 s over 4 builds

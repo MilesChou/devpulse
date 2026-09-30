@@ -21,7 +21,7 @@ use crate::month::Month;
 use crate::notice::Notice;
 use crate::overview::{Column, Sort, change};
 use crate::settings::{self, SecretStore, Settings};
-use crate::state::{Loadable, MemberForm, Msg, RepoEdit, State, TeamForm, Window};
+use crate::state::{Loadable, MemberForm, Msg, Preset, RepoEdit, State, TeamForm, Window};
 use crate::theme::{self, Tone};
 
 /// How often to poll the server while a sync runs.
@@ -656,8 +656,25 @@ impl DashboardApp {
             if ui.button("⏵").on_hover_text(t.next_period).clicked() {
                 self.set_window(w.shift(1));
             }
-            if ui.button(t.this_month).clicked() {
-                self.set_window(Window::single(Month::current()));
+            // Common periods in one click; the label says which one the
+            // current period is, or "Custom".
+            let now = Month::current();
+            let current = Preset::matching(self.state.window, now);
+            let mut picked = None;
+            egui::ComboBox::from_id_salt("period-preset")
+                .selected_text(current.map_or(t.preset_custom, |p| preset_name(p, t)))
+                .show_ui(ui, |ui| {
+                    for p in Preset::ALL {
+                        if ui
+                            .selectable_label(current == Some(p), preset_name(p, t))
+                            .clicked()
+                        {
+                            picked = Some(p);
+                        }
+                    }
+                });
+            if let Some(p) = picked {
+                self.set_window(p.window(now));
             }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1496,7 +1513,9 @@ impl DashboardApp {
                 ui.add_space(12.0);
                 ui.columns(2, |cols| {
                     theme::card(&mut cols[0], |ui| size_chart(ui, report, t));
-                    theme::card(&mut cols[1], |ui| daily_duration_chart(ui, report, t));
+                    theme::card(&mut cols[1], |ui| {
+                        build_duration_chart(ui, report, &self.state.trend, self.state.window, t)
+                    });
                 });
 
                 ui.add_space(12.0);
@@ -1644,6 +1663,16 @@ fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi], t: &Texts) {
             }
         }
     });
+}
+
+fn preset_name(p: Preset, t: &Texts) -> &'static str {
+    match p {
+        Preset::ThisMonth => t.this_month,
+        Preset::LastMonth => t.preset_last_month,
+        Preset::ThisYear => t.preset_this_year,
+        Preset::LastTwelveMonths => t.preset_last_12,
+        Preset::LastYear => t.preset_last_year,
+    }
 }
 
 fn status_tone(status: kpi::Status) -> Tone {
@@ -1953,7 +1982,7 @@ fn size_chart(ui: &mut egui::Ui, report: &Report, t: &Texts) {
         .iter()
         .map(|b| b.bucket.clone())
         .collect();
-    let bars = report
+    let bars: Vec<Bar> = report
         .pr_size_distribution
         .iter()
         .enumerate()
@@ -1963,33 +1992,69 @@ fn size_chart(ui: &mut egui::Ui, report: &Report, t: &Texts) {
                 .width(0.6)
         })
         .collect();
+    let top = bar_headroom(&bars);
     category_plot(ui, "size", EVERY)
+        .include_y(top)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
             p.bar_chart(BarChart::new(t.series_prs, bars).color(c0))
         });
 }
 
-fn daily_duration_chart(ui: &mut egui::Ui, report: &Report, t: &Texts) {
+/// Median build time: one bar per UTC day for a single month, one per
+/// month (from the trend's monthly reports) for a longer window, where
+/// daily bars would be too many to read.
+fn build_duration_chart(
+    ui: &mut egui::Ui,
+    report: &Report,
+    trend: &Loadable<MonthlyReport>,
+    window: Window,
+    t: &Texts,
+) {
     let c0 = theme::series(ui, 0);
     chart_title(ui, t.daily_build_duration, t.help_daily);
-    ui.small(t.daily_build_caption);
-    let labels: Vec<String> = report
-        .daily_build_duration
-        .iter()
-        .map(|d| d.day.clone())
-        .collect();
-    let bars = report
-        .daily_build_duration
-        .iter()
-        .enumerate()
-        .map(|(i, d)| {
-            Bar::new(i as f64, d.avg_seconds)
-                .name((t.day_bar)(&d.day, d.count))
-                .width(0.7)
-        })
-        .collect();
-    category_plot(ui, "daily", SPARSE)
+    let (labels, bars): (Vec<String>, Vec<Bar>) = if window.is_single_month() {
+        ui.small(t.build_caption_daily);
+        report
+            .daily_build_duration
+            .iter()
+            .enumerate()
+            .map(|(i, d)| {
+                let bar = Bar::new(i as f64, d.p50_seconds)
+                    .name((t.day_bar)(&d.day, d.count))
+                    .width(0.7);
+                (d.day.clone(), bar)
+            })
+            .unzip()
+    } else {
+        ui.small(t.build_caption_monthly);
+        let Some(monthly) = trend.ready() else {
+            loadable_status(ui, trend, t);
+            return;
+        };
+        // The trend covers at least 12 months; keep the window's.
+        let (from, to) = (window.from.to_string(), window.to.to_string());
+        let months: Vec<&Report> = monthly
+            .months
+            .iter()
+            .filter(|r| r.from >= from && r.from < to)
+            .collect();
+        let labels = months.iter().map(|r| r.from.clone()).collect();
+        let bars = months
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.build_duration.count > 0)
+            .map(|(i, r)| {
+                Bar::new(i as f64, r.build_duration.p50_seconds)
+                    .name((t.month_build_bar)(&r.from, r.build_duration.count))
+                    .width(0.7)
+            })
+            .collect();
+        (labels, bars)
+    };
+    let top = bar_headroom(&bars);
+    category_plot(ui, "build-duration", SPARSE)
+        .include_y(top)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
             p.bar_chart(BarChart::new(t.series_seconds, bars).color(c0))
@@ -2014,6 +2079,7 @@ fn failure_trend_chart(
         .map(|(i, r)| [i as f64, r.build_failure.rate * 100.0])
         .collect();
     let plot = trend_plot(ui, "failure-trend", monthly)
+        .label_formatter(value_label(labels.clone(), "%"))
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
             p.line(
@@ -2051,14 +2117,17 @@ fn lead_time_trend_chart(
     let p90 = series(|r| r.pr_lead_time.p90_hours);
     let plot = trend_plot(ui, "lead-trend", monthly)
         .legend(Legend::default())
+        .label_formatter(value_label(labels.clone(), "h"))
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
+            // The median is the headline, as on the card; the mean and p90
+            // show the tail.
+            p.line(Line::new("p50", PlotPoints::from(p50)).color(c0).width(2.5));
             p.line(
                 Line::new(t.series_avg, PlotPoints::from(avg))
-                    .color(c0)
-                    .width(2.0),
+                    .color(c1)
+                    .width(1.5),
             );
-            p.line(Line::new("p50", PlotPoints::from(p50)).color(c1).width(1.5));
             p.line(Line::new("p90", PlotPoints::from(p90)).color(c2).width(1.5));
         });
     month_brush(ui, &plot, monthly.months.len())
@@ -2072,7 +2141,7 @@ fn deploy_trend_chart(
     let c0 = theme::series(ui, 0);
     chart_title(ui, t.deploys_per_week_trend, t.help_deploy_trend);
     let labels = month_labels(monthly);
-    let bars = monthly
+    let bars: Vec<Bar> = monthly
         .months
         .iter()
         .enumerate()
@@ -2085,7 +2154,9 @@ fn deploy_trend_chart(
             )
         })
         .collect();
+    let top = bar_headroom(&bars);
     let plot = trend_plot(ui, "deploy-trend", monthly)
+        .include_y(top)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
             p.bar_chart(BarChart::new(t.series_deploys, bars).color(c0))
@@ -2112,6 +2183,7 @@ fn change_failure_trend_chart(
         })
         .collect();
     let plot = trend_plot(ui, "cfr-trend", monthly)
+        .label_formatter(value_label(labels.clone(), "%"))
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
             p.line(
@@ -2217,6 +2289,13 @@ fn trend_plot(ui: &egui::Ui, id: &str, monthly: &MonthlyReport) -> Plot<'static>
 /// Opacity of the strongest grid lines relative to the text colour.
 const GRID_ALPHA: f32 = 0.3;
 
+/// Room above the tallest bar for its hover label, which egui_plot draws
+/// above the bar and would otherwise clip at the plot's top edge. Only
+/// the top grows: a symmetric margin would add a negative y range.
+fn bar_headroom(bars: &[Bar]) -> f64 {
+    bars.iter().map(|b| b.value).fold(0.0, f64::max) * 1.2
+}
+
 /// Label every category: few, short labels (the size buckets).
 const EVERY: [f64; 3] = [1.0, 1.0, 1.0];
 /// Label months or days sparsely when crowded.
@@ -2237,6 +2316,26 @@ fn short_time(ts: Option<&str>) -> String {
         Some(t) if t.len() >= 16 => format!("{} UTC", t[..16].replacen('T', " ", 1)),
         Some(t) => t.to_string(),
         None => "—".into(),
+    }
+}
+
+/// The hover label of a trend line's data point: the month, the series
+/// and the value with its unit. Away from a data point, nothing: the
+/// crosshair alone says where the pointer is.
+fn value_label(
+    months: Vec<String>,
+    unit: &'static str,
+) -> impl Fn(&egui_plot::HoverPosition<'_>) -> Option<String> {
+    move |pos| match pos {
+        egui_plot::HoverPosition::NearDataPoint {
+            plot_name,
+            position,
+            ..
+        } => {
+            let month = index_label(&months, position.x.round());
+            Some(format!("{month}\n{plot_name}: {:.1}{unit}", position.y))
+        }
+        egui_plot::HoverPosition::Elsewhere { .. } => None,
     }
 }
 
@@ -2349,5 +2448,20 @@ mod tests {
             let ok = ctx.fonts_mut(|f| f.has_glyph(&egui::FontId::proportional(14.0), c));
             assert!(ok, "{c} would render as a box");
         }
+    }
+
+    #[test]
+    fn trend_hover_label_names_month_series_and_value() {
+        let label = value_label(vec!["2026-06".into(), "2026-07".into()], "%");
+        let near = egui_plot::HoverPosition::NearDataPoint {
+            plot_name: "failure %",
+            position: egui_plot::PlotPoint::new(1.0, 9.44),
+            index: 1,
+        };
+        assert_eq!(label(&near).as_deref(), Some("2026-07\nfailure %: 9.4%"));
+        let away = egui_plot::HoverPosition::Elsewhere {
+            position: egui_plot::PlotPoint::new(0.4, 3.0),
+        };
+        assert_eq!(label(&away), None);
     }
 }

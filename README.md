@@ -193,7 +193,7 @@ definitions and limitations are in
 (egui) that reads the `devpulse serve` API: KPI cards for CI failure
 rate, builds per PR, PR lead time and review wait (each with its ideal
 value and month-over-month change), the four DORA metrics, PR size
-distribution, daily build duration, 12-month trends, and a per-member
+distribution, median build time, 12-month trends, and a per-member
 breakdown. Any view can be limited to one team or member. Its **Repos**
 page adds, configures, syncs, and removes tracked repos; its **People**
 page maps GitHub accounts to members and teams and lists the bot

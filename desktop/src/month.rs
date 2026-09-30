@@ -40,6 +40,14 @@ impl Month {
     }
 
     /// Shifts by `n` months (negative goes back).
+    /// January of this month's year.
+    pub fn january(self) -> Self {
+        Self {
+            year: self.year,
+            month: 1,
+        }
+    }
+
     pub fn add(self, n: i32) -> Self {
         let index = self.year * 12 + self.month as i32 - 1 + n;
         Self {

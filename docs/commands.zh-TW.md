@@ -233,7 +233,7 @@ devpulse pr sync MilesChou/devpulse 42
 devpulse metrics <owner/name> [--from YYYY-MM] [--to YYYY-MM]
 ```
 
-印出指定 repo 在月份區間內的工程效率指標：CI 失敗率（僅計 PR builds）、每 PR 平均建置次數、PR lead time（平均 / p50 / p90）、review 等待時間、PR 大小分布、每日平均建置時長，以及四項 DORA 指標（見 [DORA 定義](#dora-定義)）。
+印出指定 repo 在月份區間內的工程效率指標：CI 失敗率（僅計 PR builds）、每 PR 平均建置次數、PR lead time（平均 / p50 / p90）、review 等待時間、PR 大小分布、建置時間（中位數、平均、p90，以及每日中位數），以及四項 DORA 指標（見 [DORA 定義](#dora-定義)）。
 
 `--from` 預設為當前月份；`--to` 為排除上界，預設為 `--from` 的下一個月。
 
@@ -262,10 +262,11 @@ Avg Builds per PR:      2.4
 PR Lead Time:           avg 18.2h  p50 6.1h  p90 52.0h  (10 PRs)
 Review Wait Time:       avg 3.4h (8 PRs)
 PR Size Distribution:   XS:4  S:3  M:2  L:1
+Build Duration:         p50 76s  avg 77s  p90 95s  (10 builds)
 
-Daily Build Duration (avg seconds):
-  2026-05-02: 74s (6 builds)
-  2026-05-03: 81s (4 builds)
+Daily Build Duration (median seconds):
+  2026-05-02: 72s (6 builds)
+  2026-05-03: 80s (4 builds)
 
 DORA (deployment = PR merged into default branch)
 ────────────────────────────────────────
@@ -282,7 +283,7 @@ Recovery Time:          avg 2.8h  p50 2.8h  p90 3.0h  (2 samples)  from reverts=
 | 指標 | 定義 |
 |---|---|
 | Deployment Frequency（部署頻率） | merge 進 repo default branch 的 PR 數量，另外換算成每週次數，並列出有部署的 UTC 日數。查詢期間還沒結束時（預設的本月），每週次數只以目前已經過的天數計算。 |
-| Lead Time for Changes（變更前置時間） | PR 中最早的 commit **author** 時間 → merge。author 時間在 rebase 後仍會保留。每個 PR 只看前 100 個 commit。負值（時鐘誤差）視為 0。 |
+| Lead Time for Changes（介面上稱「commit 到部署」） | PR 中最早的 commit **author** 時間 → merge。author 時間在 rebase 後仍會保留。每個 PR 只看前 100 個 commit。負值（時鐘誤差）視為 0。 |
 | Change Failure Rate（變更失敗率） | （revert + hotfix 部署數）÷ 部署數。**Revert**：標題以 "revert" 這個字開頭，後面接空白、`:`、`(`、`"`、`!` 或直接結束（`Revert "x"`、`revert: x`、`revert(api): x` 會算，`Revert-safe helper`、`revert/cleanup` 不算）。revert 一個 revert 等於把變更重新上線，所以 `Revert "Revert "x""` 不算 revert（巢狀 `Revert "…"` 的層數是奇數才算）。**Hotfix**：帶有 `hotfix-label`，或 head branch 以 `hotfix/` 開頭。同時符合兩者只算一次。沒有部署時顯示 `n/a`。 |
 | Recovery Time（失敗部署恢復時間） | 資料來源有兩種：body 寫著 `Reverts owner/repo#N` 的 revert PR（GitHub revert 按鈕產生的格式），計算 #N merge 到 revert merge 的時間；以及帶 `incident-label` 的 issue，計算開啟到關閉的時間。尚未關閉的事故不列入。 |
 
@@ -438,7 +439,7 @@ Repo 物件也會帶上設定值：`pr_start`、`incident_label`、`hotfix_label
 | `GET /api/v1/overview/repos?from=&to=` | 比較列，每個 repo 一列：`{from, to, previous:{from, to}, rows:[{repo, current, previous, monthly:[{month, summary}]}]}` |
 | `GET /api/v1/overview/members?from=&to=` | 同樣的格式，但以人為單位跨所有 repo：在本期或前期有活動的成員，接著是沒有對應成員的活躍帳號（`member_id: null`）；每列帶 `member_id, name, accounts`，沒有 `repo` |
 
-`previous` 是緊接在 `from` 之前、月數相同的期間；`monthly` 是結束於 `to` 的 12 個月，給趨勢小圖用。summary 包含 `prs_opened`、`prs_merged`、`lead_time_hours`、`builds_per_pr`、`ci_failure_rate`（0–1）、`avg_build_seconds`（以每次 build 計算，所以 build 多的日子權重較大）、`review_wait_hours`，repo 列另外有 `deploys_per_week`。某個指標在該期間沒有資料時為 `null`，不會是 0。排除的帳號不會出現。
+`previous` 是緊接在 `from` 之前、月數相同的期間；`monthly` 是結束於 `to` 的 12 個月，給趨勢小圖用。summary 包含 `prs_opened`、`prs_merged`、`lead_time_p50_hours`（中位數，避免少數開了好幾週的 PR 主導比較）、`builds_per_pr`、`ci_failure_rate`（0–1）、`build_p50_seconds`（建置時間的中位數）、`review_wait_hours`，repo 列另外有 `deploys_per_week`。某個指標在該期間沒有資料時為 `null`，不會是 0。排除的帳號不會出現。
 
 帳號會被正規化：轉成小寫，並去掉結尾的 `[bot]`。這是因為 GitHub 的 REST API 把 bot 稱為 `dependabot[bot]`，GraphQL API 則稱同一個 bot 為 `dependabot`。一個帳號最多屬於一位成員，成員名稱和團隊名稱都不能重複，衝突時回傳 `409`。
 
