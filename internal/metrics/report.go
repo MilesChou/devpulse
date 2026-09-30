@@ -34,18 +34,19 @@ const unknownBucket = "unknown"
 // Source is the subset of persistence.MetricsPersister the report
 // needs. Declared here, with the consumer, so tests can substitute it.
 type Source interface {
-	BuildFailureRate(ctx context.Context, repoID string, from, to time.Time) (total, failed int, rate float64, err error)
-	AverageBuildsPerPR(ctx context.Context, repoID string, from, to time.Time) (float64, error)
-	PRLeadTime(ctx context.Context, repoID string, from, to time.Time) (count int, avgHours, p50Hours, p90Hours float64, err error)
-	ReviewWaitTime(ctx context.Context, repoID string, from, to time.Time) (count int, avgHours float64, err error)
-	PRSizeDistribution(ctx context.Context, repoID string, from, to time.Time) (map[string]int, error)
-	DailyBuildDuration(ctx context.Context, repoID string, from, to time.Time) ([]persistence.DayDuration, error)
+	BuildFailureRate(ctx context.Context, repoIDs []string, from, to time.Time) (total, failed int, rate float64, err error)
+	AverageBuildsPerPR(ctx context.Context, repoIDs []string, from, to time.Time) (float64, error)
+	PRLeadTime(ctx context.Context, repoIDs []string, from, to time.Time) (count int, avgHours, p50Hours, p90Hours float64, err error)
+	ReviewWaitTime(ctx context.Context, repoIDs []string, from, to time.Time) (count int, avgHours float64, err error)
+	PRSizeDistribution(ctx context.Context, repoIDs []string, from, to time.Time) (map[string]int, error)
+	DailyBuildDuration(ctx context.Context, repoIDs []string, from, to time.Time) ([]persistence.DayDuration, error)
 	DORAInput(ctx context.Context, repoID, defaultBranch string, from, to time.Time) (dora.Input, error)
 }
 
 var _ Source = (*persistence.MetricsPersister)(nil)
 
-// Report is every metric for one repo over the [From, To) month window.
+// Report is every metric for one repo, or all repos, over the [From, To)
+// month window.
 // The JSON shape is the HTTP API contract; the desktop dashboard
 // decodes it, so renaming a tag is a breaking change for that client.
 type Report struct {
@@ -226,47 +227,47 @@ func ElapsedEnd(to, now time.Time) time.Time {
 	return to
 }
 
-// Compute runs every metric query for one repo over the window. now
+// Compute runs every metric query for the target over the window. now
 // bounds a window that is still in progress (see ElapsedEnd). scope is
 // nil for everyone; otherwise src must be limited to scope.Accounts.
-func Compute(ctx context.Context, src Source, rp repo.Repo, w Window, now time.Time, scope *Scope) (Report, error) {
-	repoID := rp.ID
+func Compute(ctx context.Context, src Source, t Target, w Window, now time.Time, scope *Scope) (Report, error) {
+	repoIDs := t.ids()
 	r := Report{
-		Repo:  rp.Name.String(),
+		Repo:  t.Name(),
 		Scope: scope,
 		From:  w.From.Format(monthLayout),
 		To:    w.To.Format(monthLayout),
 	}
 
-	total, failed, rate, err := src.BuildFailureRate(ctx, repoID, w.From, w.To)
+	total, failed, rate, err := src.BuildFailureRate(ctx, repoIDs, w.From, w.To)
 	if err != nil {
 		return Report{}, err
 	}
 	r.BuildFailure = BuildFailure{Total: total, Failed: failed, Rate: rate}
 
-	if r.AvgBuildsPerPR, err = src.AverageBuildsPerPR(ctx, repoID, w.From, w.To); err != nil {
+	if r.AvgBuildsPerPR, err = src.AverageBuildsPerPR(ctx, repoIDs, w.From, w.To); err != nil {
 		return Report{}, err
 	}
 
-	count, avgH, p50H, p90H, err := src.PRLeadTime(ctx, repoID, w.From, w.To)
+	count, avgH, p50H, p90H, err := src.PRLeadTime(ctx, repoIDs, w.From, w.To)
 	if err != nil {
 		return Report{}, err
 	}
 	r.PRLeadTime = HoursSummary{Count: count, AvgHours: avgH, P50Hours: p50H, P90Hours: p90H}
 
-	rwCount, rwAvgH, err := src.ReviewWaitTime(ctx, repoID, w.From, w.To)
+	rwCount, rwAvgH, err := src.ReviewWaitTime(ctx, repoIDs, w.From, w.To)
 	if err != nil {
 		return Report{}, err
 	}
 	r.ReviewWait = ReviewWait{Count: rwCount, AvgHours: rwAvgH}
 
-	dist, err := src.PRSizeDistribution(ctx, repoID, w.From, w.To)
+	dist, err := src.PRSizeDistribution(ctx, repoIDs, w.From, w.To)
 	if err != nil {
 		return Report{}, err
 	}
 	r.PRSizeDistribution = orderSizeDistribution(dist)
 
-	days, err := src.DailyBuildDuration(ctx, repoID, w.From, w.To)
+	days, err := src.DailyBuildDuration(ctx, repoIDs, w.From, w.To)
 	if err != nil {
 		return Report{}, err
 	}
@@ -279,7 +280,7 @@ func Compute(ctx context.Context, src Source, rp repo.Repo, w Window, now time.T
 		})
 	}
 
-	if rp.DefaultBranch != "" && scope == nil {
+	if rp, ok := t.single(); ok && rp.DefaultBranch != "" && scope == nil {
 		if r.DORA, err = computeDORA(ctx, src, rp, w, now); err != nil {
 			return Report{}, err
 		}
@@ -316,13 +317,13 @@ func computeDORA(ctx context.Context, src Source, rp repo.Repo, w Window, now ti
 
 // ComputeMonthly returns one Report per month of the window, oldest
 // first, for month-over-month trends.
-func ComputeMonthly(ctx context.Context, src Source, rp repo.Repo, w Window, now time.Time, scope *Scope) ([]Report, error) {
+func ComputeMonthly(ctx context.Context, src Source, t Target, w Window, now time.Time, scope *Scope) ([]Report, error) {
 	if err := w.CheckTrend(); err != nil {
 		return nil, err
 	}
 	out := make([]Report, 0, w.Months())
 	for m := w.From; m.Before(w.To); m = m.AddDate(0, 1, 0) {
-		r, err := Compute(ctx, src, rp, Window{From: m, To: m.AddDate(0, 1, 0)}, now, scope)
+		r, err := Compute(ctx, src, t, Window{From: m, To: m.AddDate(0, 1, 0)}, now, scope)
 		if err != nil {
 			return nil, err
 		}

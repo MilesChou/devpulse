@@ -141,6 +141,102 @@ pub struct ByMember {
     pub rows: Vec<Row>,
 }
 
+/// What a report covers: one repo, or every tracked, enabled repo
+/// pooled together (the server's `*` report, which has no DORA).
+/// The size difference between the variants is fine: the app holds one
+/// `Target` at a time, never a collection of them.
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum Target {
+    Repo(Repo),
+    All,
+}
+
+impl Target {
+    /// The key stored as the last selection: `owner/name`, or `*`.
+    pub const ALL_KEY: &'static str = "*";
+
+    pub fn repo(&self) -> Option<&Repo> {
+        match self {
+            Self::Repo(r) => Some(r),
+            Self::All => None,
+        }
+    }
+
+    pub fn key(&self) -> &str {
+        match self {
+            Self::Repo(r) => &r.full_name,
+            Self::All => Self::ALL_KEY,
+        }
+    }
+
+    fn metrics_path(&self) -> String {
+        match self {
+            Self::Repo(r) => format!("/api/v1/repos/{}/{}/metrics", r.owner, r.name),
+            Self::All => "/api/v1/metrics".into(),
+        }
+    }
+}
+
+/// One set of comparison cells. A metric is `None` when the period has
+/// no data for it; counts are plain numbers.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct Summary {
+    pub prs_opened: u64,
+    pub prs_merged: u64,
+    pub lead_time_hours: Option<f64>,
+    pub builds_per_pr: Option<f64>,
+    /// 0..=1.
+    pub ci_failure_rate: Option<f64>,
+    pub avg_build_seconds: Option<f64>,
+    pub review_wait_hours: Option<f64>,
+    /// Repo rows only.
+    pub deploys_per_week: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MonthSummary {
+    pub month: String,
+    pub summary: Summary,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Period {
+    pub from: String,
+    pub to: String,
+}
+
+/// One repo of the repo overview.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct RepoRow {
+    pub repo: String,
+    pub current: Summary,
+    pub previous: Summary,
+    pub monthly: Vec<MonthSummary>,
+}
+
+/// One member, or an active account no member claims (`member_id`
+/// `None`, `name` = the account), of the member overview.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct MemberRow {
+    pub member_id: Option<String>,
+    pub name: String,
+    pub accounts: Vec<String>,
+    pub current: Summary,
+    pub previous: Summary,
+    pub monthly: Vec<MonthSummary>,
+}
+
+/// The answer of an overview endpoint: the period, the previous period
+/// of the same length, and the rows.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Overview<R> {
+    pub from: String,
+    pub to: String,
+    pub previous: Period,
+    pub rows: Vec<R>,
+}
+
 /// Whose work to limit metrics to.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum ScopeParam {
@@ -148,6 +244,8 @@ pub enum ScopeParam {
     Everyone,
     Member(String),
     Team(String),
+    /// An account no member claims yet.
+    Account(String),
 }
 
 impl ScopeParam {
@@ -156,6 +254,7 @@ impl ScopeParam {
             Self::Everyone => None,
             Self::Member(id) => Some(("member", id)),
             Self::Team(id) => Some(("team", id)),
+            Self::Account(a) => Some(("account", a)),
         }
     }
 }
@@ -359,24 +458,31 @@ impl Client {
 
     pub fn metrics(
         &self,
-        repo: &Repo,
+        target: &Target,
         from: Month,
         to: Month,
         scope: &ScopeParam,
     ) -> Result<Report, ApiError> {
-        let path = format!("/api/v1/repos/{}/{}/metrics", repo.owner, repo.name);
-        self.get_scoped(&path, Some((from, to)), scope)
+        self.get_scoped(&target.metrics_path(), Some((from, to)), scope)
     }
 
     pub fn monthly_metrics(
         &self,
-        repo: &Repo,
+        target: &Target,
         from: Month,
         to: Month,
         scope: &ScopeParam,
     ) -> Result<MonthlyReport, ApiError> {
-        let path = format!("/api/v1/repos/{}/{}/metrics/monthly", repo.owner, repo.name);
+        let path = format!("{}/monthly", target.metrics_path());
         self.get_scoped(&path, Some((from, to)), scope)
+    }
+
+    pub fn repo_overview(&self, from: Month, to: Month) -> Result<Overview<RepoRow>, ApiError> {
+        self.get("/api/v1/overview/repos", Some((from, to)))
+    }
+
+    pub fn member_overview(&self, from: Month, to: Month) -> Result<Overview<MemberRow>, ApiError> {
+        self.get("/api/v1/overview/members", Some((from, to)))
     }
 
     pub fn metrics_by_member(
@@ -726,7 +832,12 @@ mod tests {
         let client = Client::new(&url, " tok ");
         let from: Month = "2026-05".parse().unwrap();
         let report = client
-            .metrics(&repo(), from, from.next(), &ScopeParam::Everyone)
+            .metrics(
+                &Target::Repo(repo()),
+                from,
+                from.next(),
+                &ScopeParam::Everyone,
+            )
             .expect("metrics");
         assert_eq!(report.repo, "MilesChou/devpulse");
 
@@ -755,7 +866,7 @@ mod tests {
         let (url, _) = serve_once(404, r#"{"error":"repo acme/x is not tracked"}"#);
         let err = Client::new(&url, "x")
             .monthly_metrics(
-                &repo(),
+                &Target::Repo(repo()),
                 "2026-01".parse().unwrap(),
                 "2026-02".parse().unwrap(),
                 &ScopeParam::Everyone,
@@ -864,7 +975,12 @@ mod tests {
         let (url, head) = serve_once(200, GOLDEN_METRICS);
         let from: Month = "2026-05".parse().unwrap();
         Client::new(&url, "t")
-            .metrics(&repo(), from, from.next(), &ScopeParam::Team("01T".into()))
+            .metrics(
+                &Target::Repo(repo()),
+                from,
+                from.next(),
+                &ScopeParam::Team("01T".into()),
+            )
             .expect("metrics");
         let head = head.recv().unwrap();
         assert!(
@@ -929,6 +1045,41 @@ mod tests {
         assert_eq!(
             ApiError::Transport("refused".into()).describe(&ZH_TW),
             "無法連上伺服器：refused"
+        );
+    }
+
+    #[test]
+    fn decodes_go_overview_goldens() {
+        let repos: Overview<RepoRow> = serde_json::from_str(include_str!(
+            "../../internal/http/testdata/overview_repos.json"
+        ))
+        .unwrap();
+        assert_eq!(repos.previous.from, "2026-04");
+        let row = &repos.rows[0];
+        assert_eq!(row.repo, "MilesChou/devpulse");
+        assert_eq!(row.monthly.len(), 12);
+        assert_eq!(row.current.avg_build_seconds, Some(75.0));
+        assert!(row.current.deploys_per_week.is_some());
+        assert_eq!(row.previous.lead_time_hours, None, "no data is null");
+
+        let members: Overview<MemberRow> = serde_json::from_str(include_str!(
+            "../../internal/http/testdata/overview_members.json"
+        ))
+        .unwrap();
+        let alice = &members.rows[0];
+        assert_eq!(alice.name, "Alice");
+        assert!(alice.member_id.is_some());
+        assert_eq!(alice.current.deploys_per_week, None);
+    }
+
+    #[test]
+    fn target_paths() {
+        assert_eq!(Target::All.metrics_path(), "/api/v1/metrics");
+        assert_eq!(Target::All.key(), "*");
+        let r = repo();
+        assert_eq!(
+            Target::Repo(r.clone()).metrics_path(),
+            format!("/api/v1/repos/{}/{}/metrics", r.owner, r.name)
         );
     }
 }

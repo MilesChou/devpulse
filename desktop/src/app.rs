@@ -12,11 +12,14 @@ use egui_plot::{
     uniform_grid_spacer,
 };
 
-use crate::api::{ByMember, Client, MonthlyReport, Repo, Report, ScopeParam};
+use crate::api::{
+    ByMember, Client, MemberRow, MonthlyReport, Repo, RepoRow, Report, ScopeParam, Summary, Target,
+};
 use crate::i18n::{Lang, Texts};
 use crate::kpi::{self, Direction, Kpi};
 use crate::month::Month;
 use crate::notice::Notice;
+use crate::overview::{Column, Sort, change};
 use crate::settings::{self, SecretStore, Settings};
 use crate::state::{Loadable, MemberForm, Msg, RepoEdit, State, TeamForm, Window};
 
@@ -26,6 +29,7 @@ const SYNC_POLL: Duration = Duration::from_secs(2);
 /// The page shown in the central panel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum View {
+    Overview,
     Dashboard,
     Repos,
     People,
@@ -90,6 +94,9 @@ pub struct DashboardApp {
 
     // Repos page.
     view: View,
+    /// How the Overview's two tables are sorted.
+    repo_sort: Sort,
+    member_sort: Sort,
     add_input: String,
     editing: Option<RepoEdit>,
     /// `owner/name` awaiting a second click to confirm removal.
@@ -146,7 +153,9 @@ impl DashboardApp {
             show_settings: false,
             token_input: String::new(),
             notice: None,
-            view: View::Dashboard,
+            view: View::Overview,
+            repo_sort: Sort::new(Column::CiFailureRate),
+            member_sort: Sort::new(Column::PrsOpened),
             add_input: String::new(),
             editing: None,
             confirm_remove: None,
@@ -270,7 +279,7 @@ impl DashboardApp {
     }
 
     fn load_metrics(&mut self) {
-        let (Some(client), Some(repo)) = (self.client(), self.state.selected.clone()) else {
+        let (Some(client), Some(target)) = (self.client(), self.state.selected.clone()) else {
             return;
         };
         let generation = self.state.begin_metrics_load();
@@ -278,10 +287,10 @@ impl DashboardApp {
 
         let scope = self.state.scope.clone();
 
-        let (c, r, s) = (client.clone(), repo.clone(), scope.clone());
-        self.spawn(move || Msg::Report(generation, c.metrics(&r, window.from, window.to, &s)));
+        let (c, tg, s) = (client.clone(), target.clone(), scope.clone());
+        self.spawn(move || Msg::Report(generation, c.metrics(&tg, window.from, window.to, &s)));
 
-        if scope == ScopeParam::Everyone {
+        if let (Target::Repo(repo), ScopeParam::Everyone) = (&target, &scope) {
             let (c, r) = (client.clone(), repo.clone());
             self.spawn(move || {
                 Msg::ByMember(generation, c.metrics_by_member(&r, window.from, window.to))
@@ -292,9 +301,31 @@ impl DashboardApp {
         self.spawn(move || {
             Msg::Trend(
                 generation,
-                client.monthly_metrics(&repo, trend.from, trend.to, &scope),
+                client.monthly_metrics(&target, trend.from, trend.to, &scope),
             )
         });
+    }
+
+    /// Loads the Overview's comparison tables for the current window.
+    fn load_overview(&mut self) {
+        let Some(client) = self.client() else { return };
+        let generation = self.state.begin_overview_load();
+        let window = self.state.window;
+        let c = client.clone();
+        self.spawn(move || Msg::RepoOverview(generation, c.repo_overview(window.from, window.to)));
+        self.spawn(move || {
+            Msg::MemberOverview(generation, client.member_overview(window.from, window.to))
+        });
+    }
+
+    /// Opens the Dashboard for a target and scope, remembering the target.
+    fn open_dashboard(&mut self, target: Target, scope: ScopeParam) {
+        self.settings.last_repo = Some(target.key().to_string());
+        self.persist_settings();
+        self.state.select(target);
+        self.state.scope = scope;
+        self.view = View::Dashboard;
+        self.load_metrics();
     }
 
     /// Loads members, teams and excluded accounts.
@@ -379,6 +410,7 @@ impl DashboardApp {
         self.from_input = window.from.to_string();
         self.to_input = window.to.to_string();
         self.load_metrics();
+        self.load_overview();
     }
 
     /// Saves the URL to the settings file and the token to the keychain,
@@ -463,13 +495,18 @@ impl DashboardApp {
         let Some(last) = self.settings.last_repo.clone() else {
             return;
         };
+        if last == Target::ALL_KEY {
+            self.state.select(Target::All);
+            self.load_metrics();
+            return;
+        }
         let found = self
             .state
             .repos
             .ready()
             .and_then(|repos| repos.iter().find(|r| r.full_name == last).cloned());
         if let Some(repo) = found {
-            self.state.select(repo);
+            self.state.select(Target::Repo(repo));
             self.load_metrics();
         }
     }
@@ -495,6 +532,9 @@ impl eframe::App for DashboardApp {
             let applied = self.state.apply(msg);
             if repos_arrived {
                 self.restore_last_repo();
+                if matches!(self.state.repo_overview, Loadable::Idle) {
+                    self.load_overview();
+                }
             }
             if (excluded_loaded || excluded_saved)
                 && let Some(accounts) = self.state.excluded.ready()
@@ -529,6 +569,10 @@ impl eframe::App for DashboardApp {
             if applied.reload_metrics {
                 self.load_metrics();
             }
+            // New data, repos or people change the comparison tables too.
+            if applied.reload_metrics || applied.reload_repos {
+                self.load_overview();
+            }
         }
         self.poll_sync();
     }
@@ -547,6 +591,7 @@ impl eframe::App for DashboardApp {
             .show(ui, |ui| self.repo_list(ui));
         egui::CentralPanel::default().show(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| match self.view {
+                View::Overview => self.overview_page(ui),
                 View::Dashboard => self.dashboard(ui),
                 View::Repos => self.repos_page(ui),
                 View::People => self.people_page(ui),
@@ -563,13 +608,14 @@ impl DashboardApp {
         ui.horizontal(|ui| {
             ui.heading("DevPulse");
             ui.separator();
+            ui.selectable_value(&mut self.view, View::Overview, t.view_overview);
             ui.selectable_value(&mut self.view, View::Dashboard, t.view_dashboard);
             ui.selectable_value(&mut self.view, View::Repos, t.view_repos);
             ui.selectable_value(&mut self.view, View::People, t.view_people);
             ui.separator();
 
             let w = self.state.window;
-            if ui.button("◀").on_hover_text(t.previous_period).clicked() {
+            if ui.button("⏴").on_hover_text(t.previous_period).clicked() {
                 self.set_window(w.shift(-1));
             }
             ui.label(t.from);
@@ -591,7 +637,7 @@ impl DashboardApp {
                     }
                 }
             }
-            if ui.button("▶").on_hover_text(t.next_period).clicked() {
+            if ui.button("⏵").on_hover_text(t.next_period).clicked() {
                 self.set_window(w.shift(1));
             }
             if ui.button(t.this_month).clicked() {
@@ -610,6 +656,7 @@ impl DashboardApp {
                 if ui.button(t.refresh).clicked() {
                     self.load_repos();
                     self.load_metrics();
+                    self.load_overview();
                 }
                 if self.state.report.is_loading() || self.state.repos.is_loading() {
                     ui.spinner();
@@ -717,8 +764,16 @@ impl DashboardApp {
             }
             Loadable::Ready(repos) => {
                 egui::ScrollArea::vertical().show(ui, |ui| {
+                    let all = self.state.selected == Some(Target::All);
+                    if ui
+                        .selectable_label(all, RichText::new(t.all_repos).strong())
+                        .clicked()
+                    {
+                        clicked = Some(Target::All);
+                    }
+                    ui.separator();
                     for repo in repos {
-                        let selected = self.state.selected.as_ref() == Some(repo);
+                        let selected = self.state.selected_repo() == Some(repo);
                         let mut text = RichText::new(&repo.full_name);
                         if repo.disabled {
                             text = text.weak().italics();
@@ -729,17 +784,18 @@ impl DashboardApp {
                             _ => resp,
                         };
                         if resp.clicked() {
-                            clicked = Some(repo.clone());
+                            clicked = Some(Target::Repo(repo.clone()));
                         }
                     }
                 });
             }
         }
-        if let Some(repo) = clicked
-            && self.state.select(repo.clone())
+        if let Some(target) = clicked
+            && self.state.select(target.clone())
         {
-            self.settings.last_repo = Some(repo.full_name);
+            self.settings.last_repo = Some(target.key().to_string());
             self.persist_settings();
+            self.view = View::Dashboard;
             self.load_metrics();
         }
     }
@@ -756,6 +812,9 @@ impl DashboardApp {
             .selected_text(self.state.scope_label(&before, t))
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut scope, ScopeParam::Everyone, t.everyone);
+                if let ScopeParam::Account(a) = &before {
+                    ui.selectable_value(&mut scope, before.clone(), a.as_str());
+                }
                 for team in &teams {
                     ui.selectable_value(
                         &mut scope,
@@ -870,6 +929,108 @@ impl DashboardApp {
                     ui.end_row();
                 }
             });
+    }
+
+    fn overview_page(&mut self, ui: &mut egui::Ui) {
+        let t = self.lang.texts();
+        ui.heading(format!(
+            "{} · {}",
+            t.view_overview,
+            self.state.window.label()
+        ));
+        if let Some(ov) = self.state.repo_overview.ready() {
+            let prev = crate::state::Window {
+                from: ov.previous.from.parse().unwrap_or(self.state.window.from),
+                to: ov.previous.to.parse().unwrap_or(self.state.window.from),
+            };
+            ui.small((t.compared_with)(&prev.label()));
+        }
+        ui.add_space(8.0);
+
+        ui.heading(t.repo_comparison);
+        let repo_rows: Option<Vec<RepoRow>> = match &self.state.repo_overview {
+            Loadable::Ready(ov) => Some(ov.rows.clone()),
+            other => {
+                loadable_status(ui, other, t);
+                None
+            }
+        };
+        if let Some(rows) = repo_rows {
+            let table: Vec<TableRow> = rows
+                .iter()
+                .map(|r| TableRow {
+                    name: &r.repo,
+                    unmapped: false,
+                    current: &r.current,
+                    previous: &r.previous,
+                    monthly: &r.monthly,
+                })
+                .collect();
+            let action = comparison_table(
+                ui,
+                "repo-overview",
+                t.col_repo,
+                t.open_repo_hover,
+                &Column::REPOS,
+                &mut self.repo_sort,
+                &table,
+                t,
+            );
+            if let Some(RowAction::Open(i)) = action {
+                let repo = self
+                    .state
+                    .repos
+                    .ready()
+                    .and_then(|rs| rs.iter().find(|r| r.full_name == rows[i].repo).cloned());
+                if let Some(repo) = repo {
+                    self.open_dashboard(Target::Repo(repo), ScopeParam::Everyone);
+                }
+            }
+        }
+
+        ui.add_space(16.0);
+        ui.separator();
+        ui.heading(t.member_comparison);
+        let member_rows: Option<Vec<MemberRow>> = match &self.state.member_overview {
+            Loadable::Ready(ov) => Some(ov.rows.clone()),
+            other => {
+                loadable_status(ui, other, t);
+                None
+            }
+        };
+        if let Some(rows) = member_rows {
+            let table: Vec<TableRow> = rows
+                .iter()
+                .map(|r| TableRow {
+                    name: &r.name,
+                    unmapped: r.member_id.is_none(),
+                    current: &r.current,
+                    previous: &r.previous,
+                    monthly: &r.monthly,
+                })
+                .collect();
+            let action = comparison_table(
+                ui,
+                "member-overview",
+                t.col_name,
+                t.open_member_hover,
+                &Column::MEMBERS,
+                &mut self.member_sort,
+                &table,
+                t,
+            );
+            match action {
+                Some(RowAction::Open(i)) => {
+                    let scope = match rows[i].member_id.clone() {
+                        Some(id) => ScopeParam::Member(id),
+                        None => ScopeParam::Account(rows[i].name.clone()),
+                    };
+                    self.open_dashboard(Target::All, scope);
+                }
+                Some(RowAction::Map(i)) => self.map_account(&rows[i].name),
+                None => {}
+            }
+        }
     }
 
     fn people_page(&mut self, ui: &mut egui::Ui) {
@@ -1225,10 +1386,9 @@ impl DashboardApp {
         let t = self.lang.texts();
         match &self.state.sync {
             Loadable::Failed(e) => {
-                ui.colored_label(
-                    ui.visuals().warn_fg_color,
-                    (t.sync_unavailable)(&e.describe(t)),
-                );
+                // The server's own words stay available on hover.
+                ui.colored_label(ui.visuals().warn_fg_color, t.sync_unavailable)
+                    .on_hover_text(e.describe(t));
             }
             Loadable::Ready(s) if !s.running.is_empty() => {
                 ui.horizontal(|ui| {
@@ -1256,17 +1416,17 @@ impl DashboardApp {
 
     fn dashboard(&mut self, ui: &mut egui::Ui) {
         let t = self.lang.texts();
-        let Some(repo) = self.state.selected.clone() else {
+        let Some(target) = self.state.selected.clone() else {
             ui.label(t.select_repo);
             return;
         };
+        let name = match &target {
+            Target::Repo(r) => r.full_name.clone(),
+            Target::All => t.all_repos.to_string(),
+        };
         let changed = ui
             .horizontal(|ui| {
-                ui.heading(format!(
-                    "{} · {}",
-                    repo.full_name,
-                    self.state.window.label()
-                ));
+                ui.heading(format!("{name} · {}", self.state.window.label()));
                 ui.separator();
                 ui.label(t.show);
                 self.scope_picker(ui)
@@ -1275,7 +1435,7 @@ impl DashboardApp {
         if changed {
             self.load_metrics();
         }
-        if repo.disabled {
+        if target.repo().is_some_and(|r| r.disabled) {
             ui.colored_label(ui.visuals().warn_fg_color, t.repo_disabled);
         }
         ui.add_space(8.0);
@@ -1298,7 +1458,10 @@ impl DashboardApp {
 
                 ui.add_space(12.0);
                 ui.separator();
-                if self.state.scope == ScopeParam::Everyone {
+                if target == Target::All {
+                    ui.heading("DORA");
+                    ui.label(t.dora_needs_repo);
+                } else if self.state.scope == ScopeParam::Everyone {
                     dora_section(ui, report, self.state.previous_month(), t);
                 } else {
                     ui.heading("DORA");
@@ -1310,7 +1473,17 @@ impl DashboardApp {
         if self.state.scope == ScopeParam::Everyone {
             ui.add_space(12.0);
             ui.separator();
-            self.by_member_section(ui);
+            if target == Target::All {
+                ui.heading(t.by_member);
+                ui.horizontal(|ui| {
+                    ui.label(t.breakdown_on_overview);
+                    if ui.button(t.go_to_overview).clicked() {
+                        self.view = View::Overview;
+                    }
+                });
+            } else {
+                self.by_member_section(ui);
+            }
         }
 
         ui.add_space(12.0);
@@ -1488,6 +1661,176 @@ fn info_icon(ui: &mut egui::Ui, help: &str) {
             ui.set_max_width(ui.spacing().tooltip_width);
             ui.label(help);
         });
+    }
+}
+
+/// Spinner, error, or nothing, for a value that is not ready.
+fn loadable_status<T>(ui: &mut egui::Ui, l: &Loadable<T>, t: &Texts) {
+    match l {
+        Loadable::Loading => {
+            ui.spinner();
+        }
+        Loadable::Failed(e) => {
+            ui.colored_label(ui.visuals().error_fg_color, e.describe(t));
+        }
+        Loadable::Idle | Loadable::Ready(_) => {}
+    }
+}
+
+/// One line of an Overview table, whatever it compares.
+struct TableRow<'a> {
+    name: &'a str,
+    /// An account no member claims: shown in italics with Map….
+    unmapped: bool,
+    current: &'a Summary,
+    previous: &'a Summary,
+    monthly: &'a [crate::api::MonthSummary],
+}
+
+/// What the user did in an Overview table, by row index.
+enum RowAction {
+    Open(usize),
+    Map(usize),
+}
+
+/// A sortable comparison table: name, one cell per column (value and
+/// change against the previous period), and a sparkline of the sorted
+/// column.
+#[allow(clippy::too_many_arguments)]
+fn comparison_table(
+    ui: &mut egui::Ui,
+    id: &str,
+    name_title: &str,
+    open_hover: &str,
+    columns: &[Column],
+    sort: &mut Sort,
+    rows: &[TableRow],
+    t: &Texts,
+) -> Option<RowAction> {
+    if rows.is_empty() {
+        ui.label(t.no_overview_rows);
+        return None;
+    }
+    let mut order: Vec<usize> = (0..rows.len()).collect();
+    order.sort_by(|&a, &b| sort.compare(rows[a].current, rows[b].current));
+
+    let mut action = None;
+    egui::ScrollArea::horizontal().id_salt(id).show(ui, |ui| {
+        egui::Grid::new(id)
+            .striped(true)
+            .spacing([16.0, 6.0])
+            .show(ui, |ui| {
+                ui.label(RichText::new(name_title).strong());
+                for &col in columns {
+                    ui.horizontal(|ui| {
+                        let sorted = sort.column == col;
+                        let arrow = match (sorted, sort.worst_first) {
+                            (false, _) => "",
+                            (true, true) => " ⏷",
+                            (true, false) => " ⏶",
+                        };
+                        let label = RichText::new(format!("{}{arrow}", col.title(t))).strong();
+                        if ui
+                            .selectable_label(sorted, label)
+                            .on_hover_text(t.sort_hover)
+                            .clicked()
+                        {
+                            *sort = sort.click(col);
+                        }
+                        info_icon(ui, col.help(t));
+                    });
+                }
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(t.col_trend).strong());
+                    info_icon(ui, t.help_trend);
+                });
+                ui.end_row();
+
+                for &i in &order {
+                    let row = &rows[i];
+                    if row.unmapped {
+                        ui.horizontal(|ui| {
+                            let name = egui::Link::new(RichText::new(row.name).italics());
+                            if ui
+                                .add(name)
+                                .on_hover_text(format!("{}\n{}", t.unmapped_hover, open_hover))
+                                .clicked()
+                            {
+                                action = Some(RowAction::Open(i));
+                            }
+                            if ui
+                                .small_button(t.map_button)
+                                .on_hover_text(t.map_hover)
+                                .clicked()
+                            {
+                                action = Some(RowAction::Map(i));
+                            }
+                        });
+                    } else if ui.link(row.name).on_hover_text(open_hover).clicked() {
+                        action = Some(RowAction::Open(i));
+                    }
+                    for &col in columns {
+                        ui.vertical(|ui| {
+                            ui.label(col.format(row.current, t));
+                            if let Some(c) = change(col, row.previous, row.current) {
+                                let color = if c.worse {
+                                    ui.visuals().warn_fg_color
+                                } else {
+                                    ui.visuals().weak_text_color()
+                                };
+                                ui.small(RichText::new(c.text).color(color));
+                            }
+                        });
+                    }
+                    sparkline(ui, sort.column, row.monthly);
+                    ui.end_row();
+                }
+            });
+    });
+    action
+}
+
+/// A tiny line chart of one column over the months, painted with egui
+/// shapes so a table of many rows stays cheap. Months without data
+/// break the line.
+fn sparkline(ui: &mut egui::Ui, column: Column, months: &[crate::api::MonthSummary]) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(96.0, 24.0), Sense::hover());
+    let values: Vec<Option<f64>> = months.iter().map(|m| column.value(&m.summary)).collect();
+    let (lo, hi) = values
+        .iter()
+        .flatten()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &v| {
+            (lo.min(v), hi.max(v))
+        });
+    if !lo.is_finite() || !ui.is_rect_visible(rect) {
+        return;
+    }
+    let steps = values.len().saturating_sub(1).max(1) as f32;
+    let at = |i: usize, v: f64| {
+        let share = if hi > lo {
+            ((v - lo) / (hi - lo)) as f32
+        } else {
+            0.5
+        };
+        egui::pos2(
+            rect.left() + rect.width() * i as f32 / steps,
+            rect.bottom() - 2.0 - (rect.height() - 4.0) * share,
+        )
+    };
+    let color = ui.visuals().hyperlink_color;
+    let painter = ui.painter();
+    for (i, v) in values.iter().enumerate() {
+        let Some(v) = *v else { continue };
+        match values.get(i + 1).copied().flatten() {
+            Some(next) => {
+                painter.line_segment([at(i, v), at(i + 1, next)], Stroke::new(1.5, color));
+            }
+            // A point with no neighbour after it would be invisible.
+            None if i == 0 || values[i - 1].is_none() => {
+                painter.circle_filled(at(i, v), 1.5, color);
+            }
+            None => {}
+        }
     }
 }
 
@@ -1863,5 +2206,18 @@ mod tests {
         frame(&ctx, 0.01, Some(icon.get()), &body);
         frame(&ctx, 0.02, None, &body);
         assert_eq!(tooltip_layers(&ctx), 1);
+    }
+
+    #[test]
+    fn arrow_glyphs_are_bundled() {
+        let ctx = egui::Context::default();
+        frame(&ctx, 0.0, None, &|_| {});
+        // egui's bundled fonts have these (in its icon font), unlike
+        // ▲▼◀▶, which only render when a CJK fallback font happens to
+        // carry them.
+        for c in ['⏶', '⏷', '⏴', '⏵'] {
+            let ok = ctx.fonts_mut(|f| f.has_glyph(&egui::FontId::proportional(14.0), c));
+            assert!(ok, "{c} would render as a box");
+        }
     }
 }

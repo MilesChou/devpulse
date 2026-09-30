@@ -427,9 +427,22 @@ Repo objects carry the settings too: `pr_start`, `incident_label`, `hotfix_label
 | `PUT /api/v1/excluded-accounts` with `{"accounts": [...]}` | Replaces the list; returns it normalized |
 | `GET /api/v1/repos/{owner}/{name}/metrics/by-member?from=&to=` | `{repo, from, to, rows:[{member_id, name, accounts, report}]}` |
 
+#### Across all repos
+
+These cover every tracked repo that is not disabled, pooling their PRs, builds and reviews, so averages and p50 / p90 are exact across repos rather than averages of per-repo numbers.
+
+| Method + path | Returns |
+|---|---|
+| `GET /api/v1/metrics?from=&to=` | The report across all repos, same shape as the per-repo one, with `repo: "*"` and `dora: null` (DORA is per repo). Accepts `member` / `team` |
+| `GET /api/v1/metrics/monthly?from=&to=` | `{repo: "*", from, to, months:[report, ...]}`; at most 120 months. Accepts `member` / `team` |
+| `GET /api/v1/overview/repos?from=&to=` | Comparison rows, one per repo: `{from, to, previous:{from, to}, rows:[{repo, current, previous, monthly:[{month, summary}]}]}` |
+| `GET /api/v1/overview/members?from=&to=` | The same for people across all repos: members active in the current or previous period, then active accounts no member claims (`member_id: null`); rows carry `member_id, name, accounts` instead of `repo` |
+
+`previous` is the period of the same number of months right before `from`; `monthly` is the 12 months ending at `to`, for sparklines. A summary has `prs_opened`, `prs_merged`, `lead_time_hours`, `builds_per_pr`, `ci_failure_rate` (0–1), `avg_build_seconds` (per build, so a busy day weighs more), `review_wait_hours` and, for repo rows, `deploys_per_week`. A metric without data in the period is `null`, never 0. Excluded accounts never appear.
+
 Accounts are normalized: lower-cased, with a trailing `[bot]` removed, because GitHub's REST API calls a bot `dependabot[bot]` and its GraphQL API calls the same bot `dependabot`. An account belongs to at most one member, and display and team names are unique; a clash answers `409`.
 
-`metrics` and `metrics/monthly` accept `member=<id>` or `team=<id>` to cover only that person's or team's work. The report then carries `scope: {kind, id, name, accounts}` (`null` otherwise) and `dora` is `null`, since DORA measures the whole repo. `by-member` lists one row per member active in the window and one per active account no member claims (`member_id: null`, `name` = the account), each with its own report.
+`metrics` and `metrics/monthly` accept `member=<id>`, `team=<id>` or `account=<login>` (one of them) to cover only that person's, team's or single account's work; `account` lets you look at an account no member claims yet. The report then carries `scope: {kind, id, name, accounts}` (`null` otherwise) and `dora` is `null`, since DORA measures the whole repo. `by-member` lists one row per member active in the window and one per active account no member claims (`member_id: null`, `name` = the account), each with its own report.
 
 The API has one token for reads and writes: whoever holds `DEVPULSE_API_TOKEN` can also add and remove repos. On a loopback address without a token, any local process can. That fits the single-user scope; keep the token private.
 

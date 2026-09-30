@@ -14,6 +14,7 @@ mod i18n;
 mod kpi;
 mod month;
 mod notice;
+mod overview;
 mod settings;
 mod state;
 

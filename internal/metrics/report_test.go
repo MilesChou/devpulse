@@ -60,7 +60,7 @@ func TestWindow_CheckTrend(t *testing.T) {
 	if err := wide.CheckTrend(); !errors.Is(err, ErrInvalidWindow) {
 		t.Fatalf("121 months: want ErrInvalidWindow, got %v", err)
 	}
-	if _, err := ComputeMonthly(context.Background(), &fakeSource{}, repo.Repo{}, wide, now, nil); !errors.Is(err, ErrInvalidWindow) {
+	if _, err := ComputeMonthly(context.Background(), &fakeSource{}, Single(repo.Repo{}), wide, now, nil); !errors.Is(err, ErrInvalidWindow) {
 		t.Fatalf("ComputeMonthly must enforce the limit, got %v", err)
 	}
 }
@@ -107,23 +107,23 @@ type fakeSource struct {
 	doraBranches []string
 }
 
-func (f *fakeSource) BuildFailureRate(_ context.Context, _ string, from, to time.Time) (int, int, float64, error) {
+func (f *fakeSource) BuildFailureRate(_ context.Context, _ []string, from, to time.Time) (int, int, float64, error) {
 	f.windows = append(f.windows, Window{from, to})
 	return int(from.Month()), 0, 0, nil
 }
-func (f *fakeSource) AverageBuildsPerPR(context.Context, string, time.Time, time.Time) (float64, error) {
+func (f *fakeSource) AverageBuildsPerPR(context.Context, []string, time.Time, time.Time) (float64, error) {
 	return 0, nil
 }
-func (f *fakeSource) PRLeadTime(context.Context, string, time.Time, time.Time) (int, float64, float64, float64, error) {
+func (f *fakeSource) PRLeadTime(context.Context, []string, time.Time, time.Time) (int, float64, float64, float64, error) {
 	return 0, 0, 0, 0, nil
 }
-func (f *fakeSource) ReviewWaitTime(context.Context, string, time.Time, time.Time) (int, float64, error) {
+func (f *fakeSource) ReviewWaitTime(context.Context, []string, time.Time, time.Time) (int, float64, error) {
 	return 0, 0, nil
 }
-func (f *fakeSource) PRSizeDistribution(context.Context, string, time.Time, time.Time) (map[string]int, error) {
+func (f *fakeSource) PRSizeDistribution(context.Context, []string, time.Time, time.Time) (map[string]int, error) {
 	return nil, nil
 }
-func (f *fakeSource) DailyBuildDuration(context.Context, string, time.Time, time.Time) ([]persistence.DayDuration, error) {
+func (f *fakeSource) DailyBuildDuration(context.Context, []string, time.Time, time.Time) ([]persistence.DayDuration, error) {
 	return nil, nil
 }
 func (f *fakeSource) DORAInput(_ context.Context, _, branch string, from, to time.Time) (dora.Input, error) {
@@ -139,7 +139,7 @@ func TestComputeMonthly(t *testing.T) {
 	}
 
 	rp := repo.Repo{ID: "id", Name: repo.FullName{Owner: "o", Name: "r"}}
-	got, err := ComputeMonthly(context.Background(), src, rp, w, now, nil)
+	got, err := ComputeMonthly(context.Background(), src, Single(rp), w, now, nil)
 	if err != nil {
 		t.Fatalf("ComputeMonthly: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestCompute_DORA(t *testing.T) {
 	}
 	w, _ := ParseWindow("2026-05", "", now)
 
-	got, err := Compute(context.Background(), src, rp, w, now, nil)
+	got, err := Compute(context.Background(), src, Single(rp), w, now, nil)
 	if err != nil {
 		t.Fatalf("Compute: %v", err)
 	}

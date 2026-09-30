@@ -292,7 +292,9 @@ pub struct Texts {
     pub remove_ellipsis: &'static str,
     pub sync: &'static str,
     pub sync_disabled_hover: &'static str,
-    pub sync_unavailable: fn(reason: &str) -> String,
+    /// The server answers 503 to sync requests only when it has no
+    /// GITHUB_TOKEN, so the dashboard says that in its own words.
+    pub sync_unavailable: &'static str,
     pub syncing: fn(repo: &str, started: &str) -> String,
     pub last_sync_ok: fn(repo: &str, when: &str) -> String,
     pub last_sync_failed: fn(repo: &str, when: &str, err: &str) -> String,
@@ -319,6 +321,26 @@ pub struct Texts {
     pub team_name_blank: &'static str,
     pub excluded_saved: &'static str,
     pub excluded_save_failed: fn(err: &str) -> String,
+    // Overview page and All repos.
+    pub view_overview: &'static str,
+    pub all_repos: &'static str,
+    pub repo_comparison: &'static str,
+    pub member_comparison: &'static str,
+    pub compared_with: fn(previous: &str) -> String,
+    pub col_build_time: &'static str,
+    pub col_trend: &'static str,
+    pub sort_hover: &'static str,
+    pub unmapped_hover: &'static str,
+    pub open_repo_hover: &'static str,
+    pub open_member_hover: &'static str,
+    pub no_overview_rows: &'static str,
+    pub dora_needs_repo: &'static str,
+    pub breakdown_on_overview: &'static str,
+    pub go_to_overview: &'static str,
+    pub help_prs_opened: &'static str,
+    pub help_prs_merged: &'static str,
+    pub help_build_time: &'static str,
+    pub help_trend: &'static str,
 }
 
 pub static EN: Texts = Texts {
@@ -545,7 +567,8 @@ pub static EN: Texts = Texts {
     remove_ellipsis: "Remove…",
     sync: "Sync",
     sync_disabled_hover: "A sync is running, or the server cannot sync",
-    sync_unavailable: |r| format!("{r}. Run `devpulse sync` on the server instead."),
+    sync_unavailable: "This server has no GITHUB_TOKEN, so it cannot sync from the dashboard. \
+                       Run `devpulse sync` on the server instead.",
     syncing: |r, s| format!("Syncing {r} (started {s})…"),
     last_sync_ok: |r, w| format!("Last sync: {r} finished {w}."),
     last_sync_failed: |r, w, e| format!("Last sync: {r} failed {w}: {e}"),
@@ -576,6 +599,29 @@ pub static EN: Texts = Texts {
     team_name_blank: "Team name must not be blank",
     excluded_saved: "Saved excluded accounts.",
     excluded_save_failed: |e| format!("Could not save excluded accounts: {e}"),
+    view_overview: "Overview",
+    all_repos: "All repos",
+    repo_comparison: "Repos",
+    member_comparison: "Members",
+    compared_with: |p| {
+        format!("Changes compare with the previous period of the same length ({p}).")
+    },
+    col_build_time: "Build time",
+    col_trend: "Last 12 months",
+    sort_hover: "Click to sort, worst first; click again to reverse",
+    unmapped_hover: "Not mapped to a member yet",
+    open_repo_hover: "Open this repo's dashboard",
+    open_member_hover: "Open this member's dashboard across all repos",
+    no_overview_rows: "Nothing to compare in this period.",
+    dora_needs_repo: "DORA is measured per repo; pick a repo in the list to see it.",
+    breakdown_on_overview: "The per-member breakdown across all repos is on the Overview.",
+    go_to_overview: "Open Overview",
+    help_prs_opened: "PRs opened in this period.",
+    help_prs_merged: "PRs merged in this period.",
+    help_build_time: "Average duration of the CI builds that started in this period, per build: \
+                      a day with many builds weighs more. PR and branch builds alike.",
+    help_trend: "The sorted column for the 12 months ending with this period; gaps are \
+                 months without data.",
 };
 
 pub static ZH_TW: Texts = Texts {
@@ -781,7 +827,8 @@ pub static ZH_TW: Texts = Texts {
     remove_ellipsis: "移除…",
     sync: "同步",
     sync_disabled_hover: "已有同步在進行，或伺服器無法同步",
-    sync_unavailable: |r| format!("{r}。請改在伺服器上執行 `devpulse sync`。"),
+    sync_unavailable: "這台伺服器沒有設定 GITHUB_TOKEN，無法從儀表板同步。\
+                       請改在伺服器上執行 `devpulse sync`。",
     syncing: |r, s| format!("正在同步 {r}（{s} 開始）…"),
     last_sync_ok: |r, w| format!("上次同步：{r}，{w} 完成。"),
     last_sync_failed: |r, w, e| format!("上次同步：{r}，{w} 失敗：{e}"),
@@ -812,6 +859,26 @@ pub static ZH_TW: Texts = Texts {
     team_name_blank: "團隊名稱不可空白",
     excluded_saved: "已儲存排除的帳號。",
     excluded_save_failed: |e| format!("無法儲存排除的帳號：{e}"),
+    view_overview: "總覽",
+    all_repos: "全部儲存庫",
+    repo_comparison: "儲存庫比較",
+    member_comparison: "成員比較",
+    compared_with: |p| format!("變化是與長度相同的前一段期間（{p}）比較。"),
+    col_build_time: "建置時間",
+    col_trend: "近 12 個月",
+    sort_hover: "點擊排序，最差的在前；再點一次反向",
+    unmapped_hover: "還沒有對應到成員",
+    open_repo_hover: "開啟這個儲存庫的儀表板",
+    open_member_hover: "開啟這位成員在全部儲存庫的儀表板",
+    no_overview_rows: "這段期間沒有可以比較的資料。",
+    dora_needs_repo: "DORA 是以單一儲存庫計算的，請在清單中選擇一個儲存庫。",
+    breakdown_on_overview: "跨儲存庫的成員比較在總覽頁。",
+    go_to_overview: "前往總覽",
+    help_prs_opened: "這段期間開啟的 PR 數。",
+    help_prs_merged: "這段期間合併的 PR 數。",
+    help_build_time: "這段期間開始的 CI 建置平均耗時，以每次建置計算：建置多的日子權重較大。\
+                      PR 與分支建置都算在內。",
+    help_trend: "排序中的欄位在這段期間結尾往前 12 個月的走勢；空白表示那個月沒有資料。",
 };
 
 #[cfg(test)]

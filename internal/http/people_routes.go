@@ -268,7 +268,7 @@ func (h *handlers) getMetricsByMember(w http.ResponseWriter, r *http.Request) {
 		h.internalError(w, "list members", err)
 		return
 	}
-	rows, err := metrics.ComputeByMember(r.Context(), h.cfg.Authors, h.cfg.Scoped, members, rp, win, h.cfg.Now())
+	rows, err := metrics.ComputeByMember(r.Context(), h.cfg.Authors, h.cfg.Scoped, members, metrics.Single(rp), win, h.cfg.Now())
 	if err != nil {
 		h.internalError(w, "compute metrics by member", err)
 		return
@@ -287,11 +287,27 @@ func (h *handlers) getMetricsByMember(w http.ResponseWriter, r *http.Request) {
 // returns ok=false.
 func (h *handlers) scope(w http.ResponseWriter, r *http.Request) (metrics.Source, *metrics.Scope, bool) {
 	q := r.URL.Query()
-	memberID, teamID := q.Get("member"), q.Get("team")
+	memberID, teamID, account := q.Get("member"), q.Get("team"), q.Get("account")
+	given := 0
+	for _, v := range []string{memberID, teamID, account} {
+		if v != "" {
+			given++
+		}
+	}
 	switch {
-	case memberID != "" && teamID != "":
-		writeError(w, http.StatusBadRequest, "use either member or team, not both")
+	case given > 1:
+		writeError(w, http.StatusBadRequest, "use one of member, team or account, not several")
 		return nil, nil, false
+	case account != "":
+		// An account no member claims yet: the Overview lists such
+		// accounts, and they can be looked at before anyone maps them.
+		a := people.NormalizeAccount(account)
+		if a == "" {
+			writeError(w, http.StatusBadRequest, "account must not be blank")
+			return nil, nil, false
+		}
+		accounts := []string{a}
+		return h.cfg.Scoped(accounts), &metrics.Scope{Kind: "account", ID: a, Name: a, Accounts: accounts}, true
 	case memberID != "":
 		m, err := h.cfg.People.AccountsOfMember(r.Context(), memberID)
 		if err != nil {

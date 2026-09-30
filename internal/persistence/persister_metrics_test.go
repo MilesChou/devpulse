@@ -33,7 +33,7 @@ func TestMetricsPersister_EmptyStore(t *testing.T) {
 		t.Fatalf("ensure repo: %v", err)
 	}
 
-	total, failed, rate, err := m.BuildFailureRate(ctx, r.ID, metricsFrom, metricsTo)
+	total, failed, rate, err := m.BuildFailureRate(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("BuildFailureRate: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestMetricsPersister_EmptyStore(t *testing.T) {
 		t.Fatalf("BuildFailureRate on empty: %d/%d rate=%v", failed, total, rate)
 	}
 
-	avg, err := m.AverageBuildsPerPR(ctx, r.ID, metricsFrom, metricsTo)
+	avg, err := m.AverageBuildsPerPR(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("AverageBuildsPerPR: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestMetricsPersister_EmptyStore(t *testing.T) {
 		t.Fatalf("AverageBuildsPerPR on empty: %v", avg)
 	}
 
-	count, avgH, p50, p90, err := m.PRLeadTime(ctx, r.ID, metricsFrom, metricsTo)
+	count, avgH, p50, p90, err := m.PRLeadTime(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("PRLeadTime: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestMetricsPersister_EmptyStore(t *testing.T) {
 		t.Fatalf("DORAInput on empty: %+v", in)
 	}
 
-	dist, err := m.PRSizeDistribution(ctx, r.ID, metricsFrom, metricsTo)
+	dist, err := m.PRSizeDistribution(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("PRSizeDistribution: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestMetricsPersister_EmptyStore(t *testing.T) {
 		t.Fatalf("PRSizeDistribution on empty: %v", dist)
 	}
 
-	rwCount, rwAvg, err := m.ReviewWaitTime(ctx, r.ID, metricsFrom, metricsTo)
+	rwCount, rwAvg, err := m.ReviewWaitTime(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("ReviewWaitTime: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestMetricsPersister_EmptyStore(t *testing.T) {
 		t.Fatalf("ReviewWaitTime on empty: count=%d avg=%v", rwCount, rwAvg)
 	}
 
-	days, err := m.DailyBuildDuration(ctx, r.ID, metricsFrom, metricsTo)
+	days, err := m.DailyBuildDuration(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("DailyBuildDuration: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestMetricsPersister_BuildMetrics(t *testing.T) {
 		t.Fatalf("seed builds: %v", err)
 	}
 
-	total, failed, rate, err := m.BuildFailureRate(ctx, r.ID, metricsFrom, metricsTo)
+	total, failed, rate, err := m.BuildFailureRate(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("BuildFailureRate: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestMetricsPersister_BuildMetrics(t *testing.T) {
 
 	// PR #1 has 2 builds, PR #2 has 1 → avg 1.5. The push build (no
 	// pr_number) and out-of-window build are excluded.
-	avg, err := m.AverageBuildsPerPR(ctx, r.ID, metricsFrom, metricsTo)
+	avg, err := m.AverageBuildsPerPR(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("AverageBuildsPerPR: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestMetricsPersister_BuildMetrics(t *testing.T) {
 		t.Fatalf("AverageBuildsPerPR: got %v, want 1.5", avg)
 	}
 
-	days, err := m.DailyBuildDuration(ctx, r.ID, metricsFrom, metricsTo)
+	days, err := m.DailyBuildDuration(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("DailyBuildDuration: %v", err)
 	}
@@ -222,7 +222,7 @@ func TestMetricsPersister_PRMetrics(t *testing.T) {
 		}
 	}
 
-	count, avgH, p50, p90, err := m.PRLeadTime(ctx, r.ID, metricsFrom, metricsTo)
+	count, avgH, p50, p90, err := m.PRLeadTime(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("PRLeadTime: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestMetricsPersister_PRMetrics(t *testing.T) {
 		t.Fatalf("p90: got %v, want 28", p90)
 	}
 
-	dist, err := m.PRSizeDistribution(ctx, r.ID, metricsFrom, metricsTo)
+	dist, err := m.PRSizeDistribution(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("PRSizeDistribution: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestMetricsPersister_PRMetrics(t *testing.T) {
 	}
 
 	// Every PR waited 2h between ready and first review.
-	rwCount, rwAvg, err := m.ReviewWaitTime(ctx, r.ID, metricsFrom, metricsTo)
+	rwCount, rwAvg, err := m.ReviewWaitTime(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("ReviewWaitTime: %v", err)
 	}
@@ -277,7 +277,7 @@ func TestMetricsPersister_ExcludesBots(t *testing.T) {
 	m := persistence.NewMetricsPersister(p)
 
 	// PRs: alice #1 (10h), Bob #2 (20h), dependabot[bot] #3 (1h).
-	count, avg, _, _, err := m.PRLeadTime(ctx, r.ID, metricsFrom, metricsTo)
+	count, avg, _, _, err := m.PRLeadTime(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("lead time: %v", err)
 	}
@@ -285,7 +285,7 @@ func TestMetricsPersister_ExcludesBots(t *testing.T) {
 		t.Fatalf("lead time: count=%d avg=%v, want 2 / 15h (bot PR excluded)", count, avg)
 	}
 
-	dist, _ := m.PRSizeDistribution(ctx, r.ID, metricsFrom, metricsTo)
+	dist, _ := m.PRSizeDistribution(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if dist["XS"] != 2 {
 		t.Fatalf("size dist: %v, want XS:2 (bot PR excluded)", dist)
 	}
@@ -293,7 +293,7 @@ func TestMetricsPersister_ExcludesBots(t *testing.T) {
 	// Builds: #1 pass, #2 fail, bot #3 fail, and an unlinked build with
 	// no author (NULL owner) that passed. The NULL-owner build still
 	// counts; the bot's does not.
-	total, failed, _, err := m.BuildFailureRate(ctx, r.ID, metricsFrom, metricsTo)
+	total, failed, _, err := m.BuildFailureRate(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("failure rate: %v", err)
 	}
@@ -303,7 +303,7 @@ func TestMetricsPersister_ExcludesBots(t *testing.T) {
 
 	// Reviews: Copilot reviews alice's PR after 1 minute, bob after 2h.
 	// Only the human review counts, so the wait is 2h, not ~0.
-	rwCount, rwAvg, err := m.ReviewWaitTime(ctx, r.ID, metricsFrom, metricsTo)
+	rwCount, rwAvg, err := m.ReviewWaitTime(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("review wait: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestMetricsPersister_ExcludesBots(t *testing.T) {
 		t.Fatalf("review wait: count=%d avg=%v, want 1 / 2h", rwCount, rwAvg)
 	}
 
-	authors, err := m.Authors(ctx, r.ID, metricsFrom, metricsTo)
+	authors, err := m.Authors(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
 		t.Fatalf("authors: %v", err)
 	}
@@ -329,29 +329,29 @@ func TestMetricsPersister_Scoped(t *testing.T) {
 	m := persistence.NewMetricsPersister(p)
 
 	bob := m.Scoped([]string{"bob"})
-	count, avg, _, _, err := bob.PRLeadTime(ctx, r.ID, metricsFrom, metricsTo)
+	count, avg, _, _, err := bob.PRLeadTime(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil || count != 1 || math.Abs(avg-20) > 1e-9 {
 		t.Fatalf("bob lead time: count=%d avg=%v err=%v, want 1 / 20h", count, avg, err)
 	}
 	// Bob's PR #2 had one failing build; the matching is case-insensitive
 	// (author stored as "Bob").
-	total, failed, _, _ := bob.BuildFailureRate(ctx, r.ID, metricsFrom, metricsTo)
+	total, failed, _, _ := bob.BuildFailureRate(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if total != 1 || failed != 1 {
 		t.Fatalf("bob failure rate: %d/%d, want 1/1", failed, total)
 	}
-	if n, _, _ := bob.ReviewWaitTime(ctx, r.ID, metricsFrom, metricsTo); n != 0 {
+	if n, _, _ := bob.ReviewWaitTime(ctx, []string{r.ID}, metricsFrom, metricsTo); n != 0 {
 		t.Fatalf("bob review wait count: %d, want 0 (his PR has no human review)", n)
 	}
 
 	// A scope that names the bot still excludes it.
 	botScope := m.Scoped([]string{"dependabot"})
-	if count, _, _, _, _ := botScope.PRLeadTime(ctx, r.ID, metricsFrom, metricsTo); count != 0 {
+	if count, _, _, _, _ := botScope.PRLeadTime(ctx, []string{r.ID}, metricsFrom, metricsTo); count != 0 {
 		t.Fatalf("bot scope: count=%d, want 0", count)
 	}
 
 	// A member without accounts matches nothing.
 	none := m.Scoped([]string{})
-	if total, _, _, _ := none.BuildFailureRate(ctx, r.ID, metricsFrom, metricsTo); total != 0 {
+	if total, _, _, _ := none.BuildFailureRate(ctx, []string{r.ID}, metricsFrom, metricsTo); total != 0 {
 		t.Fatalf("empty scope: total=%d, want 0", total)
 	}
 }
@@ -407,5 +407,86 @@ func seedPeopleFixture(t *testing.T, p *persistence.Persister, repoID string) {
 	}
 	if _, err := persistence.NewBuildPersister(p).UpsertMany(ctx, repoID, "github-actions", builds); err != nil {
 		t.Fatalf("seed builds: %v", err)
+	}
+}
+
+// TestMetricsPersister_AcrossRepos pools two repos. Lead times of 1 h
+// and 3 h in repo A and 100 h in repo B give avg 34.67 h and p50 3 h
+// across both, not the average of the two repos' p50s. Both repos have
+// a PR #1, so builds per PR must count them as two PRs.
+func TestMetricsPersister_AcrossRepos(t *testing.T) {
+	p := setup(t)
+	rp := persistence.NewRepoPersister(p)
+	pp := persistence.NewPullRequestPersister(p)
+	bp := persistence.NewBuildPersister(p)
+	m := persistence.NewMetricsPersister(p)
+	ctx := context.Background()
+
+	a, err := rp.EnsureID(ctx, "github", mustFullName(t, "acme/a"))
+	if err != nil {
+		t.Fatalf("ensure a: %v", err)
+	}
+	b, err := rp.EnsureID(ctx, "github", mustFullName(t, "acme/b"))
+	if err != nil {
+		t.Fatalf("ensure b: %v", err)
+	}
+
+	mkPR := func(repoID string, number int, leadHours float64) pullrequest.PullRequest {
+		created := metricsFrom.Add(time.Duration(number) * time.Hour)
+		merged := created.Add(time.Duration(leadHours * float64(time.Hour)))
+		return pullrequest.PullRequest{
+			RepoID: repoID, Number: number, Author: "alice", Status: pullrequest.StatusMerged,
+			Additions: 10, TotalChangedLines: 10, SizeBucket: pullrequest.SizeBucket(10),
+			CreatedAt: created, MergedAt: &merged,
+		}
+	}
+	if _, err := pp.UpsertMany(ctx, []pullrequest.PullRequest{
+		mkPR(a.ID, 1, 1), mkPR(a.ID, 2, 3), mkPR(b.ID, 1, 100),
+	}); err != nil {
+		t.Fatalf("seed prs: %v", err)
+	}
+
+	sha, err := commitsha.Parse("aaa1234567890abcdef1234567890abcdef12345")
+	if err != nil {
+		t.Fatalf("parse sha: %v", err)
+	}
+	start := metricsFrom.Add(time.Hour)
+	prBuild := func(id string) build.Build {
+		return build.Build{ExternalID: id, CommitSHA: sha, Trigger: build.TriggerPullRequest, PRNumber: 1,
+			Status: build.StatusPassed, StartedAt: start}
+	}
+	// PR #1 of repo A: 2 builds. PR #1 of repo B: 1 build.
+	if _, err := bp.UpsertMany(ctx, a.ID, "github-actions", []build.Build{prBuild("a1"), prBuild("a2")}); err != nil {
+		t.Fatalf("seed builds a: %v", err)
+	}
+	if _, err := bp.UpsertMany(ctx, b.ID, "github-actions", []build.Build{prBuild("b1")}); err != nil {
+		t.Fatalf("seed builds b: %v", err)
+	}
+
+	both := []string{a.ID, b.ID}
+	count, avgH, p50, _, err := m.PRLeadTime(ctx, both, metricsFrom, metricsTo)
+	if err != nil {
+		t.Fatalf("PRLeadTime: %v", err)
+	}
+	if count != 3 || math.Abs(avgH-104.0/3.0) > 1e-9 || math.Abs(p50-3) > 1e-9 {
+		t.Fatalf("PRLeadTime across repos: count=%d avg=%v p50=%v, want 3, 34.67, 3", count, avgH, p50)
+	}
+
+	// A single repo stays exactly what it was.
+	count, avgH, _, _, err = m.PRLeadTime(ctx, []string{a.ID}, metricsFrom, metricsTo)
+	if err != nil || count != 2 || math.Abs(avgH-2) > 1e-9 {
+		t.Fatalf("PRLeadTime repo A: count=%d avg=%v err=%v", count, avgH, err)
+	}
+
+	avg, err := m.AverageBuildsPerPR(ctx, both, metricsFrom, metricsTo)
+	if err != nil {
+		t.Fatalf("AverageBuildsPerPR: %v", err)
+	}
+	if math.Abs(avg-1.5) > 1e-9 {
+		t.Fatalf("AverageBuildsPerPR across repos: got %v, want 1.5 (two PRs #1, 3 builds)", avg)
+	}
+
+	if _, _, _, _, err := m.PRLeadTime(ctx, nil, metricsFrom, metricsTo); err != nil {
+		t.Fatalf("empty repo set: %v", err)
 	}
 }

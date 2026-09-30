@@ -67,6 +67,21 @@ func (m *MetricsPersister) ownerFilter(col string) (string, []any) {
 	return b.String(), args
 }
 
+// repoIn returns "<col> IN (?, …)" and its args for a set of repo ids.
+// Metrics over several repos pool their rows, so averages and
+// percentiles are exact rather than averages of per-repo values. An
+// empty set matches nothing.
+func repoIn(col string, repoIDs []string) (string, []any) {
+	if len(repoIDs) == 0 {
+		return "1 = 0", nil
+	}
+	args := make([]any, len(repoIDs))
+	for i, id := range repoIDs {
+		args[i] = id
+	}
+	return col + " IN (?" + strings.Repeat(", ?", len(repoIDs)-1) + ")", args
+}
+
 // buildsFrom joins each build to its PR, to find the build's owner.
 const buildsFrom = ` FROM builds b
 	LEFT JOIN pull_requests pr ON pr.repo_id = b.repo_id AND pr.number = b.pr_number `
@@ -74,12 +89,14 @@ const buildsFrom = ` FROM builds b
 // buildOwner is the owner expression over buildsFrom.
 const buildOwner = `COALESCE(pr.author_account, b.author_account)`
 
-func (m *MetricsPersister) BuildFailureRate(ctx context.Context, repoID string, from, to time.Time) (total, failed int, rate float64, err error) {
+func (m *MetricsPersister) BuildFailureRate(ctx context.Context, repoIDs []string, from, to time.Time) (total, failed int, rate float64, err error) {
+	repos, args := repoIn("b.repo_id", repoIDs)
 	owner, ownerArgs := m.ownerFilter(buildOwner)
 	q := `SELECT COUNT(*), COUNT(CASE WHEN b.is_failure THEN 1 END)` + buildsFrom + `
-	      WHERE b.repo_id = ? AND b.started_at >= ? AND b.started_at < ? AND b.is_pull_request = true` + owner
+	      WHERE ` + repos + ` AND b.started_at >= ? AND b.started_at < ? AND b.is_pull_request = true` + owner
 
-	if err = m.QueryRowCtx(ctx, q, append([]any{repoID, from, to}, ownerArgs...)...).Scan(&total, &failed); err != nil {
+	args = append(append(args, from, to), ownerArgs...)
+	if err = m.QueryRowCtx(ctx, q, args...).Scan(&total, &failed); err != nil {
 		return 0, 0, 0, fmt.Errorf("build failure rate: %w", err)
 	}
 	if total > 0 {
@@ -88,17 +105,21 @@ func (m *MetricsPersister) BuildFailureRate(ctx context.Context, repoID string, 
 	return total, failed, rate, nil
 }
 
-func (m *MetricsPersister) AverageBuildsPerPR(ctx context.Context, repoID string, from, to time.Time) (float64, error) {
+// AverageBuildsPerPR groups by repo and PR number: PR numbers repeat
+// across repos, so #12 of one repo is not #12 of another.
+func (m *MetricsPersister) AverageBuildsPerPR(ctx context.Context, repoIDs []string, from, to time.Time) (float64, error) {
+	repos, args := repoIn("b.repo_id", repoIDs)
 	owner, ownerArgs := m.ownerFilter(buildOwner)
 	q := `SELECT AVG(cnt) FROM (
 	        SELECT COUNT(*) AS cnt` + buildsFrom + `
-	        WHERE b.repo_id = ? AND b.started_at >= ? AND b.started_at < ?
+	        WHERE ` + repos + ` AND b.started_at >= ? AND b.started_at < ?
 	          AND b.pr_number IS NOT NULL AND b.pr_number > 0` + owner + `
-	        GROUP BY b.pr_number
+	        GROUP BY b.repo_id, b.pr_number
 	      ) AS per_pr`
 
+	args = append(append(args, from, to), ownerArgs...)
 	var avg sql.NullFloat64
-	if err := m.QueryRowCtx(ctx, q, append([]any{repoID, from, to}, ownerArgs...)...).Scan(&avg); err != nil {
+	if err := m.QueryRowCtx(ctx, q, args...).Scan(&avg); err != nil {
 		return 0, fmt.Errorf("avg builds per pr: %w", err)
 	}
 	if !avg.Valid {
@@ -107,12 +128,13 @@ func (m *MetricsPersister) AverageBuildsPerPR(ctx context.Context, repoID string
 	return avg.Float64, nil
 }
 
-func (m *MetricsPersister) PRLeadTime(ctx context.Context, repoID string, from, to time.Time) (count int, avgHours, p50Hours, p90Hours float64, err error) {
+func (m *MetricsPersister) PRLeadTime(ctx context.Context, repoIDs []string, from, to time.Time) (count int, avgHours, p50Hours, p90Hours float64, err error) {
+	repos, args := repoIn("repo_id", repoIDs)
 	owner, ownerArgs := m.ownerFilter("author_account")
 	q := `SELECT pr_created_at, merged_at FROM pull_requests
-	      WHERE repo_id = ? AND status = 'merged' AND merged_at >= ? AND merged_at < ?` + owner
+	      WHERE ` + repos + ` AND status = 'merged' AND merged_at >= ? AND merged_at < ?` + owner
 
-	rows, err := m.QueryCtx(ctx, q, append([]any{repoID, from, to}, ownerArgs...)...)
+	rows, err := m.QueryCtx(ctx, q, append(append(args, from, to), ownerArgs...)...)
 	if err != nil {
 		return 0, 0, 0, 0, fmt.Errorf("pr lead time: %w", err)
 	}
@@ -156,14 +178,15 @@ func (m *MetricsPersister) PRLeadTime(ctx context.Context, repoID string, from, 
 	return count, avgHours, p50Hours, p90Hours, nil
 }
 
-func (m *MetricsPersister) PRSizeDistribution(ctx context.Context, repoID string, from, to time.Time) (map[string]int, error) {
+func (m *MetricsPersister) PRSizeDistribution(ctx context.Context, repoIDs []string, from, to time.Time) (map[string]int, error) {
+	repos, args := repoIn("repo_id", repoIDs)
 	owner, ownerArgs := m.ownerFilter("author_account")
 	q := `SELECT COALESCE(size_bucket, 'unknown'), COUNT(*)
 	      FROM pull_requests
-	      WHERE repo_id = ? AND pr_created_at >= ? AND pr_created_at < ?` + owner + `
+	      WHERE ` + repos + ` AND pr_created_at >= ? AND pr_created_at < ?` + owner + `
 	      GROUP BY size_bucket`
 
-	rows, err := m.QueryCtx(ctx, q, append([]any{repoID, from, to}, ownerArgs...)...)
+	rows, err := m.QueryCtx(ctx, q, append(append(args, from, to), ownerArgs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("pr size dist: %w", err)
 	}
@@ -188,18 +211,19 @@ func (m *MetricsPersister) PRSizeDistribution(ctx context.Context, repoID string
 // make every PR look reviewed instantly. Review rows are stored only
 // for reviews submitted after ready (see the orchestrator), matching
 // how first_review_at is defined.
-func (m *MetricsPersister) ReviewWaitTime(ctx context.Context, repoID string, from, to time.Time) (count int, avgHours float64, err error) {
+func (m *MetricsPersister) ReviewWaitTime(ctx context.Context, repoIDs []string, from, to time.Time) (count int, avgHours float64, err error) {
+	repos, args := repoIn("pr.repo_id", repoIDs)
 	owner, ownerArgs := m.ownerFilter("pr.author_account")
 	q := `SELECT pr.ready_at, MIN(rv.submitted_at)
 	        FROM pull_requests pr
 	        JOIN pull_request_reviews rv ON rv.pull_request_id = pr.id
-	       WHERE pr.repo_id = ? AND pr.ready_at IS NOT NULL
+	       WHERE ` + repos + ` AND pr.ready_at IS NOT NULL
 	         AND pr.ready_at >= ? AND pr.ready_at < ?
 	         AND rv.submitted_at >= pr.ready_at
 	         AND ` + normalized("rv.reviewer_account") + ` NOT IN (SELECT account FROM excluded_accounts)` + owner + `
 	       GROUP BY pr.id, pr.ready_at`
 
-	rows, err := m.QueryCtx(ctx, q, append([]any{repoID, from, to}, ownerArgs...)...)
+	rows, err := m.QueryCtx(ctx, q, append(append(args, from, to), ownerArgs...)...)
 	if err != nil {
 		return 0, 0, fmt.Errorf("review wait time: %w", err)
 	}
@@ -243,13 +267,14 @@ type DayDuration struct {
 // driver stores Go's time.String() form, which SQLite's DATE()
 // cannot parse and silently maps to NULL), so day-bucketing on the
 // raw started_at is the only rendering that works on every dialect.
-func (m *MetricsPersister) DailyBuildDuration(ctx context.Context, repoID string, from, to time.Time) ([]DayDuration, error) {
+func (m *MetricsPersister) DailyBuildDuration(ctx context.Context, repoIDs []string, from, to time.Time) ([]DayDuration, error) {
+	repos, args := repoIn("b.repo_id", repoIDs)
 	owner, ownerArgs := m.ownerFilter(buildOwner)
 	q := `SELECT b.started_at, b.duration_seconds` + buildsFrom + `
-	      WHERE b.repo_id = ? AND b.started_at >= ? AND b.started_at < ?
+	      WHERE ` + repos + ` AND b.started_at >= ? AND b.started_at < ?
 	        AND b.duration_seconds IS NOT NULL` + owner
 
-	rows, err := m.QueryCtx(ctx, q, append([]any{repoID, from, to}, ownerArgs...)...)
+	rows, err := m.QueryCtx(ctx, q, append(append(args, from, to), ownerArgs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("daily build duration: %w", err)
 	}
@@ -302,18 +327,22 @@ func (m *MetricsPersister) DailyBuildDuration(ctx context.Context, repoID string
 // Authors returns the normalized accounts that own PRs created or
 // merged, or builds started, in the window, excluded accounts left out,
 // sorted. It is the row set of a per-author breakdown.
-func (m *MetricsPersister) Authors(ctx context.Context, repoID string, from, to time.Time) ([]string, error) {
+func (m *MetricsPersister) Authors(ctx context.Context, repoIDs []string, from, to time.Time) ([]string, error) {
+	prRepos, prArgs := repoIn("repo_id", repoIDs)
+	buildRepos, buildArgs := repoIn("b.repo_id", repoIDs)
 	prOwner, _ := (&MetricsPersister{Persister: m.Persister}).ownerFilter("author_account")
 	buildOwnerF, _ := (&MetricsPersister{Persister: m.Persister}).ownerFilter(buildOwner)
 	q := `SELECT author_account FROM pull_requests
-	       WHERE repo_id = ? AND author_account IS NOT NULL
+	       WHERE ` + prRepos + ` AND author_account IS NOT NULL
 	         AND ((pr_created_at >= ? AND pr_created_at < ?) OR (merged_at >= ? AND merged_at < ?))` + prOwner + `
 	      UNION
 	      SELECT ` + buildOwner + buildsFrom + `
-	       WHERE b.repo_id = ? AND b.started_at >= ? AND b.started_at < ?
+	       WHERE ` + buildRepos + ` AND b.started_at >= ? AND b.started_at < ?
 	         AND ` + buildOwner + ` IS NOT NULL` + buildOwnerF
 
-	rows, err := m.QueryCtx(ctx, q, repoID, from, to, from, to, repoID, from, to)
+	args := append(append(prArgs, from, to, from, to), buildArgs...)
+	args = append(args, from, to)
+	rows, err := m.QueryCtx(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("authors: %w", err)
 	}

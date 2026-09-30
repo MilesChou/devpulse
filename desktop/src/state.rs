@@ -3,8 +3,8 @@
 //! into requests, and this module decides what a response changes.
 
 use crate::api::{
-    ApiError, ByMember, Member, MonthlyReport, Registration, Repo, RepoPatch, Report, ScopeParam,
-    SyncStatus, Team,
+    ApiError, ByMember, Member, MemberRow, MonthlyReport, Overview, Registration, Repo, RepoPatch,
+    RepoRow, Report, ScopeParam, SyncStatus, Target, Team,
 };
 use crate::i18n::Texts;
 use crate::month::Month;
@@ -126,6 +126,8 @@ pub enum Msg {
     MemberSaved(Notice, Result<(), ApiError>),
     TeamSaved(Notice, Result<(), ApiError>),
     ExcludedSaved(Result<Vec<String>, ApiError>),
+    RepoOverview(u64, Result<Overview<RepoRow>, ApiError>),
+    MemberOverview(u64, Result<Overview<MemberRow>, ApiError>),
 }
 
 /// What the app should do after a message was applied.
@@ -152,7 +154,8 @@ impl Applied {
 #[derive(Debug)]
 pub struct State {
     pub repos: Loadable<Vec<Repo>>,
-    pub selected: Option<Repo>,
+    /// What the Dashboard shows: one repo, or all repos.
+    pub selected: Option<Target>,
     pub window: Window,
     pub report: Loadable<Report>,
     pub trend: Loadable<MonthlyReport>,
@@ -169,7 +172,11 @@ pub struct State {
     pub members: Loadable<Vec<Member>>,
     pub teams: Loadable<Vec<Team>>,
     pub excluded: Loadable<Vec<String>>,
+    /// The Overview's comparison tables, for `window`.
+    pub repo_overview: Loadable<Overview<RepoRow>>,
+    pub member_overview: Loadable<Overview<MemberRow>>,
     generation: u64,
+    overview_generation: u64,
 }
 
 impl State {
@@ -187,7 +194,10 @@ impl State {
             members: Loadable::Idle,
             teams: Loadable::Idle,
             excluded: Loadable::Idle,
+            repo_overview: Loadable::Idle,
+            member_overview: Loadable::Idle,
             generation: 0,
+            overview_generation: 0,
         }
     }
 
@@ -205,6 +215,7 @@ impl State {
                 .ready()
                 .and_then(|ts| ts.iter().find(|team| &team.id == id))
                 .map_or_else(|| t.team_fallback.into(), |team| (t.team_label)(&team.name)),
+            ScopeParam::Account(a) => a.clone(),
         }
     }
 
@@ -220,9 +231,11 @@ impl State {
         self.generation += 1;
         self.report = Loadable::Loading;
         self.trend = Loadable::Loading;
-        // The breakdown splits everyone's work; it has no meaning inside
-        // a member or team scope.
-        self.by_member = if self.scope == ScopeParam::Everyone {
+        // The breakdown splits everyone's work of one repo; it has no
+        // meaning inside a member or team scope, and across all repos the
+        // Overview's member table is the breakdown.
+        let one_repo = matches!(self.selected, Some(Target::Repo(_)));
+        self.by_member = if one_repo && self.scope == ScopeParam::Everyone {
             Loadable::Loading
         } else {
             Loadable::Idle
@@ -230,13 +243,28 @@ impl State {
         self.generation
     }
 
-    /// Selects a repo; returns false when it was already selected.
-    pub fn select(&mut self, repo: Repo) -> bool {
-        if self.selected.as_ref() == Some(&repo) {
+    /// Marks the Overview tables as loading for the current window and
+    /// returns the generation their requests must carry.
+    pub fn begin_overview_load(&mut self) -> u64 {
+        self.overview_generation += 1;
+        self.repo_overview = Loadable::Loading;
+        self.member_overview = Loadable::Loading;
+        self.overview_generation
+    }
+
+    /// Selects a repo or all repos; returns false when it was already
+    /// selected.
+    pub fn select(&mut self, target: Target) -> bool {
+        if self.selected.as_ref() == Some(&target) {
             return false;
         }
-        self.selected = Some(repo);
+        self.selected = Some(target);
         true
+    }
+
+    /// The selected repo, when one repo (not all) is selected.
+    pub fn selected_repo(&self) -> Option<&Repo> {
+        self.selected.as_ref().and_then(Target::repo)
     }
 
     pub fn apply(&mut self, msg: Msg) -> Applied {
@@ -257,8 +285,12 @@ impl State {
             Msg::Repos(r) => {
                 // Keep the selection only if the refreshed list still has it,
                 // matched by name so a re-registered repo is picked up.
-                if let (Ok(repos), Some(sel)) = (&r, &self.selected) {
-                    self.selected = repos.iter().find(|x| x.full_name == sel.full_name).cloned();
+                if let (Ok(repos), Some(Target::Repo(sel))) = (&r, &self.selected) {
+                    self.selected = repos
+                        .iter()
+                        .find(|x| x.full_name == sel.full_name)
+                        .cloned()
+                        .map(Target::Repo);
                     if self.selected.is_none() {
                         self.report = Loadable::Idle;
                         self.trend = Loadable::Idle;
@@ -271,7 +303,17 @@ impl State {
             Msg::ByMember(generation, r) if generation == self.generation => {
                 self.by_member = r.into()
             }
-            Msg::Report(..) | Msg::Trend(..) | Msg::ByMember(..) => {} // stale
+            Msg::RepoOverview(generation, r) if generation == self.overview_generation => {
+                self.repo_overview = r.into()
+            }
+            Msg::MemberOverview(generation, r) if generation == self.overview_generation => {
+                self.member_overview = r.into()
+            }
+            Msg::Report(..)
+            | Msg::Trend(..)
+            | Msg::ByMember(..)
+            | Msg::RepoOverview(..)
+            | Msg::MemberOverview(..) => {} // stale
             Msg::Members(r) => {
                 // Drop a member scope whose member no longer exists.
                 if let (Ok(members), ScopeParam::Member(id)) = (&r, &self.scope)
@@ -339,11 +381,10 @@ impl State {
         // Labels feed the DORA section, so refresh the metrics when the
         // edited repo is the one on screen.
         let on_screen = self
-            .selected
-            .as_ref()
+            .selected_repo()
             .is_some_and(|s| s.full_name == repo.full_name);
         if on_screen {
-            self.selected = Some(repo.clone());
+            self.selected = Some(Target::Repo(repo.clone()));
         }
         Applied {
             reload_repos: true,
@@ -368,11 +409,13 @@ impl State {
             return Applied::default();
         }
 
-        // A sync we were watching just finished.
-        let on_screen = self
-            .selected
-            .as_ref()
-            .is_some_and(|s| s.full_name == status.last_repo);
+        // A sync we were watching just finished. Any repo's new data
+        // changes the all-repos numbers.
+        let on_screen = match &self.selected {
+            Some(Target::All) => true,
+            Some(Target::Repo(s)) => s.full_name == status.last_repo,
+            None => false,
+        };
         let notice = if status.last_error.is_empty() {
             Notice::Synced(status.last_repo.clone())
         } else {
@@ -662,14 +705,14 @@ mod tests {
     #[test]
     fn repo_refresh_keeps_or_clears_selection() {
         let mut s = State::new(m("2026-05"));
-        assert!(s.select(repo("a/one")));
-        assert!(!s.select(repo("a/one")), "reselecting is a no-op");
+        assert!(s.select(Target::Repo(repo("a/one"))));
+        assert!(
+            !s.select(Target::Repo(repo("a/one"))),
+            "reselecting is a no-op"
+        );
 
         s.apply(Msg::Repos(Ok(vec![repo("a/one"), repo("a/two")])));
-        assert_eq!(
-            s.selected.as_ref().map(|r| r.full_name.as_str()),
-            Some("a/one")
-        );
+        assert_eq!(s.selected.as_ref().map(Target::key), Some("a/one"));
 
         s.report = Loadable::Loading;
         s.apply(Msg::Repos(Ok(vec![repo("a/two")])));
@@ -677,7 +720,7 @@ mod tests {
         assert_eq!(s.report, Loadable::Idle);
 
         // A failed refresh leaves the selection alone.
-        s.select(repo("a/two"));
+        s.select(Target::Repo(repo("a/two")));
         s.apply(Msg::Repos(Err(ApiError::Transport("down".into()))));
         assert!(s.selected.is_some());
         assert!(matches!(s.repos, Loadable::Failed(_)));
@@ -750,13 +793,13 @@ mod tests {
     #[test]
     fn updating_the_selected_repo_reloads_metrics() {
         let mut s = State::new(m("2026-05"));
-        s.select(repo("acme/web"));
+        s.select(Target::Repo(repo("acme/web")));
 
         let mut updated = repo("acme/web");
         updated.hotfix_label = "urgent".into();
         let a = s.apply(Msg::RepoUpdated(Ok(updated)));
         assert!(a.reload_repos && a.reload_metrics);
-        assert_eq!(s.selected.as_ref().unwrap().hotfix_label, "urgent");
+        assert_eq!(s.selected_repo().unwrap().hotfix_label, "urgent");
 
         let a = s.apply(Msg::RepoUpdated(Ok(repo("acme/api"))));
         assert!(a.reload_repos && !a.reload_metrics);
@@ -774,7 +817,7 @@ mod tests {
     #[test]
     fn sync_lifecycle() {
         let mut s = State::new(m("2026-05"));
-        s.select(repo("acme/web"));
+        s.select(Target::Repo(repo("acme/web")));
 
         // Idle status on connect: nothing to announce.
         assert_eq!(
@@ -892,6 +935,7 @@ mod tests {
     #[test]
     fn scope_only_loads_breakdown_for_everyone() {
         let mut s = State::new(m("2026-05"));
+        s.select(Target::Repo(repo("a/one")));
         s.begin_metrics_load();
         assert!(s.by_member.is_loading());
 
@@ -946,5 +990,55 @@ mod tests {
         let a = s.apply(Msg::ExcludedSaved(Ok(vec!["dependabot".into()])));
         assert!(a.reload_metrics);
         assert_eq!(s.excluded, Loadable::Ready(vec!["dependabot".into()]));
+    }
+
+    #[test]
+    fn all_repos_target() {
+        let mut s = State::new(m("2026-05"));
+        s.apply(Msg::Repos(Ok(vec![repo("a/one")])));
+        assert!(s.select(Target::All));
+        assert!(!s.select(Target::All), "already selected");
+        assert_eq!(s.selected_repo(), None);
+
+        // A refreshed repo list keeps All selected.
+        s.apply(Msg::Repos(Ok(vec![repo("a/two")])));
+        assert_eq!(s.selected, Some(Target::All));
+
+        // No per-repo breakdown across all repos.
+        s.begin_metrics_load();
+        assert_eq!(s.by_member, Loadable::Idle);
+        s.select(Target::Repo(repo("a/two")));
+        s.begin_metrics_load();
+        assert!(s.by_member.is_loading());
+    }
+
+    #[test]
+    fn stale_overview_is_dropped() {
+        let mut s = State::new(m("2026-05"));
+        let first = s.begin_overview_load();
+        let second = s.begin_overview_load();
+        s.apply(Msg::RepoOverview(first, Err(ApiError::Unauthorized)));
+        assert!(
+            s.repo_overview.is_loading(),
+            "older window's answer is ignored"
+        );
+        s.apply(Msg::RepoOverview(second, Err(ApiError::Unauthorized)));
+        assert_eq!(s.repo_overview, Loadable::Failed(ApiError::Unauthorized));
+    }
+
+    #[test]
+    fn sync_of_any_repo_reloads_all_repos() {
+        let mut s = State::new(m("2026-05"));
+        s.select(Target::All);
+        let running = SyncStatus {
+            running: "acme/web".into(),
+            ..Default::default()
+        };
+        s.apply(Msg::Sync(Ok(running)));
+        let done = SyncStatus {
+            last_repo: "acme/web".into(),
+            ..Default::default()
+        };
+        assert!(s.apply(Msg::Sync(Ok(done))).reload_metrics);
     }
 }

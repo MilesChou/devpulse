@@ -427,9 +427,22 @@ Repo 物件也會帶上設定值：`pr_start`、`incident_label`、`hotfix_label
 | `PUT /api/v1/excluded-accounts`，body 為 `{"accounts": [...]}` | 取代整份清單，回傳正規化後的結果 |
 | `GET /api/v1/repos/{owner}/{name}/metrics/by-member?from=&to=` | `{repo, from, to, rows:[{member_id, name, accounts, report}]}` |
 
+#### 跨所有 repo
+
+以下端點涵蓋所有追蹤中、未停用的 repo，會把它們的 PR、build 和 review 放在一起計算，所以平均值和 p50 / p90 是跨 repo 的精確值，不是各 repo 數字的平均。
+
+| 方法與路徑 | 回傳 |
+|---|---|
+| `GET /api/v1/metrics?from=&to=` | 跨所有 repo 的報表，格式與單一 repo 相同，`repo` 為 `"*"`、`dora` 為 `null`（DORA 以單一 repo 計算）。可加 `member` / `team` |
+| `GET /api/v1/metrics/monthly?from=&to=` | `{repo: "*", from, to, months:[report, ...]}`，最多 120 個月。可加 `member` / `team` |
+| `GET /api/v1/overview/repos?from=&to=` | 比較列，每個 repo 一列：`{from, to, previous:{from, to}, rows:[{repo, current, previous, monthly:[{month, summary}]}]}` |
+| `GET /api/v1/overview/members?from=&to=` | 同樣的格式，但以人為單位跨所有 repo：在本期或前期有活動的成員，接著是沒有對應成員的活躍帳號（`member_id: null`）；每列帶 `member_id, name, accounts`，沒有 `repo` |
+
+`previous` 是緊接在 `from` 之前、月數相同的期間；`monthly` 是結束於 `to` 的 12 個月，給趨勢小圖用。summary 包含 `prs_opened`、`prs_merged`、`lead_time_hours`、`builds_per_pr`、`ci_failure_rate`（0–1）、`avg_build_seconds`（以每次 build 計算，所以 build 多的日子權重較大）、`review_wait_hours`，repo 列另外有 `deploys_per_week`。某個指標在該期間沒有資料時為 `null`，不會是 0。排除的帳號不會出現。
+
 帳號會被正規化：轉成小寫，並去掉結尾的 `[bot]`。這是因為 GitHub 的 REST API 把 bot 稱為 `dependabot[bot]`，GraphQL API 則稱同一個 bot 為 `dependabot`。一個帳號最多屬於一位成員，成員名稱和團隊名稱都不能重複，衝突時回傳 `409`。
 
-`metrics` 和 `metrics/monthly` 可以加上 `member=<id>` 或 `team=<id>`，只計算該成員或團隊的活動。這時報表會帶有 `scope: {kind, id, name, accounts}`（沒有篩選時為 `null`），`dora` 則為 `null`，因為 DORA 衡量的是整個 repo。`by-member` 會為視窗內有活動的每位成員列一列，也會為每個沒有對應成員的活躍帳號列一列（`member_id: null`，`name` 為該帳號），每一列都有自己的報表。
+`metrics` 和 `metrics/monthly` 可以加上 `member=<id>`、`team=<id>` 或 `account=<帳號>`（三擇一），只計算該成員、團隊或單一帳號的活動；`account` 可以在帳號還沒對應到成員之前就查看它。這時報表會帶有 `scope: {kind, id, name, accounts}`（沒有篩選時為 `null`），`dora` 則為 `null`，因為 DORA 衡量的是整個 repo。`by-member` 會為視窗內有活動的每位成員列一列，也會為每個沒有對應成員的活躍帳號列一列（`member_id: null`，`name` 為該帳號），每一列都有自己的報表。
 
 API 的讀取和寫入共用同一個 token：持有 `DEVPULSE_API_TOKEN` 的人也能新增、移除 repo。在沒有 token 的 loopback 位址上，本機的任何程式都可以這麼做。這符合單一使用者的使用情境，請妥善保管 token。
 

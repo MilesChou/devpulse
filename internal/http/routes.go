@@ -55,6 +55,7 @@ func NewHandler(cfg Config) http.Handler {
 	api.HandleFunc("POST /api/v1/repos/{owner}/{name}/sync", h.startSync)
 	api.HandleFunc("GET /api/v1/sync", h.syncStatus)
 	registerPeopleRoutes(api, h)
+	registerOverviewRoutes(api, h)
 	api.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})
@@ -164,7 +165,7 @@ func (h *handlers) getMetrics(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	report, err := metrics.Compute(r.Context(), src, rp, win, h.cfg.Now(), scope)
+	report, err := metrics.Compute(r.Context(), src, metrics.Single(rp), win, h.cfg.Now(), scope)
 	if err != nil {
 		h.internalError(w, "compute metrics", err)
 		return
@@ -189,7 +190,7 @@ func (h *handlers) getMonthlyMetrics(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	months, err := metrics.ComputeMonthly(r.Context(), src, rp, win, h.cfg.Now(), scope)
+	months, err := metrics.ComputeMonthly(r.Context(), src, metrics.Single(rp), win, h.cfg.Now(), scope)
 	if err != nil {
 		h.internalError(w, "compute monthly metrics", err)
 		return

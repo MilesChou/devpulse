@@ -29,6 +29,21 @@ It shows, per repo and month window:
   the selected window, or the whole window when it is longer (at most
   the last 120 months, the server's limit for one monthly trend).
 
+The app opens on the **Overview**: a repo table and a member table for
+the selected period, to spot which repo got slower or fails more, and
+how people compare across all repos. Each metric shows its change
+against the previous period of the same length; a change for the worse
+beyond a noise floor (2 percentage points for the CI failure rate, 10 %
+otherwise) is highlighted. Click a column header to sort, worst first
+(again to reverse); the last column is a 12-month sparkline of the
+sorted metric. Click a repo to open its dashboard, or a member to open
+their dashboard across all repos.
+
+**All repos** at the top of the repo list is that person-first view:
+with a member picked in **Show**, the cards, charts and trends cover
+their work in every repo. DORA is measured per repo, so its panel asks
+for a single repo.
+
 The **Show** picker next to the repo name limits everything on the
 dashboard to one team or one member (DORA stays whole-repo only). Below
 the DORA panel, **By member** lists everyone active in the window with

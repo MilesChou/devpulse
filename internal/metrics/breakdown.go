@@ -6,13 +6,12 @@ import (
 	"time"
 
 	"github.com/mileschou/devpulse/internal/people"
-	"github.com/mileschou/devpulse/internal/repo"
 )
 
 // AuthorLister lists the normalized accounts active in a window (see
 // persistence.MetricsPersister.Authors).
 type AuthorLister interface {
-	Authors(ctx context.Context, repoID string, from, to time.Time) ([]string, error)
+	Authors(ctx context.Context, repoIDs []string, from, to time.Time) ([]string, error)
 }
 
 // ScopedSource returns a Source limited to work owned by accounts.
@@ -37,11 +36,11 @@ func ComputeByMember(
 	authors AuthorLister,
 	scoped ScopedSource,
 	members []people.Member,
-	rp repo.Repo,
+	t Target,
 	w Window,
 	now time.Time,
 ) ([]Row, error) {
-	active, err := authors.Authors(ctx, rp.ID, w.From, w.To)
+	active, err := authors.Authors(ctx, t.ids(), w.From, w.To)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +56,7 @@ func ComputeByMember(
 		}
 		id := m.ID
 		scope := &Scope{Kind: "member", ID: m.ID, Name: m.DisplayName, Accounts: m.Accounts}
-		r, err := Compute(ctx, scoped(m.Accounts), rp, w, now, scope)
+		r, err := Compute(ctx, scoped(m.Accounts), t, w, now, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -70,7 +69,7 @@ func ComputeByMember(
 		}
 		accounts := []string{a}
 		scope := &Scope{Kind: "account", ID: a, Name: a, Accounts: accounts}
-		r, err := Compute(ctx, scoped(accounts), rp, w, now, scope)
+		r, err := Compute(ctx, scoped(accounts), t, w, now, scope)
 		if err != nil {
 			return nil, err
 		}
