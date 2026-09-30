@@ -87,6 +87,12 @@ func TestAPI_TeamsAndExcluded(t *testing.T) {
 	if status, body := do(t, srv, "POST", "/api/v1/teams", testToken, `{"name":"Ghosts","member_ids":["nope"]}`); status != http.StatusBadRequest {
 		t.Fatalf("team with unknown member: status %d (%s)", status, body)
 	}
+	// Updating a member keeps reporting its teams.
+	status, body = do(t, srv, "PUT", "/api/v1/members/"+alice.ID, testToken, `{"display_name":"Alice Chen","accounts":["alice"]}`)
+	if got := decode[memberJSON](t, body); status != http.StatusOK || !slices.Equal(got.TeamIDs, []string{team.ID}) {
+		t.Fatalf("update member in a team: status %d: %s", status, body)
+	}
+
 	status, body = do(t, srv, "PUT", "/api/v1/teams/"+team.ID, testToken, `{"name":"Frontend","member_ids":[]}`)
 	if got := decode[teamJSON](t, body); status != http.StatusOK || got.Name != "Frontend" || len(got.MemberIDs) != 0 {
 		t.Fatalf("update team: status %d: %s", status, body)

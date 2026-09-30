@@ -106,9 +106,13 @@ pub enum Msg {
     Members(Result<Vec<Member>, ApiError>),
     Teams(Result<Vec<Team>, ApiError>),
     Excluded(Result<Vec<String>, ApiError>),
-    /// A member or team was created, updated or deleted; carries the
-    /// message to show on success.
+    /// A member or team was deleted; carries the message to show on
+    /// success.
     PeopleChanged(String, Result<(), ApiError>),
+    /// The member form was saved; on success the form is cleared, on
+    /// failure it is kept so the user can fix it.
+    MemberSaved(String, Result<(), ApiError>),
+    TeamSaved(String, Result<(), ApiError>),
     ExcludedSaved(Result<Vec<String>, ApiError>),
 }
 
@@ -118,6 +122,8 @@ pub struct Applied {
     pub reload_repos: bool,
     pub reload_metrics: bool,
     pub reload_people: bool,
+    pub clear_member_form: bool,
+    pub clear_team_form: bool,
     /// A message for the user: (is_error, text).
     pub notice: Option<(bool, String)>,
 }
@@ -281,15 +287,19 @@ impl State {
                 self.teams = r.into();
             }
             Msg::Excluded(r) => self.excluded = r.into(),
-            Msg::PeopleChanged(done, r) => {
-                return match r {
-                    // Names and memberships feed the breakdown and scopes.
-                    Ok(()) => Applied {
-                        reload_people: true,
-                        reload_metrics: true,
-                        ..Applied::notice(false, done)
-                    },
-                    Err(e) => Applied::notice(true, e.to_string()),
+            Msg::PeopleChanged(done, r) => return people_changed(done, r),
+            Msg::MemberSaved(done, r) => {
+                let ok = r.is_ok();
+                return Applied {
+                    clear_member_form: ok,
+                    ..people_changed(done, r)
+                };
+            }
+            Msg::TeamSaved(done, r) => {
+                let ok = r.is_ok();
+                return Applied {
+                    clear_team_form: ok,
+                    ..people_changed(done, r)
                 };
             }
             Msg::ExcludedSaved(r) => {
@@ -378,6 +388,19 @@ impl State {
         let months = &self.trend.ready()?.months;
         let prev = self.window.from.prev().to_string();
         months.iter().find(|r| r.from == prev)
+    }
+}
+
+/// A change to members or teams: names and memberships feed the
+/// breakdown and the scopes, so both reload on success.
+fn people_changed(done: String, r: Result<(), ApiError>) -> Applied {
+    match r {
+        Ok(()) => Applied {
+            reload_people: true,
+            reload_metrics: true,
+            ..Applied::notice(false, done)
+        },
+        Err(e) => Applied::notice(true, e.to_string()),
     }
 }
 
@@ -869,6 +892,16 @@ mod tests {
         ));
         assert!(!a.reload_people);
         assert_eq!(a.notice.map(|n| n.0), Some(true));
+
+        let a = s.apply(Msg::MemberSaved("Saved Alice.".into(), Ok(())));
+        assert!(a.clear_member_form && !a.clear_team_form && a.reload_people);
+        let a = s.apply(Msg::MemberSaved(
+            "x".into(),
+            Err(ApiError::Conflict("display name taken".into())),
+        ));
+        assert!(!a.clear_member_form, "keep the form so the user can fix it");
+        let a = s.apply(Msg::TeamSaved("Saved team Web.".into(), Ok(())));
+        assert!(a.clear_team_form);
 
         let a = s.apply(Msg::ExcludedSaved(Ok(vec!["dependabot".into()])));
         assert!(a.reload_metrics);

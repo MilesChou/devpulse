@@ -126,12 +126,20 @@ func (h *handlers) updateMember(w http.ResponseWriter, r *http.Request) {
 		h.peopleError(w, "update member", err)
 		return
 	}
-	m, err := h.cfg.People.AccountsOfMember(r.Context(), id)
+	// Re-read through ListMembers, which also loads team memberships, so
+	// the answer matches GET /api/v1/members.
+	members, err := h.cfg.People.ListMembers(r.Context())
 	if err != nil {
-		h.peopleError(w, "update member", err)
+		h.internalError(w, "update member", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toMemberJSON(m))
+	for _, m := range members {
+		if m.ID == id {
+			writeJSON(w, http.StatusOK, toMemberJSON(m))
+			return
+		}
+	}
+	h.peopleError(w, "update member", people.ErrNotFound)
 }
 
 func (h *handlers) deleteMember(w http.ResponseWriter, r *http.Request) {

@@ -89,6 +89,8 @@ pub struct DashboardApp {
     member_form: MemberForm,
     team_form: TeamForm,
     excluded_input: String,
+    /// The excluded list as last loaded, to tell user edits apart.
+    excluded_shown: String,
     /// Member or team id awaiting a second click to confirm deletion.
     confirm_delete: Option<String>,
     last_sync_poll: Option<Instant>,
@@ -137,6 +139,7 @@ impl DashboardApp {
             member_form: MemberForm::default(),
             team_form: TeamForm::default(),
             excluded_input: String::new(),
+            excluded_shown: String::new(),
             confirm_delete: None,
             tx,
             rx,
@@ -298,10 +301,9 @@ impl DashboardApp {
         };
         let Some(client) = self.client() else { return };
         let id = self.member_form.id.clone();
-        self.member_form = MemberForm::default();
         self.spawn(move || {
             let done = format!("Saved {name}.");
-            Msg::PeopleChanged(
+            Msg::MemberSaved(
                 done,
                 client
                     .save_member(id.as_deref(), &name, &accounts)
@@ -320,10 +322,9 @@ impl DashboardApp {
         };
         let Some(client) = self.client() else { return };
         let id = self.team_form.id.clone();
-        self.team_form = TeamForm::default();
         self.spawn(move || {
             let done = format!("Saved team {name}.");
-            Msg::PeopleChanged(
+            Msg::TeamSaved(
                 done,
                 client
                     .save_team(id.as_deref(), &name, &member_ids)
@@ -473,13 +474,32 @@ impl eframe::App for DashboardApp {
     fn logic(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
         while let Ok(msg) = self.rx.try_recv() {
             let repos_arrived = matches!(msg, Msg::Repos(Ok(_)));
-            let excluded_arrived = matches!(msg, Msg::Excluded(Ok(_)) | Msg::ExcludedSaved(Ok(_)));
+            let excluded_loaded = matches!(msg, Msg::Excluded(Ok(_)));
+            let excluded_saved = matches!(msg, Msg::ExcludedSaved(Ok(_)));
             let applied = self.state.apply(msg);
             if repos_arrived {
                 self.restore_last_repo();
             }
-            if excluded_arrived && let Some(accounts) = self.state.excluded.ready() {
-                self.excluded_input = accounts.join("\n");
+            if (excluded_loaded || excluded_saved)
+                && let Some(accounts) = self.state.excluded.ready()
+            {
+                let text = accounts.join("\n");
+                // A reload (after any people change) must not wipe edits
+                // the user has not saved yet; a save shows the list as
+                // the server normalized it.
+                if excluded_saved
+                    || self.excluded_input.is_empty()
+                    || self.excluded_input == self.excluded_shown
+                {
+                    self.excluded_input = text.clone();
+                }
+                self.excluded_shown = text;
+            }
+            if applied.clear_member_form {
+                self.member_form = MemberForm::default();
+            }
+            if applied.clear_team_form {
+                self.team_form = TeamForm::default();
             }
             if applied.notice.is_some() {
                 self.notice = applied.notice;
