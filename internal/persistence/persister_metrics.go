@@ -259,15 +259,20 @@ func (m *MetricsPersister) ReviewWaitTime(ctx context.Context, repoIDs []string,
 type DayDuration struct {
 	Day        string
 	AvgSeconds float64
+	P50Seconds float64
 	Count      int
 }
 
-// DailyBuildDuration groups in Go rather than via SQL DATE():
-// each driver encodes TIMESTAMP differently on the wire (the SQLite
-// driver stores Go's time.String() form, which SQLite's DATE()
-// cannot parse and silently maps to NULL), so day-bucketing on the
-// raw started_at is the only rendering that works on every dialect.
-func (m *MetricsPersister) DailyBuildDuration(ctx context.Context, repoIDs []string, from, to time.Time) ([]DayDuration, error) {
+// BuildDurations returns the build durations of the window by UTC day
+// (average and median per day) and over the whole window (count,
+// average, median, p90).
+//
+// Days are grouped in Go rather than via SQL DATE(): each driver
+// encodes TIMESTAMP differently on the wire (the SQLite driver stores
+// Go's time.String() form, which SQLite's DATE() cannot parse and
+// silently maps to NULL), so day-bucketing on the raw started_at is the
+// only rendering that works on every dialect.
+func (m *MetricsPersister) BuildDurations(ctx context.Context, repoIDs []string, from, to time.Time) ([]DayDuration, statx.Summary, error) {
 	repos, args := repoIn("b.repo_id", repoIDs)
 	owner, ownerArgs := m.ownerFilter(buildOwner)
 	q := `SELECT b.started_at, b.duration_seconds` + buildsFrom + `
@@ -276,34 +281,28 @@ func (m *MetricsPersister) DailyBuildDuration(ctx context.Context, repoIDs []str
 
 	rows, err := m.QueryCtx(ctx, q, append(append(args, from, to), ownerArgs...)...)
 	if err != nil {
-		return nil, fmt.Errorf("daily build duration: %w", err)
+		return nil, statx.Summary{}, fmt.Errorf("build durations: %w", err)
 	}
 	defer rows.Close()
 
-	type agg struct {
-		total float64
-		count int
-	}
-	byDay := make(map[string]*agg)
+	byDay := make(map[string][]float64)
+	var all []float64
 	for rows.Next() {
 		var startedRaw any
 		var seconds float64
 		if err := rows.Scan(&startedRaw, &seconds); err != nil {
-			return nil, fmt.Errorf("daily build duration scan: %w", err)
+			return nil, statx.Summary{}, fmt.Errorf("build durations scan: %w", err)
 		}
 		started, err := anyToTime(startedRaw)
 		if err != nil {
-			return nil, fmt.Errorf("daily build duration parse: %w", err)
+			return nil, statx.Summary{}, fmt.Errorf("build durations parse: %w", err)
 		}
 		day := started.Format("2006-01-02")
-		if byDay[day] == nil {
-			byDay[day] = &agg{}
-		}
-		byDay[day].total += seconds
-		byDay[day].count++
+		byDay[day] = append(byDay[day], seconds)
+		all = append(all, seconds)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("daily build duration rows: %w", err)
+		return nil, statx.Summary{}, fmt.Errorf("build durations rows: %w", err)
 	}
 
 	days := make([]string, 0, len(byDay))
@@ -314,14 +313,15 @@ func (m *MetricsPersister) DailyBuildDuration(ctx context.Context, repoIDs []str
 
 	out := make([]DayDuration, 0, len(days))
 	for _, day := range days {
-		a := byDay[day]
+		s := statx.Summarize(byDay[day])
 		out = append(out, DayDuration{
 			Day:        day,
-			AvgSeconds: a.total / float64(a.count),
-			Count:      a.count,
+			AvgSeconds: s.Avg,
+			P50Seconds: s.P50,
+			Count:      s.Count,
 		})
 	}
-	return out, nil
+	return out, statx.Summarize(all), nil
 }
 
 // Authors returns the normalized accounts that own PRs created or

@@ -7,7 +7,7 @@
   "rows": [
     {
       "current": {
-        "avg_build_seconds": 75,
+        "build_p50_seconds": 75,
         "builds_per_pr": 1.5,
         "ci_failure_rate": 0.6666666666666666,
         "deploys_per_week": 2.1,
@@ -20,7 +20,7 @@
         {
           "month": "2025-06",
           "summary": {
-            "avg_build_seconds": null,
+            "build_p50_seconds": null,
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
@@ -33,7 +33,7 @@
         {
           "month": "2025-07",
           "summary": {
-            "avg_build_seconds": null,
+            "build_p50_seconds": null,
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
@@ -46,7 +46,7 @@
         {
           "month": "2025-08",
           "summary": {
-            "avg_build_seconds": null,
+            "build_p50_seconds": null,
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
@@ -59,7 +59,7 @@
         {
           "month": "2025-09",
           "summary": {
-            "avg_build_seconds": null,
+            "build_p50_seconds": null,
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
@@ -72,7 +72,7 @@
         {
           "month": "2025-10",
           "summary": {
-            "avg_build_seconds": null,
+            "build_p50_seconds": null,
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
@@ -85,7 +85,7 @@
         {
           "month": "2025-11",
           "summary": {
-            "avg_build_seconds": null,
+            "build_p50_seconds": null,
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
@@ -98,7 +98,7 @@
         {
           "month": "2025-12",
           "summary": {
-            "avg_build_seconds": null,
+            "build_p50_seconds": null,
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
@@ -111,7 +111,7 @@
         {
           "month": "2026-01",
           "summary": {
-            "avg_build_seconds": null,
+            "build_p50_seconds": null,
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
@@ -124,7 +124,7 @@
         {
           "month": "2026-02",
           "summary": {
-            "avg_build_seconds": null,
+            "build_p50_seconds": null,
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
@@ -137,7 +137,7 @@
         {
           "month": "2026-03",
           "summary": {
-            "avg_build_seconds": null,
+            "build_p50_seconds": null,
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
@@ -150,7 +150,7 @@
         {
           "month": "2026-04",
           "summary": {
-            "avg_build_seconds": null,
+            "build_p50_seconds": null,
             "builds_per_pr": null,
             "ci_failure_rate": null,
             "deploys_per_week": 0,
@@ -163,7 +163,7 @@
         {
           "month": "2026-05",
           "summary": {
-            "avg_build_seconds": 75,
+            "build_p50_seconds": 75,
             "builds_per_pr": 1.5,
             "ci_failure_rate": 0.6666666666666666,
             "deploys_per_week": 2.1,
@@ -175,7 +175,7 @@
         }
       ],
       "previous": {
-        "avg_build_seconds": null,
+        "build_p50_seconds": null,
         "builds_per_pr": null,
         "ci_failure_rate": null,
         "deploys_per_week": 0,

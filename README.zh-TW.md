@@ -171,7 +171,7 @@ Hotfix PR 與事故 issue 以 label 辨識，可用
 [`desktop/`](desktop/README.zh-TW.md) 是以 Rust（egui）寫成的原生 dashboard，
 讀取 `devpulse serve` 的 API：CI 失敗率、每個 PR 的 build 次數、PR lead time
 和 review 等待時間的 KPI 卡片（各附理想值和逐月變化）、四項 DORA 指標，
-以及 PR 尺寸分布、每日 build 時間、12 個月的趨勢和依成員分項，每個畫面都可以
+以及 PR 尺寸分布、建置時間中位數、12 個月的趨勢和依成員分項，每個畫面都可以
 限定為某個團隊或成員。**Repos** 頁面可以新增、設定、同步和移除追蹤中的 repo；
 **People** 頁面可以把 GitHub 帳號對應到成員和團隊，並設定哪些 bot 帳號不計入指標。
 

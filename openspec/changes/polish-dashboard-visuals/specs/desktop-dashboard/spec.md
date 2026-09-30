@@ -75,3 +75,26 @@ Hovering a data point of a trend line MUST show the month, the series and the va
 - **WHEN** the user hovers the 2026-07 point of the CI failure rate trend
 - **THEN** a label shows 2026-07, the series name and the rate, e.g. "9.4%"
 
+### Requirement: Median build time at a readable granularity
+
+The build time chart MUST show the median build duration: one bar per UTC day for a single month, and one bar per month for a longer period, where daily bars are too many to read. Its title says it is the median.
+
+#### Scenario: Single month
+
+- **WHEN** the period is one month
+- **THEN** the chart "Median build time" has one bar per day with builds, each the median of that day's builds
+
+#### Scenario: Several months
+
+- **WHEN** the period is 2026-01 to 2026-12
+- **THEN** the chart has one bar per month with builds, each the median of that month's builds
+
+### Requirement: Hover labels are never clipped
+
+Charts MUST leave room above the tallest bar so its hover label stays visible.
+
+#### Scenario: Tallest bar
+
+- **WHEN** the user hovers the tallest bar of the PR size distribution
+- **THEN** its label is fully visible
+

@@ -186,8 +186,10 @@ pub struct Texts {
     pub no_prs_in_window: &'static str,
     pub series_prs: &'static str,
     pub daily_build_duration: &'static str,
-    pub daily_build_caption: &'static str,
+    pub build_caption_daily: &'static str,
+    pub build_caption_monthly: &'static str,
     pub day_bar: fn(day: &str, builds: u64) -> String,
+    pub month_build_bar: fn(month: &str, builds: u64) -> String,
     pub series_seconds: &'static str,
     pub ci_failure_trend: &'static str,
     pub series_failure: &'static str,
@@ -457,9 +459,11 @@ pub static EN: Texts = Texts {
     small_share: |p| format!("{p:.0}% small (XS + S) · ideal: mostly small"),
     no_prs_in_window: "no PRs in this window",
     series_prs: "PRs",
-    daily_build_duration: "Daily build duration",
-    daily_build_caption: "average seconds per UTC day",
+    daily_build_duration: "Median build time",
+    build_caption_daily: "seconds, per UTC day",
+    build_caption_monthly: "seconds, per month",
     day_bar: |d, n| format!("{d} ({n} builds)"),
+    month_build_bar: |m, n| format!("{m} ({n} builds)"),
     series_seconds: "seconds",
     ci_failure_trend: "CI failure rate (%)",
     series_failure: "failure %",
@@ -474,9 +478,11 @@ pub static EN: Texts = Texts {
     help_size: "PRs opened in this window, grouped by total changed lines \
                 (additions + deletions): XS < 50, S < 200, M < 500, L < 1000, \
                 XL ≥ 1000. The goal is for most PRs to be XS or S.",
-    help_daily: "Average duration of the CI builds that started on each UTC day \
-                 of this window, PR and branch builds alike. Hover a bar for the \
-                 day's build count. Taller bars mean slower feedback.",
+    help_daily: "Median duration of the CI builds, PR and branch builds alike: one \
+                 bar per UTC day for a single month, one bar per month for a longer \
+                 period. The median keeps a few very slow builds from hiding the \
+                 usual time. Hover a bar for its build count. Taller bars mean \
+                 slower feedback.",
     help_failure_trend: "Per month: the share of PR-triggered builds started that \
                          month that failed. Months without PR builds are left \
                          blank. Ideal: 0%.",
@@ -647,8 +653,8 @@ pub static EN: Texts = Texts {
     go_to_overview: "Open Overview",
     help_prs_opened: "PRs opened in this period.",
     help_prs_merged: "PRs merged in this period.",
-    help_build_time: "Average duration of the CI builds that started in this period, per build: \
-                      a day with many builds weighs more. PR and branch builds alike.",
+    help_build_time: "Median duration of the CI builds that started in this period, PR and \
+                      branch builds alike; a few very slow builds do not move it.",
     help_trend: "The sorted column for the 12 months ending with this period; gaps are \
                  months without data.",
     status_on_target: "On target",
@@ -757,9 +763,11 @@ pub static ZH_TW: Texts = Texts {
     small_share: |p| format!("{p:.0}% 為小型 PR（XS + S）· 理想：以小型為主"),
     no_prs_in_window: "這段期間沒有 PR",
     series_prs: "PR 數",
-    daily_build_duration: "每日建置時間",
-    daily_build_caption: "每個 UTC 日的平均秒數",
+    daily_build_duration: "建置時間中位數",
+    build_caption_daily: "單位：秒，每個 UTC 日一根",
+    build_caption_monthly: "單位：秒，每月一根",
     day_bar: |d, n| format!("{d}（{n} 次建置）"),
+    month_build_bar: |m, n| format!("{m}（{n} 次建置）"),
     series_seconds: "秒",
     ci_failure_trend: "CI 失敗率（%）",
     series_failure: "失敗 %",
@@ -774,8 +782,9 @@ pub static ZH_TW: Texts = Texts {
     help_size: "這段期間建立的 PR，依總變更行數（新增 + 刪除）分級：\
                 XS < 50、S < 200、M < 500、L < 1000、XL ≥ 1000。\
                 目標是大部分 PR 落在 XS 或 S。",
-    help_daily: "這段期間每個 UTC 日開始的 CI 建置平均耗時，PR 與分支建置都算在內。\
-                 滑到長條上可看當天的建置次數。長條越高，代表回饋越慢。",
+    help_daily: "CI 建置耗時的中位數，PR 與分支建置都算在內：只選一個月時每個 UTC 日一根，\
+                 選多個月時每月一根。用中位數，少數特別慢的建置不會掩蓋平常的時間。\
+                 滑到長條上可看建置次數。長條越高，代表回饋越慢。",
     help_failure_trend: "每個月：當月開始的 PR 建置中，失敗所佔的比例。\
                          沒有 PR 建置的月份留白。理想值 0%。",
     help_lead_trend: "每個月：當月合併的 PR 從開啟到合併的時數，畫出中位數（p50，主線）、\
@@ -926,8 +935,8 @@ pub static ZH_TW: Texts = Texts {
     go_to_overview: "前往總覽",
     help_prs_opened: "這段期間開啟的 PR 數。",
     help_prs_merged: "這段期間合併的 PR 數。",
-    help_build_time: "這段期間開始的 CI 建置平均耗時，以每次建置計算：建置多的日子權重較大。\
-                      PR 與分支建置都算在內。",
+    help_build_time: "這段期間開始的 CI 建置耗時的中位數，PR 與分支建置都算在內；\
+                      少數特別慢的建置不會影響它。",
     help_trend: "排序中的欄位在這段期間結尾往前 12 個月的走勢；空白表示那個月沒有資料。",
     status_on_target: "達標",
     status_near: "接近目標",

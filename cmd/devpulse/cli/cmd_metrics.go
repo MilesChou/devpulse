@@ -76,11 +76,15 @@ func printMetrics(w io.Writer, r metrics.Report, win metrics.Window) {
 		r.PRLeadTime.AvgHours, r.PRLeadTime.P50Hours, r.PRLeadTime.P90Hours, r.PRLeadTime.Count)
 	fmt.Fprintf(w, "Review Wait Time:       avg %.1fh (%d PRs)\n", r.ReviewWait.AvgHours, r.ReviewWait.Count)
 	fmt.Fprintf(w, "PR Size Distribution:   %s\n", formatSizeDist(r.PRSizeDistribution))
+	if b := r.BuildDuration; b.Count > 0 {
+		fmt.Fprintf(w, "Build Duration:         p50 %.0fs  avg %.0fs  p90 %.0fs  (%d builds)\n",
+			b.P50Seconds, b.AvgSeconds, b.P90Seconds, b.Count)
+	}
 
 	if len(r.DailyBuildDuration) > 0 {
-		fmt.Fprintf(w, "\nDaily Build Duration (avg seconds):\n")
+		fmt.Fprintf(w, "\nDaily Build Duration (median seconds):\n")
 		for _, d := range r.DailyBuildDuration {
-			fmt.Fprintf(w, "  %s: %.0fs (%d builds)\n", d.Day, d.AvgSeconds, d.Count)
+			fmt.Fprintf(w, "  %s: %.0fs (%d builds)\n", d.Day, d.P50Seconds, d.Count)
 		}
 	}
 

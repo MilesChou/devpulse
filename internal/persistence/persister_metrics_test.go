@@ -81,12 +81,12 @@ func TestMetricsPersister_EmptyStore(t *testing.T) {
 		t.Fatalf("ReviewWaitTime on empty: count=%d avg=%v", rwCount, rwAvg)
 	}
 
-	days, err := m.DailyBuildDuration(ctx, []string{r.ID}, metricsFrom, metricsTo)
+	days, all, err := m.BuildDurations(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
-		t.Fatalf("DailyBuildDuration: %v", err)
+		t.Fatalf("BuildDurations: %v", err)
 	}
-	if len(days) != 0 {
-		t.Fatalf("DailyBuildDuration on empty: %v", days)
+	if len(days) != 0 || all.Count != 0 {
+		t.Fatalf("BuildDurations on empty: %v %+v", days, all)
 	}
 }
 
@@ -155,19 +155,23 @@ func TestMetricsPersister_BuildMetrics(t *testing.T) {
 		t.Fatalf("AverageBuildsPerPR: got %v, want 1.5", avg)
 	}
 
-	days, err := m.DailyBuildDuration(ctx, []string{r.ID}, metricsFrom, metricsTo)
+	days, all, err := m.BuildDurations(ctx, []string{r.ID}, metricsFrom, metricsTo)
 	if err != nil {
-		t.Fatalf("DailyBuildDuration: %v", err)
+		t.Fatalf("BuildDurations: %v", err)
 	}
 	if len(days) != 2 {
-		t.Fatalf("DailyBuildDuration: got %d days, want 2 (%v)", len(days), days)
+		t.Fatalf("BuildDurations: got %d days, want 2 (%v)", len(days), days)
 	}
-	// Day 1: (60+120)/2 = 90s over 2 builds. Day 2: (30+90)/2 = 60s.
-	if days[0].Count != 2 || math.Abs(days[0].AvgSeconds-90) > 1e-9 {
+	// Day 1: 60 s and 120 s, avg and median 90. Day 2: 30 s and 90 s, 60.
+	if days[0].Count != 2 || math.Abs(days[0].AvgSeconds-90) > 1e-9 || math.Abs(days[0].P50Seconds-90) > 1e-9 {
 		t.Fatalf("day1: %+v", days[0])
 	}
 	if days[1].Count != 2 || math.Abs(days[1].AvgSeconds-60) > 1e-9 {
 		t.Fatalf("day2: %+v", days[1])
+	}
+	// The window: 30, 60, 90, 120 → median 75 over 4 builds.
+	if all.Count != 4 || math.Abs(all.P50-75) > 1e-9 {
+		t.Fatalf("window: %+v", all)
 	}
 }
 

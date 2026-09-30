@@ -1513,7 +1513,9 @@ impl DashboardApp {
                 ui.add_space(12.0);
                 ui.columns(2, |cols| {
                     theme::card(&mut cols[0], |ui| size_chart(ui, report, t));
-                    theme::card(&mut cols[1], |ui| daily_duration_chart(ui, report, t));
+                    theme::card(&mut cols[1], |ui| {
+                        build_duration_chart(ui, report, &self.state.trend, self.state.window, t)
+                    });
                 });
 
                 ui.add_space(12.0);
@@ -1980,7 +1982,7 @@ fn size_chart(ui: &mut egui::Ui, report: &Report, t: &Texts) {
         .iter()
         .map(|b| b.bucket.clone())
         .collect();
-    let bars = report
+    let bars: Vec<Bar> = report
         .pr_size_distribution
         .iter()
         .enumerate()
@@ -1990,33 +1992,69 @@ fn size_chart(ui: &mut egui::Ui, report: &Report, t: &Texts) {
                 .width(0.6)
         })
         .collect();
+    let top = bar_headroom(&bars);
     category_plot(ui, "size", EVERY)
+        .include_y(top)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
             p.bar_chart(BarChart::new(t.series_prs, bars).color(c0))
         });
 }
 
-fn daily_duration_chart(ui: &mut egui::Ui, report: &Report, t: &Texts) {
+/// Median build time: one bar per UTC day for a single month, one per
+/// month (from the trend's monthly reports) for a longer window, where
+/// daily bars would be too many to read.
+fn build_duration_chart(
+    ui: &mut egui::Ui,
+    report: &Report,
+    trend: &Loadable<MonthlyReport>,
+    window: Window,
+    t: &Texts,
+) {
     let c0 = theme::series(ui, 0);
     chart_title(ui, t.daily_build_duration, t.help_daily);
-    ui.small(t.daily_build_caption);
-    let labels: Vec<String> = report
-        .daily_build_duration
-        .iter()
-        .map(|d| d.day.clone())
-        .collect();
-    let bars = report
-        .daily_build_duration
-        .iter()
-        .enumerate()
-        .map(|(i, d)| {
-            Bar::new(i as f64, d.avg_seconds)
-                .name((t.day_bar)(&d.day, d.count))
-                .width(0.7)
-        })
-        .collect();
-    category_plot(ui, "daily", SPARSE)
+    let (labels, bars): (Vec<String>, Vec<Bar>) = if window.is_single_month() {
+        ui.small(t.build_caption_daily);
+        report
+            .daily_build_duration
+            .iter()
+            .enumerate()
+            .map(|(i, d)| {
+                let bar = Bar::new(i as f64, d.p50_seconds)
+                    .name((t.day_bar)(&d.day, d.count))
+                    .width(0.7);
+                (d.day.clone(), bar)
+            })
+            .unzip()
+    } else {
+        ui.small(t.build_caption_monthly);
+        let Some(monthly) = trend.ready() else {
+            loadable_status(ui, trend, t);
+            return;
+        };
+        // The trend covers at least 12 months; keep the window's.
+        let (from, to) = (window.from.to_string(), window.to.to_string());
+        let months: Vec<&Report> = monthly
+            .months
+            .iter()
+            .filter(|r| r.from >= from && r.from < to)
+            .collect();
+        let labels = months.iter().map(|r| r.from.clone()).collect();
+        let bars = months
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.build_duration.count > 0)
+            .map(|(i, r)| {
+                Bar::new(i as f64, r.build_duration.p50_seconds)
+                    .name((t.month_build_bar)(&r.from, r.build_duration.count))
+                    .width(0.7)
+            })
+            .collect();
+        (labels, bars)
+    };
+    let top = bar_headroom(&bars);
+    category_plot(ui, "build-duration", SPARSE)
+        .include_y(top)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
             p.bar_chart(BarChart::new(t.series_seconds, bars).color(c0))
@@ -2103,7 +2141,7 @@ fn deploy_trend_chart(
     let c0 = theme::series(ui, 0);
     chart_title(ui, t.deploys_per_week_trend, t.help_deploy_trend);
     let labels = month_labels(monthly);
-    let bars = monthly
+    let bars: Vec<Bar> = monthly
         .months
         .iter()
         .enumerate()
@@ -2116,7 +2154,9 @@ fn deploy_trend_chart(
             )
         })
         .collect();
+    let top = bar_headroom(&bars);
     let plot = trend_plot(ui, "deploy-trend", monthly)
+        .include_y(top)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
             p.bar_chart(BarChart::new(t.series_deploys, bars).color(c0))
@@ -2248,6 +2288,13 @@ fn trend_plot(ui: &egui::Ui, id: &str, monthly: &MonthlyReport) -> Plot<'static>
 
 /// Opacity of the strongest grid lines relative to the text colour.
 const GRID_ALPHA: f32 = 0.3;
+
+/// Room above the tallest bar for its hover label, which egui_plot draws
+/// above the bar and would otherwise clip at the plot's top edge. Only
+/// the top grows: a symmetric margin would add a negative y range.
+fn bar_headroom(bars: &[Bar]) -> f64 {
+    bars.iter().map(|b| b.value).fold(0.0, f64::max) * 1.2
+}
 
 /// Label every category: few, short labels (the size buckets).
 const EVERY: [f64; 3] = [1.0, 1.0, 1.0];

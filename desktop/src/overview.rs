@@ -73,7 +73,7 @@ impl Column {
             Self::LeadTime => s.lead_time_p50_hours,
             Self::BuildsPerPr => s.builds_per_pr,
             Self::CiFailureRate => s.ci_failure_rate.map(|r| r * 100.0),
-            Self::BuildTime => s.avg_build_seconds,
+            Self::BuildTime => s.build_p50_seconds,
             Self::ReviewWait => s.review_wait_hours,
             Self::DeploysPerWeek => s.deploys_per_week,
         }
@@ -276,8 +276,8 @@ mod tests {
         // The spec example: 120 s → 180 s.
         let c = change(
             Column::BuildTime,
-            &s(|s| s.avg_build_seconds = Some(120.0)),
-            &s(|s| s.avg_build_seconds = Some(180.0)),
+            &s(|s| s.build_p50_seconds = Some(120.0)),
+            &s(|s| s.build_p50_seconds = Some(180.0)),
         )
         .unwrap();
         assert_eq!(c.text, "+50%");
@@ -384,9 +384,9 @@ mod tests {
     #[test]
     fn sorts_worst_first_with_missing_last() {
         let rows = [
-            s(|s| s.avg_build_seconds = Some(60.0)),
+            s(|s| s.build_p50_seconds = Some(60.0)),
             Summary::default(),
-            s(|s| s.avg_build_seconds = Some(300.0)),
+            s(|s| s.build_p50_seconds = Some(300.0)),
         ];
         let order = |sort: Sort| {
             let mut idx: Vec<usize> = (0..rows.len()).collect();
@@ -418,7 +418,7 @@ mod tests {
     fn cell_text() {
         let sum = s(|s| {
             s.ci_failure_rate = Some(0.125);
-            s.avg_build_seconds = Some(366.0);
+            s.build_p50_seconds = Some(366.0);
             s.deploys_per_week = Some(2.5);
         });
         assert_eq!(Column::CiFailureRate.format(&sum, &EN), "12.5%");

@@ -18,8 +18,8 @@ It shows, per repo and month window:
   the median as the big number, with the mean and p90 below, so a few
   PRs left open for weeks do not dominate. Single-month windows also
   show the change against the previous month.
-- **PR size distribution** (ideal: mostly XS / S) and **daily build
-  duration**.
+- **PR size distribution** (ideal: mostly XS / S) and **median build time** (one bar per day for
+  a single month, one per month for longer periods).
 - **DORA cards**: deployment frequency, lead time for changes, change
   failure rate, and recovery time, with month-over-month change. The
   project goals set no DORA targets, so the cards show which direction

@@ -42,3 +42,10 @@
 - [x] 7.3 Lead-time trend: the median is the main line
 - [x] 7.4 zh-TW names "PR 開啟到合併" and "commit 到部署" (help keeps DORA's name); "本年" → "今年"
 - [x] 7.5 Trend lines label the hovered point with month, series and value (`value_label`); unit-tested
+
+## 8. Median build time
+
+- [x] 8.1 Go: `BuildDurations` returns daily mean and median plus the window's summary; `Report.build_duration`; `DayBuildDuration.p50_seconds`; overview `build_p50_seconds` replaces `avg_build_seconds`; CLI prints the median; golden files and docs updated
+- [x] 8.2 Desktop: "Median build time" chart with daily bars for one month and monthly bars (from the trend) for longer periods; Overview build time column uses the median
+- [x] 8.3 Plot margin so the tallest bar's hover label is not clipped (user report)
+

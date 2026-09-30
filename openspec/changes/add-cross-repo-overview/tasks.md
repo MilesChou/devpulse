@@ -2,7 +2,7 @@
 
 - [x] 1.1 Change `metrics.Source` and `persistence.MetricsPersister` queries from `repoID string` to `repoIDs []string` (`repo_id IN (…)`); keep `DORAInput` per repo; per-repo callers pass one id
 - [x] 1.2 Persister tests: pooled lead-time percentiles across two repos (the spec example), and every existing per-repo test unchanged
-- [x] 1.3 Derive a build-weighted average build duration (`avg_build_seconds`) from the report's daily series, in `Summary` (task 2.1), with the spec's weighted-average example as a test; `Report` itself is unchanged so per-repo responses and their golden files stay the same
+- [x] 1.3 (Superseded by polish-dashboard-visuals task 8.1: the summary now uses the median build duration, `build_p50_seconds`.) Derive a build-weighted average build duration (`avg_build_seconds`) from the report's daily series, in `Summary` (task 2.1), with the spec's weighted-average example as a test; `Report` itself is unchanged so per-repo responses and their golden files stay the same
 - [x] 1.4 Introduce `metrics.Target` (one repo or all repos); `Compute` / `ComputeMonthly` take it; `Report.repo` is `*` and `dora` is null for all repos
 - [x] 1.5 Extend the member breakdown's active-author listing to a repo set
 

@@ -89,6 +89,7 @@ pub struct Report {
     pub review_wait: ReviewWait,
     pub pr_size_distribution: Vec<SizeBucketCount>,
     pub daily_build_duration: Vec<DayBuildDuration>,
+    pub build_duration: BuildDuration,
     /// `None` while the server does not know the repo's default branch,
     /// and for a report limited to a member or team.
     pub dora: Option<Box<Dora>>,
@@ -189,7 +190,8 @@ pub struct Summary {
     pub builds_per_pr: Option<f64>,
     /// 0..=1.
     pub ci_failure_rate: Option<f64>,
-    pub avg_build_seconds: Option<f64>,
+    /// Median build duration.
+    pub build_p50_seconds: Option<f64>,
     pub review_wait_hours: Option<f64>,
     /// Repo rows only.
     pub deploys_per_week: Option<f64>,
@@ -339,12 +341,22 @@ pub struct SizeBucketCount {
     pub count: u64,
 }
 
-/// Average build duration of one UTC day.
+/// Build duration of one UTC day: mean and median.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct DayBuildDuration {
     pub day: String,
     pub avg_seconds: f64,
+    pub p50_seconds: f64,
     pub count: u64,
+}
+
+/// Every build of a window: count, mean, median and p90, in seconds.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct BuildDuration {
+    pub count: u64,
+    pub avg_seconds: f64,
+    pub p50_seconds: f64,
+    pub p90_seconds: f64,
 }
 
 /// One report per month, oldest first.
@@ -1059,7 +1071,7 @@ mod tests {
         let row = &repos.rows[0];
         assert_eq!(row.repo, "MilesChou/devpulse");
         assert_eq!(row.monthly.len(), 12);
-        assert_eq!(row.current.avg_build_seconds, Some(75.0));
+        assert_eq!(row.current.build_p50_seconds, Some(75.0));
         assert!(row.current.deploys_per_week.is_some());
         assert_eq!(row.previous.lead_time_p50_hours, None, "no data is null");
 
