@@ -11,6 +11,7 @@ import (
 
 	"github.com/mileschou/devpulse/internal/config"
 	apihttp "github.com/mileschou/devpulse/internal/http"
+	"github.com/mileschou/devpulse/internal/metrics"
 	"github.com/mileschou/devpulse/internal/persistence"
 	"github.com/mileschou/devpulse/internal/repo"
 	"github.com/mileschou/devpulse/internal/syncrun"
@@ -46,12 +47,16 @@ func newServeCmd() *cobra.Command {
 			}
 			defer d.close(ctx)
 
+			mp := persistence.NewMetricsPersister(d.pers)
 			apiCfg := apihttp.Config{
 				Addr:    d.cfg.HTTPAddr,
 				Token:   d.cfg.APIToken,
 				Repos:   d.repos,
-				Metrics: persistence.NewMetricsPersister(d.pers),
+				Metrics: mp,
 				Admin:   d.admin,
+				People:  persistence.NewPeoplePersister(d.pers),
+				Authors: mp,
+				Scoped:  func(accounts []string) metrics.Source { return mp.Scoped(accounts) },
 			}
 			// Syncing needs GitHub; without a token the sync endpoints
 			// answer 503 and everything else keeps working.

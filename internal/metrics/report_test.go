@@ -60,7 +60,7 @@ func TestWindow_CheckTrend(t *testing.T) {
 	if err := wide.CheckTrend(); !errors.Is(err, ErrInvalidWindow) {
 		t.Fatalf("37 months: want ErrInvalidWindow, got %v", err)
 	}
-	if _, err := ComputeMonthly(context.Background(), &fakeSource{}, repo.Repo{}, wide, now); !errors.Is(err, ErrInvalidWindow) {
+	if _, err := ComputeMonthly(context.Background(), &fakeSource{}, repo.Repo{}, wide, now, nil); !errors.Is(err, ErrInvalidWindow) {
 		t.Fatalf("ComputeMonthly must enforce the limit, got %v", err)
 	}
 }
@@ -139,7 +139,7 @@ func TestComputeMonthly(t *testing.T) {
 	}
 
 	rp := repo.Repo{ID: "id", Name: repo.FullName{Owner: "o", Name: "r"}}
-	got, err := ComputeMonthly(context.Background(), src, rp, w, now)
+	got, err := ComputeMonthly(context.Background(), src, rp, w, now, nil)
 	if err != nil {
 		t.Fatalf("ComputeMonthly: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestCompute_DORA(t *testing.T) {
 	}
 	w, _ := ParseWindow("2026-05", "", now)
 
-	got, err := Compute(context.Background(), src, rp, w, now)
+	got, err := Compute(context.Background(), src, rp, w, now, nil)
 	if err != nil {
 		t.Fatalf("Compute: %v", err)
 	}

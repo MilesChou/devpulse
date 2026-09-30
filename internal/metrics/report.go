@@ -60,8 +60,23 @@ type Report struct {
 
 	// DORA is nil (JSON null) when the repo's default branch is not
 	// known yet: deployments are merges into it, so there is nothing
-	// honest to report until `devpulse repo refresh` fills it in.
+	// honest to report until `devpulse repo refresh` fills it in. It is
+	// also nil for a scoped report: DORA measures the delivery of the
+	// whole repo, so it is not split by person.
 	DORA *DORA `json:"dora"`
+
+	// Scope is the member or team the report is limited to; nil means
+	// everyone.
+	Scope *Scope `json:"scope"`
+}
+
+// Scope names whose work a report covers. The Source passed alongside
+// must already be limited to Accounts.
+type Scope struct {
+	Kind     string   `json:"kind"` // "member", "team", or "account" (an unmapped account)
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Accounts []string `json:"accounts"`
 }
 
 // BuildFailure is the CI failure rate over PR-triggered builds.
@@ -211,13 +226,15 @@ func ElapsedEnd(to, now time.Time) time.Time {
 }
 
 // Compute runs every metric query for one repo over the window. now
-// bounds a window that is still in progress (see ElapsedEnd).
-func Compute(ctx context.Context, src Source, rp repo.Repo, w Window, now time.Time) (Report, error) {
+// bounds a window that is still in progress (see ElapsedEnd). scope is
+// nil for everyone; otherwise src must be limited to scope.Accounts.
+func Compute(ctx context.Context, src Source, rp repo.Repo, w Window, now time.Time, scope *Scope) (Report, error) {
 	repoID := rp.ID
 	r := Report{
-		Repo: rp.Name.String(),
-		From: w.From.Format(monthLayout),
-		To:   w.To.Format(monthLayout),
+		Repo:  rp.Name.String(),
+		Scope: scope,
+		From:  w.From.Format(monthLayout),
+		To:    w.To.Format(monthLayout),
 	}
 
 	total, failed, rate, err := src.BuildFailureRate(ctx, repoID, w.From, w.To)
@@ -261,7 +278,7 @@ func Compute(ctx context.Context, src Source, rp repo.Repo, w Window, now time.T
 		})
 	}
 
-	if rp.DefaultBranch != "" {
+	if rp.DefaultBranch != "" && scope == nil {
 		if r.DORA, err = computeDORA(ctx, src, rp, w, now); err != nil {
 			return Report{}, err
 		}
@@ -298,13 +315,13 @@ func computeDORA(ctx context.Context, src Source, rp repo.Repo, w Window, now ti
 
 // ComputeMonthly returns one Report per month of the window, oldest
 // first, for month-over-month trends.
-func ComputeMonthly(ctx context.Context, src Source, rp repo.Repo, w Window, now time.Time) ([]Report, error) {
+func ComputeMonthly(ctx context.Context, src Source, rp repo.Repo, w Window, now time.Time, scope *Scope) ([]Report, error) {
 	if err := w.CheckTrend(); err != nil {
 		return nil, err
 	}
 	out := make([]Report, 0, w.Months())
 	for m := w.From; m.Before(w.To); m = m.AddDate(0, 1, 0) {
-		r, err := Compute(ctx, src, rp, Window{From: m, To: m.AddDate(0, 1, 0)}, now)
+		r, err := Compute(ctx, src, rp, Window{From: m, To: m.AddDate(0, 1, 0)}, now, scope)
 		if err != nil {
 			return nil, err
 		}

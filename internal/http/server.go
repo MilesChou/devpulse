@@ -44,6 +44,13 @@ type Config struct {
 
 	// Admin handles repo writes (register, configure, remove).
 	Admin *repoadmin.Service
+
+	// People stores members, teams and excluded accounts. Authors and
+	// Scoped back the per-person metrics: the active accounts in a
+	// window, and a Source limited to given accounts.
+	People  PeopleStore
+	Authors metrics.AuthorLister
+	Scoped  metrics.ScopedSource
 	// Sync runs background repo syncs. Nil when the server cannot sync
 	// (no GITHUB_TOKEN); the sync endpoints then answer 503.
 	Sync SyncRunner

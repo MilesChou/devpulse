@@ -16,6 +16,7 @@ import (
 
 	"github.com/mileschou/devpulse/internal/build"
 	"github.com/mileschou/devpulse/internal/incident"
+	"github.com/mileschou/devpulse/internal/metrics"
 	"github.com/mileschou/devpulse/internal/persistence"
 	"github.com/mileschou/devpulse/internal/persistence/persistencetest"
 	"github.com/mileschou/devpulse/internal/pullrequest"
@@ -106,15 +107,19 @@ func newTestServerWith(t *testing.T, adjust func(*Config)) *httptest.Server {
 	}
 
 	seedBuilds(t, persistence.NewBuildPersister(p), r.ID)
-	seedPullRequests(t, persistence.NewPullRequestPersister(p), r.ID)
+	seedPullRequests(t, persistence.NewPullRequestPersister(p), persistence.NewReviewPersister(p), r.ID)
 	seedIncidents(t, persistence.NewIncidentPersister(p), r.ID)
 
+	mp := persistence.NewMetricsPersister(p)
 	cfg := Config{
 		Token:   testToken,
 		Repos:   repos,
-		Metrics: persistence.NewMetricsPersister(p),
+		Metrics: mp,
 		Now:     func() time.Time { return fixedNow },
 		Admin:   repoadmin.New(repos, fakeMetadata{}),
+		People:  persistence.NewPeoplePersister(p),
+		Authors: mp,
+		Scoped:  func(accounts []string) metrics.Source { return mp.Scoped(accounts) },
 	}
 	if adjust != nil {
 		adjust(&cfg)
@@ -151,7 +156,7 @@ func seedBuilds(t *testing.T, bp *persistence.BuildPersister, repoID string) {
 	}
 }
 
-func seedPullRequests(t *testing.T, pp *persistence.PullRequestPersister, repoID string) {
+func seedPullRequests(t *testing.T, pp *persistence.PullRequestPersister, rvp *persistence.ReviewPersister, repoID string) {
 	t.Helper()
 	mk := func(number int, leadHours float64, lines int) pullrequest.PullRequest {
 		created := windowFrom.Add(time.Duration(number) * 24 * time.Hour)
@@ -188,6 +193,18 @@ func seedPullRequests(t *testing.T, pp *persistence.PullRequestPersister, repoID
 	prs := []pullrequest.PullRequest{mk(1, 10, 10), mk(2, 20, 100), revert}
 	if _, err := pp.UpsertMany(context.Background(), prs); err != nil {
 		t.Fatalf("seed prs: %v", err)
+	}
+	// Review wait reads review rows: bob reviews each PR 2h after ready,
+	// and a Copilot review after one minute must not count.
+	for _, pr := range prs {
+		for _, rv := range []pullrequest.Review{
+			{ReviewerAccount: "copilot-pull-request-reviewer", State: pullrequest.ReviewStateCommented, SubmittedAt: pr.ReadyAt.Add(time.Minute)},
+			{ReviewerAccount: "bob", State: pullrequest.ReviewStateApproved, SubmittedAt: *pr.FirstReviewAt},
+		} {
+			if err := rvp.Upsert(context.Background(), pr.ID, rv); err != nil {
+				t.Fatalf("seed review: %v", err)
+			}
+		}
 	}
 }
 

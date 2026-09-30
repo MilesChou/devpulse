@@ -57,7 +57,7 @@ func runMetrics(ctx context.Context, repoArg, fromFlag, toFlag string) error {
 		return fmt.Errorf("repo lookup: %w", err)
 	}
 
-	report, err := metrics.Compute(ctx, persistence.NewMetricsPersister(d.pers), r, w, time.Now())
+	report, err := metrics.Compute(ctx, persistence.NewMetricsPersister(d.pers), r, w, time.Now(), nil)
 	if err != nil {
 		return err
 	}

@@ -3,6 +3,7 @@ package persistence_test
 import (
 	"context"
 	"math"
+	"slices"
 	"testing"
 	"time"
 
@@ -210,6 +211,16 @@ func TestMetricsPersister_PRMetrics(t *testing.T) {
 	if _, err := pp.UpsertMany(ctx, prs); err != nil {
 		t.Fatalf("seed prs: %v", err)
 	}
+	// Review wait reads review rows: bob reviews each PR at its
+	// first_review_at.
+	rvp := persistence.NewReviewPersister(p)
+	for _, pr := range prs {
+		if err := rvp.Upsert(ctx, pr.ID, pullrequest.Review{
+			ReviewerAccount: "bob", State: pullrequest.ReviewStateCommented, SubmittedAt: *pr.FirstReviewAt,
+		}); err != nil {
+			t.Fatalf("seed review: %v", err)
+		}
+	}
 
 	count, avgH, p50, p90, err := m.PRLeadTime(ctx, r.ID, metricsFrom, metricsTo)
 	if err != nil {
@@ -250,5 +261,151 @@ func TestMetricsPersister_PRMetrics(t *testing.T) {
 	}
 	if rwCount != 3 || math.Abs(rwAvg-2) > 1e-6 {
 		t.Fatalf("ReviewWaitTime: count=%d avg=%v, want 3 / 2h", rwCount, rwAvg)
+	}
+}
+
+// TestMetricsPersister_ExcludesBots seeds human and bot work side by
+// side and asserts the bot's PRs, builds, and reviews never count.
+func TestMetricsPersister_ExcludesBots(t *testing.T) {
+	p := setup(t)
+	ctx := context.Background()
+	r, err := persistence.NewRepoPersister(p).EnsureID(ctx, "github", mustFullName(t, "MilesChou/devpulse"))
+	if err != nil {
+		t.Fatalf("ensure repo: %v", err)
+	}
+	seedPeopleFixture(t, p, r.ID)
+	m := persistence.NewMetricsPersister(p)
+
+	// PRs: alice #1 (10h), Bob #2 (20h), dependabot[bot] #3 (1h).
+	count, avg, _, _, err := m.PRLeadTime(ctx, r.ID, metricsFrom, metricsTo)
+	if err != nil {
+		t.Fatalf("lead time: %v", err)
+	}
+	if count != 2 || math.Abs(avg-15) > 1e-9 {
+		t.Fatalf("lead time: count=%d avg=%v, want 2 / 15h (bot PR excluded)", count, avg)
+	}
+
+	dist, _ := m.PRSizeDistribution(ctx, r.ID, metricsFrom, metricsTo)
+	if dist["XS"] != 2 {
+		t.Fatalf("size dist: %v, want XS:2 (bot PR excluded)", dist)
+	}
+
+	// Builds: #1 pass, #2 fail, bot #3 fail, and an unlinked build with
+	// no author (NULL owner) that passed. The NULL-owner build still
+	// counts; the bot's does not.
+	total, failed, _, err := m.BuildFailureRate(ctx, r.ID, metricsFrom, metricsTo)
+	if err != nil {
+		t.Fatalf("failure rate: %v", err)
+	}
+	if total != 3 || failed != 1 {
+		t.Fatalf("failure rate: %d/%d, want 1/3", failed, total)
+	}
+
+	// Reviews: Copilot reviews alice's PR after 1 minute, bob after 2h.
+	// Only the human review counts, so the wait is 2h, not ~0.
+	rwCount, rwAvg, err := m.ReviewWaitTime(ctx, r.ID, metricsFrom, metricsTo)
+	if err != nil {
+		t.Fatalf("review wait: %v", err)
+	}
+	if rwCount != 1 || math.Abs(rwAvg-2) > 1e-9 {
+		t.Fatalf("review wait: count=%d avg=%v, want 1 / 2h", rwCount, rwAvg)
+	}
+
+	authors, err := m.Authors(ctx, r.ID, metricsFrom, metricsTo)
+	if err != nil {
+		t.Fatalf("authors: %v", err)
+	}
+	if !slices.Equal(authors, []string{"alice", "bob"}) {
+		t.Fatalf("authors: %v, want [alice bob] (normalized, bot excluded)", authors)
+	}
+}
+
+// TestMetricsPersister_Scoped limits metrics to one person's accounts.
+func TestMetricsPersister_Scoped(t *testing.T) {
+	p := setup(t)
+	ctx := context.Background()
+	r, _ := persistence.NewRepoPersister(p).EnsureID(ctx, "github", mustFullName(t, "MilesChou/devpulse"))
+	seedPeopleFixture(t, p, r.ID)
+	m := persistence.NewMetricsPersister(p)
+
+	bob := m.Scoped([]string{"bob"})
+	count, avg, _, _, err := bob.PRLeadTime(ctx, r.ID, metricsFrom, metricsTo)
+	if err != nil || count != 1 || math.Abs(avg-20) > 1e-9 {
+		t.Fatalf("bob lead time: count=%d avg=%v err=%v, want 1 / 20h", count, avg, err)
+	}
+	// Bob's PR #2 had one failing build; the matching is case-insensitive
+	// (author stored as "Bob").
+	total, failed, _, _ := bob.BuildFailureRate(ctx, r.ID, metricsFrom, metricsTo)
+	if total != 1 || failed != 1 {
+		t.Fatalf("bob failure rate: %d/%d, want 1/1", failed, total)
+	}
+	if n, _, _ := bob.ReviewWaitTime(ctx, r.ID, metricsFrom, metricsTo); n != 0 {
+		t.Fatalf("bob review wait count: %d, want 0 (his PR has no human review)", n)
+	}
+
+	// A scope that names the bot still excludes it.
+	botScope := m.Scoped([]string{"dependabot"})
+	if count, _, _, _, _ := botScope.PRLeadTime(ctx, r.ID, metricsFrom, metricsTo); count != 0 {
+		t.Fatalf("bot scope: count=%d, want 0", count)
+	}
+
+	// A member without accounts matches nothing.
+	none := m.Scoped([]string{})
+	if total, _, _, _ := none.BuildFailureRate(ctx, r.ID, metricsFrom, metricsTo); total != 0 {
+		t.Fatalf("empty scope: total=%d, want 0", total)
+	}
+}
+
+// seedPeopleFixture writes PRs, builds, and reviews by two humans
+// (alice, "Bob" with a capital) and dependabot, all in the metrics window.
+func seedPeopleFixture(t *testing.T, p *persistence.Persister, repoID string) {
+	t.Helper()
+	ctx := context.Background()
+
+	mk := func(number int, author string, leadHours float64) pullrequest.PullRequest {
+		created := metricsFrom.Add(time.Duration(number) * 24 * time.Hour)
+		ready := created
+		merged := created.Add(time.Duration(leadHours * float64(time.Hour)))
+		return pullrequest.PullRequest{
+			RepoID: repoID, Number: number, Author: author, Status: pullrequest.StatusMerged,
+			Additions: 10, TotalChangedLines: 10, SizeBucket: pullrequest.SizeBucket(10),
+			CreatedAt: created, ReadyAt: &ready, MergedAt: &merged,
+		}
+	}
+	prs := []pullrequest.PullRequest{mk(1, "alice", 10), mk(2, "Bob", 20), mk(3, "dependabot[bot]", 1)}
+	if _, err := persistence.NewPullRequestPersister(p).UpsertMany(ctx, prs); err != nil {
+		t.Fatalf("seed prs: %v", err)
+	}
+
+	rvp := persistence.NewReviewPersister(p)
+	reviews := []struct {
+		pr       int
+		reviewer string
+		after    time.Duration
+	}{
+		{0, "copilot-pull-request-reviewer", time.Minute},
+		{0, "bob", 2 * time.Hour},
+		{1, "copilot-pull-request-reviewer", time.Minute},
+	}
+	for _, rv := range reviews {
+		at := prs[rv.pr].ReadyAt.Add(rv.after)
+		if err := rvp.Upsert(ctx, prs[rv.pr].ID, pullrequest.Review{
+			ReviewerAccount: rv.reviewer, State: pullrequest.ReviewStateCommented, SubmittedAt: at,
+		}); err != nil {
+			t.Fatalf("seed review: %v", err)
+		}
+	}
+
+	sha, _ := commitsha.Parse("bbb1234567890abcdef1234567890abcdef12345")
+	at := func(n int) time.Time { return metricsFrom.Add(time.Duration(n)*24*time.Hour + time.Hour) }
+	builds := []build.Build{
+		{ExternalID: "1", CommitSHA: sha, Trigger: build.TriggerPullRequest, PRNumber: 1, Status: build.StatusPassed, StartedAt: at(1)},
+		{ExternalID: "2", CommitSHA: sha, Trigger: build.TriggerPullRequest, PRNumber: 2, Status: build.StatusFailed, StartedAt: at(2)},
+		{ExternalID: "3", CommitSHA: sha, Trigger: build.TriggerPullRequest, PRNumber: 3, Status: build.StatusFailed, StartedAt: at(3)},
+		// Not linked to a PR and no known author: owner is NULL.
+		{ExternalID: "4", CommitSHA: sha, Trigger: build.TriggerPullRequest, Status: build.StatusPassed, StartedAt: at(4)},
+	}
+	if _, err := persistence.NewBuildPersister(p).UpsertMany(ctx, repoID, "github-actions", builds); err != nil {
+		t.Fatalf("seed builds: %v", err)
 	}
 }

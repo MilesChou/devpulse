@@ -29,6 +29,10 @@ import (
 //	POST /api/v1/repos/{owner}/{name}/sync              start a background sync
 //	GET /api/v1/sync                                    background sync status
 //
+// People routes (members, teams, excluded accounts, by-member metrics)
+// are in people_routes.go. The metrics routes accept ?member=<id> or
+// ?team=<id> to limit the report to that person's or team's work.
+//
 // from / to are YYYY-MM with the same defaults as `devpulse metrics`:
 // from is the current month, to (exclusive) is from + 1 month.
 func NewHandler(cfg Config) http.Handler {
@@ -50,6 +54,7 @@ func NewHandler(cfg Config) http.Handler {
 	api.HandleFunc("DELETE /api/v1/repos/{owner}/{name}", h.removeRepo)
 	api.HandleFunc("POST /api/v1/repos/{owner}/{name}/sync", h.startSync)
 	api.HandleFunc("GET /api/v1/sync", h.syncStatus)
+	registerPeopleRoutes(api, h)
 	api.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})
@@ -155,7 +160,11 @@ func (h *handlers) getMetrics(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	report, err := metrics.Compute(r.Context(), h.cfg.Metrics, rp, win, h.cfg.Now())
+	src, scope, ok := h.scope(w, r)
+	if !ok {
+		return
+	}
+	report, err := metrics.Compute(r.Context(), src, rp, win, h.cfg.Now(), scope)
 	if err != nil {
 		h.internalError(w, "compute metrics", err)
 		return
@@ -176,7 +185,11 @@ func (h *handlers) getMonthlyMetrics(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	months, err := metrics.ComputeMonthly(r.Context(), h.cfg.Metrics, rp, win, h.cfg.Now())
+	src, scope, ok := h.scope(w, r)
+	if !ok {
+		return
+	}
+	months, err := metrics.ComputeMonthly(r.Context(), src, rp, win, h.cfg.Now(), scope)
 	if err != nil {
 		h.internalError(w, "compute monthly metrics", err)
 		return
