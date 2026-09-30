@@ -43,6 +43,12 @@ type Config struct {
 	CacheEnabled bool
 	CacheDir     string        // empty → os.UserCacheDir()/devpulse
 	CacheTTL     time.Duration // 0 means entries never expire
+
+	// HTTP API served by `devpulse serve`. APIToken is the bearer token
+	// every /api/ request must carry; serve refuses to listen on a
+	// non-loopback address without one.
+	HTTPAddr string
+	APIToken string
 }
 
 // Load reads environment variables and returns Config.
@@ -65,6 +71,8 @@ func Load() (Config, error) {
 		CacheEnabled:   getenvBool("CACHE_ENABLED", false),
 		CacheDir:       os.Getenv("CACHE_DIR"),
 		CacheTTL:       getenvDuration("CACHE_TTL", 24*time.Hour), // 0 = never expire (always fresh)
+		HTTPAddr:       getenv("HTTP_ADDR", "127.0.0.1:8080"),
+		APIToken:       strings.TrimSpace(os.Getenv("DEVPULSE_API_TOKEN")),
 	}
 	return cfg.validate()
 }

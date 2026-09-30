@@ -4,13 +4,15 @@ CI 與 PR 工作流程的研發效能觀測工具：從 GitHub 與 CI 服務抓�
 聚合成團隊指標（CI 失敗率、PR review latency、build duration、
 PR 重跑次數，以及四項 DORA 指標），寫入關聯式資料庫供後續分析使用。
 
-以單一 Go binary 方式發佈。
+以單一 Go binary 方式發佈。`devpulse serve` 會把指標以唯讀 JSON API
+提供出來，另有一個選用的 Rust 桌面 dashboard（[`desktop/`](desktop/README.zh-TW.md)）
+把指標畫成圖表。
 
 > 英文版：[README.md](README.md)
 
 ## 定位
 
-- **是什麼**：CLI 工具 + 關聯式資料層
+- **是什麼**：CLI 工具 + 關聯式資料層，上層再加一個唯讀 HTTP API 和桌面 dashboard
 - **不是什麼**：SaaS、多租戶、即時 webhook 服務
 - **適用規模**：單機、單一使用者、單月單 repo 約 100~1000 筆 build
 
@@ -21,6 +23,7 @@ PR 重跑次數，以及四項 DORA 指標），寫入關聯式資料庫供後�
 - Go **1.26+**（從原始碼編譯時才需要）
 - 任一支援的資料庫：PostgreSQL、MySQL、SQLite（含 in-memory）
 - GitHub personal access token；若有用 Travis 則需 Travis CI token
+- Rust **1.95+**（只有編譯桌面 dashboard 時才需要）
 
 ### 從原始碼編譯
 
@@ -36,6 +39,29 @@ make build
 ```bash
 go install github.com/mileschou/devpulse/cmd/devpulse@latest
 ```
+
+### 編譯桌面 dashboard（選用）
+
+Dashboard 是 `desktop/` 底下獨立的 Rust crate，不需要 Go toolchain。在要使用 dashboard 的機器上：
+
+1. 用 [rustup](https://rustup.rs) 安裝 Rust 1.95 以上（已經裝過的話執行 `rustup update stable`）。
+2. 安裝各平台的前置套件：macOS 裝 Xcode Command Line Tools，Windows 裝 Visual Studio Build Tools（C++ 工作負載），Debian / Ubuntu 則安裝：
+
+   ```bash
+   sudo apt-get install build-essential pkg-config \
+     libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev
+   ```
+
+3. 編譯：
+
+   ```bash
+   cd desktop
+   cargo build --release --locked   # 或在 repo 根目錄執行 `make desktop`
+   ```
+
+4. 執行 `desktop/target/release/devpulse-desktop`（Windows 為 `devpulse-desktop.exe`），開啟 **Settings**，輸入正在運作的 `devpulse serve` 的 URL 和 token。
+
+細節請見 [desktop/README.zh-TW.md](desktop/README.zh-TW.md#編譯)：連到另一台機器上的 server、在本機完整試跑，以及疑難排解。
 
 ## 設定
 
@@ -84,6 +110,9 @@ devpulse metrics MilesChou/devpulse --from 2026-05
 
 # 啟動 worker 處理 enqueue 的 job（長時間執行）
 devpulse worker
+
+# 以 JSON 提供指標給桌面 dashboard（長時間執行）
+DEVPULSE_API_TOKEN=change-me devpulse serve
 ```
 
 選用的磁碟 HTTP 回應快取（`CACHE_ENABLED=true`）可以重播先前抓過的 API
@@ -137,6 +166,24 @@ Hotfix PR 與事故 issue 以 label 辨識，可用
 `incident-label <label>` 針對每個 repo 設定（預設為 `hotfix`、`incident`）。
 完整定義與限制見 [docs/commands.zh-TW.md](docs/commands.zh-TW.md#dora-定義)。
 
+## 桌面 dashboard
+
+[`desktop/`](desktop/README.zh-TW.md) 是以 Rust（egui）寫成的原生 dashboard，
+讀取 `devpulse serve` 的 API：CI 失敗率、每個 PR 的 build 次數、PR lead time
+和 review 等待時間的 KPI 卡片（各附理想值和逐月變化）、四項 DORA 指標，
+以及 PR 尺寸分布、每日 build 時間和 12 個月的趨勢。
+
+![桌面 dashboard](docs/images/desktop-dashboard.jpg)
+
+```bash
+DEVPULSE_API_TOKEN=change-me devpulse serve   # 在有資料庫的主機上執行
+make desktop-run                              # 再到 Settings 輸入 URL 和 token
+```
+
+Dashboard 只保存 DevPulse API token（存在作業系統的 keychain）；GitHub 和
+CI 的 token 只留在 server 上。端點和 JSON 格式請參考
+[`serve`](docs/commands.zh-TW.md#serve)。
+
 ## 指令一覽
 
 指令採 noun-on-verb 結構（`repo` / `pr` 兩個 resource group，動詞掛在
@@ -152,7 +199,7 @@ Hotfix PR 與事故 issue 以 label 辨識，可用
 | `devpulse metrics <owner/name>` | 印出月份區間的工程效率指標與 DORA 指標 |
 | `devpulse migrate {up,down,status}` | Schema migration |
 | `devpulse worker` | 啟動 DB-backed job worker |
-| `devpulse serve` | v2 HTTP API 的 placeholder |
+| `devpulse serve` | 以唯讀 JSON API 提供 repo 與指標 |
 
 ## 開發
 
@@ -163,6 +210,10 @@ make test      # 跑 unit tests
 make test-race # 跑 unit tests 並啟用 race detector
 make lint      # gofmt + go vet
 make tidy      # go mod tidy
+
+make desktop-test  # 跑桌面 dashboard 的 cargo test
+make desktop-lint  # cargo fmt --check + clippy
+make desktop       # 編譯 release 版 dashboard
 ```
 
 `make test` 預設打 in-memory SQLite。要對真實 PostgreSQL 或 MySQL 跑同一份測試，
@@ -203,6 +254,11 @@ collector 位址（例如本機 Jaeger 的 `localhost:4318`）就會把 span 送
   處理 Travis HTTP client（以及其他通用對外 HTTP）
 - OpenTelemetry SDK 提供 tracing
 - in-tree 的 DB-backed job queue
+- `net/http`（Go 1.22 以上的路由 pattern）提供 JSON API
+- 桌面 dashboard：Rust，搭配 [`eframe`/`egui`](https://github.com/emilk/egui)、
+  [`egui_plot`](https://github.com/emilk/egui_plot)、
+  [`ureq`](https://github.com/algesten/ureq) 與
+  [`keyring`](https://github.com/open-source-cooperative/keyring-rs)
 
 ## License
 

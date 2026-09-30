@@ -1,0 +1,80 @@
+{
+  "avg_builds_per_pr": 1.5,
+  "build_failure": {
+    "failed": 2,
+    "rate": 0.6666666666666666,
+    "total": 3
+  },
+  "daily_build_duration": [
+    {
+      "avg_seconds": 90,
+      "count": 2,
+      "day": "2026-05-01"
+    },
+    {
+      "avg_seconds": 60,
+      "count": 2,
+      "day": "2026-05-02"
+    }
+  ],
+  "dora": {
+    "change_failure_rate": 0.3333333333333333,
+    "default_branch": "main",
+    "deploy_days": 3,
+    "deployments": 3,
+    "hotfix_label": "hotfix",
+    "hotfixes": 0,
+    "incident_label": "incident",
+    "lead_time": {
+      "avg_hours": 22,
+      "count": 3,
+      "p50_hours": 22,
+      "p90_hours": 30
+    },
+    "per_week": 2.1,
+    "recovery": {
+      "avg_hours": 36,
+      "count": 2,
+      "p50_hours": 36,
+      "p90_hours": 61.6
+    },
+    "recovery_from_incidents": 1,
+    "recovery_from_reverts": 1,
+    "reverts": 1
+  },
+  "from": "2026-05",
+  "pr_lead_time": {
+    "avg_hours": 20,
+    "count": 3,
+    "p50_hours": 20,
+    "p90_hours": 28
+  },
+  "pr_size_distribution": [
+    {
+      "bucket": "XS",
+      "count": 1
+    },
+    {
+      "bucket": "S",
+      "count": 1
+    },
+    {
+      "bucket": "M",
+      "count": 0
+    },
+    {
+      "bucket": "L",
+      "count": 1
+    },
+    {
+      "bucket": "XL",
+      "count": 0
+    }
+  ],
+  "repo": "MilesChou/devpulse",
+  "review_wait": {
+    "avg_hours": 2,
+    "count": 3
+  },
+  "to": "2026-06"
+}

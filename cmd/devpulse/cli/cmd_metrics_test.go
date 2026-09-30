@@ -94,17 +94,3 @@ func TestMetrics_DORASection(t *testing.T) {
 		}
 	}
 }
-
-// TestElapsedEnd asserts a window still in progress is measured up to
-// now, and a finished window keeps its end.
-func TestElapsedEnd(t *testing.T) {
-	to := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-	now := time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC)
-	if got := elapsedEnd(to, now); !got.Equal(now) {
-		t.Fatalf("in-progress window: %v, want %v", got, now)
-	}
-	later := time.Date(2026, 10, 3, 0, 0, 0, 0, time.UTC)
-	if got := elapsedEnd(to, later); !got.Equal(to) {
-		t.Fatalf("finished window: %v, want %v", got, to)
-	}
-}

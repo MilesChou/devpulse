@@ -70,12 +70,17 @@ The user MUST be able to define per-repo rules of the form "this combination of 
 
 ### Requirement: API credentials are provided via environment variables
 
-The user MUST provide external API credentials (GitHub token, Travis token) via environment variables rather than hard-coding them in configuration files, to avoid accidental commits.
+The user MUST provide external API credentials (GitHub token, Travis token) and the DevPulse API token (`DEVPULSE_API_TOKEN`, for `devpulse serve`) to the Go service via environment variables rather than hard-coding them in configuration files, to avoid accidental commits. External credentials MUST stay on the host running the service: clients of the [HTTP API](../http-api/spec.md) never receive them, and the [desktop dashboard](../desktop-dashboard/spec.md) holds only the DevPulse API token, in the OS keychain.
 
 #### Scenario: Missing token surfaces a clear error
 
 - **WHEN** the user runs a command without setting a required token
 - **THEN** the system prints a clear error message identifying which token is missing, rather than failing with an opaque error after attempting the API call
+
+#### Scenario: Dashboard never sees GitHub or CI tokens
+
+- **WHEN** the user connects the desktop dashboard to a DevPulse server
+- **THEN** the dashboard asks only for the server URL and the DevPulse API token
 
 ### Requirement: Incident and hotfix labels are configurable per repo
 
@@ -95,4 +100,3 @@ The user MUST be able to set, per repo, the label that marks incident issues (`i
 
 - **WHEN** the user sets either label to an empty or whitespace-only value
 - **THEN** the command fails with a validation error and the stored value is unchanged
-
