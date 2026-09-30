@@ -45,7 +45,7 @@ The top bar MUST offer this month, last month, this year, the last 12 months and
 #### Scenario: Other presets
 
 - **WHEN** the current month is 2026-09
-- **THEN** this month is 2026-09, last month 2026-08, this year 2026-01 to 2026-09, and last year 2025-01 to 2025-12
+- **THEN** this month is 2026-09, last month 2026-08, this year 2026-01 to 2026-12 (the whole calendar year; months not yet reached are empty), and last year 2025-01 to 2025-12
 
 #### Scenario: Custom period
 

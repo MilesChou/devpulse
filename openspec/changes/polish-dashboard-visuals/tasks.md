@@ -32,6 +32,7 @@
 ## 6. Period presets
 
 - [x] 6.1 `state::Preset` (this month, last month, this year, last 12 months, last year) with the windows from the spec; unit-test, including January
+  - note: "this year" first ran to the current month; the user expects the whole calendar year (2026-01 to 2026-12), which also makes its trend chart cover exactly that year
 - [x] 6.2 Replace the "This month" button with a picker that names the matching preset or "Custom"; strings in both languages
 
 ## 7. Median lead time and plain names

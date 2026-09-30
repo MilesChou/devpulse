@@ -46,8 +46,8 @@ PR, PR lead time) and the small-PR share are coloured by where the value
 stands: on target, near, or off; hover the value for the words. The
 repo list groups repos by owner; fold a group, or hide the whole list
 with the button at the left of the top bar. The period picker next to
-the month fields offers this month, last month, this year, the last 12
-months (including this month) and last year.
+the month fields offers this month, last month, this year (the whole calendar
+year), the last 12 months (including this month) and last year.
 
 **All repos** at the top of the repo list is that person-first view:
 with a member picked in **Show**, the cards, charts and trends cover

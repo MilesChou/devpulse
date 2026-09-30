@@ -101,8 +101,9 @@ impl Window {
 }
 
 /// A period the top bar offers in one click, relative to the current
-/// month. "This year" runs to the end of the current month; "last 12
-/// months" includes the current month.
+/// month. "This year" is the whole calendar year, so its later months
+/// are empty until they happen; "last 12 months" includes the current
+/// month.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Preset {
     ThisMonth,
@@ -127,7 +128,7 @@ impl Preset {
             Self::LastMonth => Window::single(now.prev()),
             Self::ThisYear => Window {
                 from: now.january(),
-                to: now.next(),
+                to: now.january().add(12),
             },
             Self::LastTwelveMonths => Window {
                 from: now.add(-11),
@@ -1098,7 +1099,7 @@ mod tests {
         };
         assert_eq!(Preset::ThisMonth.window(now), w("2026-09", "2026-10"));
         assert_eq!(Preset::LastMonth.window(now), w("2026-08", "2026-09"));
-        assert_eq!(Preset::ThisYear.window(now), w("2026-01", "2026-10"));
+        assert_eq!(Preset::ThisYear.window(now), w("2026-01", "2027-01"));
         assert_eq!(
             Preset::LastTwelveMonths.window(now),
             w("2025-10", "2026-10")
@@ -1109,10 +1110,16 @@ mod tests {
         let jan = m("2027-01");
         assert_eq!(Preset::LastMonth.window(jan), w("2026-12", "2027-01"));
         assert_eq!(Preset::LastYear.window(jan), w("2026-01", "2027-01"));
+        assert_eq!(Preset::ThisYear.window(jan), w("2027-01", "2028-01"));
+        // December: the last 12 months are this year.
+        let dec = m("2026-12");
         assert_eq!(
-            Preset::matching(Preset::ThisYear.window(jan), jan),
-            Some(Preset::ThisMonth),
-            "in January this year is this month"
+            Preset::matching(Preset::ThisYear.window(dec), dec),
+            Some(Preset::ThisYear)
+        );
+        assert_eq!(
+            Preset::LastTwelveMonths.window(dec),
+            Preset::ThisYear.window(dec)
         );
 
         assert_eq!(Preset::matching(w("2026-04", "2026-06"), now), None);
