@@ -5,12 +5,14 @@ use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 
-use eframe::egui::{self, Color32, RichText};
+use eframe::egui::{self, Align2, Color32, FontId, RichText, Sense, Stroke};
 use egui_plot::{
-    Bar, BarChart, Legend, Line, Plot, PlotPoints, log_grid_spacer, uniform_grid_spacer,
+    Bar, BarChart, Legend, Line, Plot, PlotPoints, PlotResponse, log_grid_spacer,
+    uniform_grid_spacer,
 };
 
 use crate::api::{Client, MonthlyReport, Report};
+use crate::i18n::{Lang, Texts};
 use crate::kpi::{self, Direction, Kpi};
 use crate::month::Month;
 use crate::settings::{self, SecretStore, Settings};
@@ -19,14 +21,16 @@ use crate::state::{Loadable, Msg, State, Window};
 /// Builds the token store for a server URL.
 pub type SecretStoreFactory = Box<dyn Fn(&str) -> Box<dyn SecretStore>>;
 
-/// Session-only connection values, from `DEVPULSE_SERVER_URL` and
-/// `DEVPULSE_API_TOKEN`. They win over the settings file and keychain
-/// but are never written to either, so scripted or CI launches leave no
-/// trace in the user's keychain.
+/// Session-only values, from `DEVPULSE_SERVER_URL`,
+/// `DEVPULSE_API_TOKEN` and `DEVPULSE_DESKTOP_LANG`. They win over the
+/// settings file and keychain but are never written to either, so
+/// scripted or CI launches leave no trace in the user's keychain.
 #[derive(Debug, Default, Clone)]
 pub struct Overrides {
     pub base_url: Option<String>,
     pub token: Option<String>,
+    /// Ignored when the variable holds an unknown language.
+    pub lang: Option<Lang>,
 }
 
 impl Overrides {
@@ -40,6 +44,44 @@ impl Overrides {
         Self {
             base_url: var("DEVPULSE_SERVER_URL"),
             token: var("DEVPULSE_API_TOKEN"),
+            lang: var("DEVPULSE_DESKTOP_LANG").and_then(|v| Lang::parse(&v)),
+        }
+    }
+}
+
+/// A message under the top bar. Kept as data rather than text so it
+/// follows a language switch.
+#[derive(Debug, Clone, PartialEq)]
+enum Notice {
+    KeychainReadFailed(String),
+    UrlRequired,
+    TokenSaved,
+    TokenSaveFailed(String),
+    NoToken,
+    TokenRemoved,
+    TokenRemoveFailed(String),
+    SettingsSaveFailed(String),
+    FromBeforeTo,
+    BadMonth(String),
+}
+
+impl Notice {
+    fn is_error(&self) -> bool {
+        !matches!(self, Self::TokenSaved | Self::TokenRemoved)
+    }
+
+    fn text(&self, t: &Texts) -> String {
+        match self {
+            Self::KeychainReadFailed(e) => (t.keychain_read_failed)(e),
+            Self::UrlRequired => t.url_required.into(),
+            Self::TokenSaved => t.token_saved.into(),
+            Self::TokenSaveFailed(e) => (t.token_save_failed)(e),
+            Self::NoToken => t.no_token.into(),
+            Self::TokenRemoved => t.token_removed.into(),
+            Self::TokenRemoveFailed(e) => (t.token_remove_failed)(e),
+            Self::SettingsSaveFailed(e) => (t.settings_save_failed)(e),
+            Self::FromBeforeTo => t.from_before_to.into(),
+            Self::BadMonth(input) => (t.bad_month)(input),
         }
     }
 }
@@ -55,12 +97,16 @@ pub struct DashboardApp {
     /// The token in use this session. Kept even if the keychain write
     /// failed, so the dashboard still works until it is closed.
     token: Option<String>,
+    lang: Lang,
+    /// The font families searched when no CJK font was found, shown in
+    /// the settings panel; `None` when one was loaded.
+    missing_cjk_font: Option<String>,
 
     // Settings form.
     show_settings: bool,
     url_input: String,
     token_input: String,
-    notice: Option<(bool, String)>, // (is_error, text)
+    notice: Option<Notice>,
 
     // Window form.
     from_input: String,
@@ -77,11 +123,14 @@ impl DashboardApp {
         settings_path: Option<PathBuf>,
         make_store: SecretStoreFactory,
         overrides: Overrides,
+        locale: Option<String>,
+        missing_cjk_font: Option<String>,
     ) -> Self {
         let settings = settings_path
             .as_deref()
             .map(settings::load)
             .unwrap_or_default();
+        let lang = Lang::resolve(overrides.lang, settings.language, locale.as_deref());
         apply_text_sizes(&ctx);
         let state = State::new(Month::current());
         let (tx, rx) = channel();
@@ -99,6 +148,8 @@ impl DashboardApp {
             make_store,
             url_override: overrides.base_url,
             token: None,
+            lang,
+            missing_cjk_font,
             show_settings: false,
             token_input: String::new(),
             notice: None,
@@ -120,7 +171,7 @@ impl DashboardApp {
             Ok(None) => app.show_settings = true,
             Err(e) => {
                 app.show_settings = true;
-                app.notice = Some((true, format!("Cannot read the keychain: {e}")));
+                app.notice = Some(Notice::KeychainReadFailed(e));
             }
         }
         app
@@ -186,7 +237,7 @@ impl DashboardApp {
     fn save_settings(&mut self) {
         let url = self.url_input.trim().trim_end_matches('/').to_string();
         if url.is_empty() {
-            self.notice = Some((true, "Server URL is required.".into()));
+            self.notice = Some(Notice::UrlRequired);
             return;
         }
         let url_changed = url != self.base_url().trim_end_matches('/');
@@ -197,18 +248,10 @@ impl DashboardApp {
         let typed = self.token_input.trim().to_string();
         let mut store = (self.make_store)(&self.settings.base_url);
         if !typed.is_empty() {
-            self.notice = match store.set(&typed) {
-                Ok(()) => Some((
-                    false,
-                    "Saved. The token is stored in the OS keychain.".into(),
-                )),
-                Err(e) => Some((
-                    true,
-                    format!(
-                        "Could not save the token to the keychain ({e}); it is kept for this session only."
-                    ),
-                )),
-            };
+            self.notice = Some(match store.set(&typed) {
+                Ok(()) => Notice::TokenSaved,
+                Err(e) => Notice::TokenSaveFailed(e),
+            });
             self.token_input.clear();
         }
         self.token = settings::token_after_save(self.token.take(), url_changed, &typed, || {
@@ -216,7 +259,7 @@ impl DashboardApp {
         });
 
         if self.token.is_none() {
-            self.notice = Some((true, "No API token for this server.".into()));
+            self.notice = Some(Notice::NoToken);
             return;
         }
         self.state.selected = None;
@@ -228,8 +271,8 @@ impl DashboardApp {
     fn forget_token(&mut self) {
         let mut store = (self.make_store)(self.base_url());
         self.notice = Some(match store.delete() {
-            Ok(()) => (false, "Token removed from the keychain.".into()),
-            Err(e) => (true, format!("Could not remove the token: {e}")),
+            Ok(()) => Notice::TokenRemoved,
+            Err(e) => Notice::TokenRemoveFailed(e),
         });
         self.token = None;
         self.state.repos = Loadable::Idle;
@@ -260,7 +303,7 @@ impl DashboardApp {
         if let Some(path) = &self.settings_path
             && let Err(e) = settings::save(path, &self.settings)
         {
-            self.notice = Some((true, format!("Could not save settings: {e}")));
+            self.notice = Some(Notice::SettingsSaveFailed(e.to_string()));
         }
     }
 
@@ -280,6 +323,17 @@ impl DashboardApp {
             self.state.select(repo);
             self.load_metrics();
         }
+    }
+
+    /// Switches the UI language and remembers the choice. Every string
+    /// is derived per frame, so nothing is refetched.
+    fn set_lang(&mut self, lang: Lang) {
+        if lang == self.lang {
+            return;
+        }
+        self.lang = lang;
+        self.settings.language = Some(lang);
+        self.persist_settings();
     }
 }
 
@@ -316,45 +370,51 @@ impl eframe::App for DashboardApp {
 
 impl DashboardApp {
     fn top_bar(&mut self, ui: &mut egui::Ui) {
+        let t = self.lang.texts();
         ui.horizontal(|ui| {
             ui.heading("DevPulse");
             ui.separator();
 
             let w = self.state.window;
-            if ui.button("◀").on_hover_text("Previous period").clicked() {
+            if ui.button("◀").on_hover_text(t.previous_period).clicked() {
                 self.set_window(w.shift(-1));
             }
-            ui.label("From");
+            ui.label(t.from);
             ui.add(egui::TextEdit::singleline(&mut self.from_input).desired_width(64.0));
-            ui.label("to (exclusive)");
+            ui.label(t.to_exclusive);
             ui.add(egui::TextEdit::singleline(&mut self.to_input).desired_width(64.0));
-            if ui.button("Apply").clicked() {
+            if ui.button(t.apply).clicked() {
                 match (
                     self.from_input.parse::<Month>(),
                     self.to_input.parse::<Month>(),
                 ) {
                     (Ok(from), Ok(to)) if from < to => self.set_window(Window { from, to }),
-                    (Ok(_), Ok(_)) => self.notice = Some((true, "From must be before To.".into())),
-                    (Err(e), _) | (_, Err(e)) => self.notice = Some((true, e)),
+                    (Ok(_), Ok(_)) => self.notice = Some(Notice::FromBeforeTo),
+                    (Err(_), _) => {
+                        self.notice = Some(Notice::BadMonth(self.from_input.trim().into()))
+                    }
+                    (_, Err(_)) => {
+                        self.notice = Some(Notice::BadMonth(self.to_input.trim().into()))
+                    }
                 }
             }
-            if ui.button("▶").on_hover_text("Next period").clicked() {
+            if ui.button("▶").on_hover_text(t.next_period).clicked() {
                 self.set_window(w.shift(1));
             }
-            if ui.button("This month").clicked() {
+            if ui.button(t.this_month).clicked() {
                 self.set_window(Window::single(Month::current()));
             }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let label = if self.show_settings {
-                    "Close settings"
+                    t.close_settings
                 } else {
-                    "Settings"
+                    t.settings
                 };
                 if ui.button(label).clicked() {
                     self.show_settings = !self.show_settings;
                 }
-                if ui.button("Refresh").clicked() {
+                if ui.button(t.refresh).clicked() {
                     self.load_repos();
                     self.load_metrics();
                 }
@@ -363,15 +423,15 @@ impl DashboardApp {
                 }
             });
         });
-        if let Some((is_error, text)) = &self.notice {
-            let color = if *is_error {
+        if let Some(notice) = &self.notice {
+            let color = if notice.is_error() {
                 ui.visuals().error_fg_color
             } else {
                 success_color(ui)
             };
             let dismissed = ui
                 .horizontal(|ui| {
-                    ui.colored_label(color, text);
+                    ui.colored_label(color, notice.text(t));
                     ui.small_button("✕").clicked()
                 })
                 .inner;
@@ -382,17 +442,18 @@ impl DashboardApp {
     }
 
     fn settings_panel(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Connection");
-        ui.label("DevPulse server URL (`devpulse serve`)");
+        let t = self.lang.texts();
+        ui.heading(t.connection);
+        ui.label(t.server_url);
         ui.text_edit_singleline(&mut self.url_input);
         ui.add_space(6.0);
 
         let hint = if self.token.is_some() {
-            "(in use; leave empty to keep)"
+            t.token_in_use_hint
         } else {
             "DEVPULSE_API_TOKEN"
         };
-        ui.label("API token");
+        ui.label(t.api_token);
         ui.add(
             egui::TextEdit::singleline(&mut self.token_input)
                 .password(true)
@@ -401,13 +462,13 @@ impl DashboardApp {
         ui.add_space(6.0);
 
         ui.horizontal(|ui| {
-            if ui.button("Save & connect").clicked() {
+            if ui.button(t.save_and_connect).clicked() {
                 self.save_settings();
             }
-            if ui.button("Test").clicked() {
+            if ui.button(t.test).clicked() {
                 self.test_connection();
             }
-            if self.token.is_some() && ui.button("Forget token").clicked() {
+            if self.token.is_some() && ui.button(t.forget_token).clicked() {
                 self.forget_token();
             }
         });
@@ -418,39 +479,48 @@ impl DashboardApp {
                 ui.spinner();
             }
             Loadable::Ready(()) => {
-                ui.colored_label(
-                    success_color(ui),
-                    "Connected: server is up and the token works.",
-                );
+                ui.colored_label(success_color(ui), t.connected);
             }
             Loadable::Failed(e) => {
-                ui.colored_label(ui.visuals().error_fg_color, e);
+                ui.colored_label(ui.visuals().error_fg_color, e.describe(t));
             }
         }
 
         ui.add_space(12.0);
-        ui.small(
-            "The token is kept in the OS keychain, one entry per server URL. \
-             GitHub and CI tokens stay on the server.",
-        );
+        ui.small(t.keychain_note);
+
+        ui.add_space(12.0);
+        ui.separator();
+        ui.heading(t.language);
+        let mut lang = self.lang;
+        ui.horizontal(|ui| {
+            for l in Lang::ALL {
+                ui.radio_value(&mut lang, l, l.native_name());
+            }
+        });
+        self.set_lang(lang);
+        if let Some(candidates) = &self.missing_cjk_font {
+            ui.colored_label(ui.visuals().warn_fg_color, (t.no_cjk_font)(candidates));
+        }
     }
 
     fn repo_list(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Repositories");
+        let t = self.lang.texts();
+        ui.heading(t.repositories);
         ui.separator();
         let mut clicked = None;
         match &self.state.repos {
             Loadable::Idle => {
-                ui.label("Connect to a server in Settings.");
+                ui.label(t.connect_in_settings);
             }
             Loadable::Loading => {
                 ui.spinner();
             }
             Loadable::Failed(e) => {
-                ui.colored_label(ui.visuals().error_fg_color, e);
+                ui.colored_label(ui.visuals().error_fg_color, e.describe(t));
             }
             Loadable::Ready(repos) if repos.is_empty() => {
-                ui.label("No repos yet. Register one with `devpulse repo add <owner/name>`.");
+                ui.label(t.no_repos);
             }
             Loadable::Ready(repos) => {
                 egui::ScrollArea::vertical().show(ui, |ui| {
@@ -481,9 +551,10 @@ impl DashboardApp {
         }
     }
 
-    fn dashboard(&self, ui: &mut egui::Ui) {
+    fn dashboard(&mut self, ui: &mut egui::Ui) {
+        let t = self.lang.texts();
         let Some(repo) = &self.state.selected else {
-            ui.label("Select a repository.");
+            ui.label(t.select_repo);
             return;
         };
         ui.heading(format!(
@@ -492,10 +563,7 @@ impl DashboardApp {
             self.state.window.label()
         ));
         if repo.disabled {
-            ui.colored_label(
-                ui.visuals().warn_fg_color,
-                "This repo is disabled upstream; `devpulse sync` skips it.",
-            );
+            ui.colored_label(ui.visuals().warn_fg_color, t.repo_disabled);
         }
         ui.add_space(8.0);
 
@@ -505,67 +573,74 @@ impl DashboardApp {
                 ui.spinner();
             }
             Loadable::Failed(e) => {
-                ui.colored_label(ui.visuals().error_fg_color, e);
+                ui.colored_label(ui.visuals().error_fg_color, e.describe(t));
             }
             Loadable::Ready(report) => {
-                kpi_cards(ui, &kpi::kpis(report, self.state.previous_month()));
+                kpi_cards(ui, &kpi::kpis(report, self.state.previous_month(), t), t);
                 ui.add_space(12.0);
                 ui.columns(2, |cols| {
-                    size_chart(&mut cols[0], report);
-                    daily_duration_chart(&mut cols[1], report);
+                    size_chart(&mut cols[0], report, t);
+                    daily_duration_chart(&mut cols[1], report, t);
                 });
 
                 ui.add_space(12.0);
                 ui.separator();
-                dora_section(ui, report, self.state.previous_month());
+                dora_section(ui, report, self.state.previous_month(), t);
             }
         }
 
         ui.add_space(12.0);
         ui.separator();
         let trend = self.state.window.trend();
-        ui.heading(format!("Trend · {} ~ {}", trend.from, trend.to.prev()));
+        ui.heading((t.trend_heading)(
+            &trend.from.to_string(),
+            &trend.to.prev().to_string(),
+        ));
+        // Months picked by dragging across a trend chart, as indices into
+        // the trend; applied once the charts are drawn.
+        let mut picked = None;
         match &self.state.trend {
             Loadable::Idle => {}
             Loadable::Loading => {
                 ui.spinner();
             }
             Loadable::Failed(e) => {
-                ui.colored_label(ui.visuals().error_fg_color, e);
+                ui.colored_label(ui.visuals().error_fg_color, e.describe(t));
             }
             Loadable::Ready(monthly) => {
+                ui.small(t.trend_drag_hint);
                 ui.columns(2, |cols| {
-                    failure_trend_chart(&mut cols[0], monthly);
-                    lead_time_trend_chart(&mut cols[1], monthly);
+                    picked = picked.or(failure_trend_chart(&mut cols[0], monthly, t));
+                    picked = picked.or(lead_time_trend_chart(&mut cols[1], monthly, t));
                 });
                 if monthly.months.iter().any(|r| r.dora.is_some()) {
                     ui.add_space(8.0);
                     ui.columns(2, |cols| {
-                        deploy_trend_chart(&mut cols[0], monthly);
-                        change_failure_trend_chart(&mut cols[1], monthly);
+                        picked = picked.or(deploy_trend_chart(&mut cols[0], monthly, t));
+                        picked = picked.or(change_failure_trend_chart(&mut cols[1], monthly, t));
                     });
                 }
             }
         }
+        if let Some((first, last)) = picked {
+            self.set_window(Window {
+                from: trend.from.add(first as i32),
+                to: trend.from.add(last as i32 + 1),
+            });
+        }
     }
 }
 
-fn dora_section(ui: &mut egui::Ui, report: &Report, previous: Option<&Report>) {
-    match (&report.dora, kpi::dora_kpis(report, previous)) {
+fn dora_section(ui: &mut egui::Ui, report: &Report, previous: Option<&Report>, t: &'static Texts) {
+    match (&report.dora, kpi::dora_kpis(report, previous, t)) {
         (Some(d), Some(cards)) => {
-            ui.heading(format!(
-                "DORA · deployment = PR merged into {}",
-                d.default_branch
-            ));
+            ui.heading((t.dora_heading)(&d.default_branch));
             ui.add_space(4.0);
-            kpi_cards(ui, &cards);
+            kpi_cards(ui, &cards, t);
         }
         _ => {
             ui.heading("DORA");
-            ui.label(format!(
-                "Default branch unknown; run `devpulse repo refresh {}` on the server.",
-                report.repo
-            ));
+            ui.label((t.dora_branch_unknown)(&report.repo));
         }
     }
 }
@@ -612,12 +687,15 @@ fn success_color(ui: &egui::Ui) -> Color32 {
     }
 }
 
-fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi]) {
+fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi], t: &Texts) {
     ui.columns(cards.len(), |cols| {
         for (ui, card) in cols.iter_mut().zip(cards) {
             egui::Frame::group(ui.style()).show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
-                ui.label(RichText::new(card.title).strong());
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(card.title).strong());
+                    info_icon(ui, card.help);
+                });
                 ui.label(RichText::new(&card.value).size(32.0));
                 ui.small(&card.detail);
                 ui.horizontal(|ui| {
@@ -629,8 +707,8 @@ fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi]) {
                             Direction::Up | Direction::Down => ui.visuals().hyperlink_color,
                             Direction::Flat => ui.visuals().weak_text_color(),
                         };
-                        ui.small(RichText::new(format!("{} MoM", d.text)).color(color))
-                            .on_hover_text("change vs the previous month");
+                        ui.small(RichText::new((t.mom)(&d.text)).color(color))
+                            .on_hover_text(t.mom_hover);
                     }
                 });
             });
@@ -638,19 +716,58 @@ fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi]) {
     });
 }
 
+/// A chart title followed by an (i) that explains the chart on hover.
+fn chart_title(ui: &mut egui::Ui, title: &str, help: &str) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(title).strong());
+        info_icon(ui, help);
+    });
+}
+
+/// A small circled "i" that explains something: hovering shows `help` as
+/// a tooltip, clicking pins it in a popup until the next click outside.
+/// Painted rather than typed: egui's bundled fonts have no info glyph
+/// (ℹ, ⓘ), and the CJK fallback font may be missing.
+fn info_icon(ui: &mut egui::Ui, help: &str) {
+    let size = ui.text_style_height(&egui::TextStyle::Body);
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(size, size), Sense::click());
+    if ui.is_rect_visible(rect) {
+        let color = if resp.hovered() {
+            ui.visuals().strong_text_color()
+        } else {
+            ui.visuals().weak_text_color()
+        };
+        let painter = ui.painter();
+        painter.circle_stroke(rect.center(), size * 0.4, Stroke::new(1.0, color));
+        painter.text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            "i",
+            FontId::proportional(size * 0.6),
+            color,
+        );
+    }
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+    let pinned = egui::Popup::from_toggle_button_response(&resp)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .width(320.0)
+        .show(|ui| ui.label(help))
+        .is_some();
+    if !pinned {
+        resp.on_hover_text(help);
+    }
+}
+
 /// Month axis labels for trend charts: x is the month index.
 fn month_labels(monthly: &MonthlyReport) -> Vec<String> {
     monthly.months.iter().map(|r| r.from.clone()).collect()
 }
 
-fn size_chart(ui: &mut egui::Ui, report: &Report) {
-    ui.label(RichText::new("PR size distribution").strong());
+fn size_chart(ui: &mut egui::Ui, report: &Report, t: &Texts) {
+    chart_title(ui, t.pr_size_distribution, t.help_size);
     match kpi::small_pr_share(report) {
-        Some(share) => ui.small(format!(
-            "{:.0}% small (XS + S) · ideal: mostly small",
-            share * 100.0
-        )),
-        None => ui.small("no PRs in this window"),
+        Some(share) => ui.small((t.small_share)(share * 100.0)),
+        None => ui.small(t.no_prs_in_window),
     };
     let labels: Vec<String> = report
         .pr_size_distribution
@@ -667,14 +784,14 @@ fn size_chart(ui: &mut egui::Ui, report: &Report) {
                 .width(0.6)
         })
         .collect();
-    category_plot("size", EVERY)
+    category_plot(ui, "size", EVERY)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
-        .show(ui, |p| p.bar_chart(BarChart::new("PRs", bars)));
+        .show(ui, |p| p.bar_chart(BarChart::new(t.series_prs, bars)));
 }
 
-fn daily_duration_chart(ui: &mut egui::Ui, report: &Report) {
-    ui.label(RichText::new("Daily build duration").strong());
-    ui.small("average seconds per UTC day");
+fn daily_duration_chart(ui: &mut egui::Ui, report: &Report, t: &Texts) {
+    chart_title(ui, t.daily_build_duration, t.help_daily);
+    ui.small(t.daily_build_caption);
     let labels: Vec<String> = report
         .daily_build_duration
         .iter()
@@ -686,17 +803,21 @@ fn daily_duration_chart(ui: &mut egui::Ui, report: &Report) {
         .enumerate()
         .map(|(i, d)| {
             Bar::new(i as f64, d.avg_seconds)
-                .name(format!("{} ({} builds)", d.day, d.count))
+                .name((t.day_bar)(&d.day, d.count))
                 .width(0.7)
         })
         .collect();
-    category_plot("daily", SPARSE)
+    category_plot(ui, "daily", SPARSE)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
-        .show(ui, |p| p.bar_chart(BarChart::new("seconds", bars)));
+        .show(ui, |p| p.bar_chart(BarChart::new(t.series_seconds, bars)));
 }
 
-fn failure_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
-    ui.label(RichText::new("CI failure rate (%)").strong());
+fn failure_trend_chart(
+    ui: &mut egui::Ui,
+    monthly: &MonthlyReport,
+    t: &Texts,
+) -> Option<(usize, usize)> {
+    chart_title(ui, t.ci_failure_trend, t.help_failure_trend);
     let labels = month_labels(monthly);
     // Months without PR builds have no rate; leave a gap rather than
     // plotting a misleading 0%.
@@ -707,15 +828,20 @@ fn failure_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
         .filter(|(_, r)| r.build_failure.total > 0)
         .map(|(i, r)| [i as f64, r.build_failure.rate * 100.0])
         .collect();
-    category_plot("failure-trend", SPARSE)
+    let plot = trend_plot(ui, "failure-trend", monthly)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
-            p.line(Line::new("failure %", PlotPoints::from(points)))
+            p.line(Line::new(t.series_failure, PlotPoints::from(points)))
         });
+    month_brush(ui, &plot, monthly.months.len())
 }
 
-fn lead_time_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
-    ui.label(RichText::new("PR lead time (hours)").strong());
+fn lead_time_trend_chart(
+    ui: &mut egui::Ui,
+    monthly: &MonthlyReport,
+    t: &Texts,
+) -> Option<(usize, usize)> {
+    chart_title(ui, t.lead_time_trend, t.help_lead_trend);
     let labels = month_labels(monthly);
     let series = |f: fn(&Report) -> f64| -> Vec<[f64; 2]> {
         monthly
@@ -729,18 +855,23 @@ fn lead_time_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
     let avg = series(|r| r.pr_lead_time.avg_hours);
     let p50 = series(|r| r.pr_lead_time.p50_hours);
     let p90 = series(|r| r.pr_lead_time.p90_hours);
-    category_plot("lead-trend", SPARSE)
+    let plot = trend_plot(ui, "lead-trend", monthly)
         .legend(Legend::default())
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
-            p.line(Line::new("avg", PlotPoints::from(avg)));
+            p.line(Line::new(t.series_avg, PlotPoints::from(avg)));
             p.line(Line::new("p50", PlotPoints::from(p50)));
             p.line(Line::new("p90", PlotPoints::from(p90)));
         });
+    month_brush(ui, &plot, monthly.months.len())
 }
 
-fn deploy_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
-    ui.label(RichText::new("Deployments per week").strong());
+fn deploy_trend_chart(
+    ui: &mut egui::Ui,
+    monthly: &MonthlyReport,
+    t: &Texts,
+) -> Option<(usize, usize)> {
+    chart_title(ui, t.deploys_per_week_trend, t.help_deploy_trend);
     let labels = month_labels(monthly);
     let bars = monthly
         .months
@@ -750,18 +881,23 @@ fn deploy_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
             let d = r.dora.as_ref()?;
             Some(
                 Bar::new(i as f64, d.per_week)
-                    .name(format!("{} ({} deploys)", r.from, d.deployments))
+                    .name((t.deploy_bar)(&r.from, d.deployments))
                     .width(0.6),
             )
         })
         .collect();
-    category_plot("deploy-trend", SPARSE)
+    let plot = trend_plot(ui, "deploy-trend", monthly)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
-        .show(ui, |p| p.bar_chart(BarChart::new("deploys / week", bars)));
+        .show(ui, |p| p.bar_chart(BarChart::new(t.series_deploys, bars)));
+    month_brush(ui, &plot, monthly.months.len())
 }
 
-fn change_failure_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
-    ui.label(RichText::new("Change failure rate (%)").strong());
+fn change_failure_trend_chart(
+    ui: &mut egui::Ui,
+    monthly: &MonthlyReport,
+    t: &Texts,
+) -> Option<(usize, usize)> {
+    chart_title(ui, t.cfr_trend, t.help_cfr_trend);
     let labels = month_labels(monthly);
     // Months without deployments have no rate (null), so they are gaps.
     let points: Vec<[f64; 2]> = monthly
@@ -773,11 +909,65 @@ fn change_failure_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
             Some([i as f64, rate * 100.0])
         })
         .collect();
-    category_plot("cfr-trend", SPARSE)
+    let plot = trend_plot(ui, "cfr-trend", monthly)
         .x_axis_formatter(move |mark, _| index_label(&labels, mark.value))
         .show(ui, |p| {
-            p.line(Line::new("change failure %", PlotPoints::from(points)))
+            p.line(Line::new(t.series_cfr, PlotPoints::from(points)))
         });
+    month_brush(ui, &plot, monthly.months.len())
+}
+
+/// Grafana-style range selection on a trend chart, whose x axis is the
+/// month index. Dragging across the chart highlights whole months;
+/// releasing returns the first and last selected index. The drag state
+/// lives in egui's temporary memory, keyed by the plot, so the app keeps
+/// nothing while a drag is in progress.
+fn month_brush(ui: &egui::Ui, plot: &PlotResponse<()>, months: usize) -> Option<(usize, usize)> {
+    if months == 0 {
+        return None;
+    }
+    let resp = &plot.response;
+    let id = resp.id.with("month-brush");
+    let index = |pos: egui::Pos2| {
+        let x = plot.transform.value_from_position(pos).x.round();
+        x.clamp(0.0, (months - 1) as f64) as usize
+    };
+
+    if resp.drag_started_by(egui::PointerButton::Primary)
+        && let Some(pos) = resp.interact_pointer_pos()
+    {
+        let i = index(pos);
+        ui.data_mut(|d| d.insert_temp(id, (i, i)));
+    }
+    // (anchor, current): the pointer position can be gone on the frame
+    // the drag ends, so the last known month is kept.
+    let (anchor, mut current): (usize, usize) = ui.data(|d| d.get_temp(id))?;
+    if let Some(pos) = resp.interact_pointer_pos() {
+        current = index(pos);
+        ui.data_mut(|d| d.insert_temp(id, (anchor, current)));
+    }
+    let (first, last) = (anchor.min(current), anchor.max(current));
+
+    let frame = *plot.transform.frame();
+    let x0 = plot
+        .transform
+        .position_from_point_x(first as f64 - 0.5)
+        .max(frame.left());
+    let x1 = plot
+        .transform
+        .position_from_point_x(last as f64 + 0.5)
+        .min(frame.right());
+    ui.painter().rect_filled(
+        egui::Rect::from_x_y_ranges(x0..=x1, frame.y_range()),
+        0.0,
+        ui.visuals().selection.bg_fill.gamma_multiply(0.35),
+    );
+
+    if resp.drag_stopped() {
+        ui.data_mut(|d| d.remove::<(usize, usize)>(id));
+        return Some((first, last));
+    }
+    None
 }
 
 /// A fixed (no pan / zoom) plot whose x axis is a category index, with
@@ -785,12 +975,19 @@ fn change_failure_trend_chart(ui: &mut egui::Ui, monthly: &MonthlyReport) {
 /// or point. `steps` are the three grid spacings; egui_plot only labels
 /// the finer ones when there is room, so a long axis thins out its
 /// labels instead of overlapping them.
-fn category_plot(id: &str, steps: [f64; 3]) -> Plot<'static> {
+fn category_plot(ui: &egui::Ui, id: &str, steps: [f64; 3]) -> Plot<'static> {
     Plot::new(id)
+        // egui_plot draws grid lines in the text colour by default, which
+        // makes the major lines as dark as the labels. A faded text colour
+        // keeps them readable as a background in light and dark themes.
+        .grid_color(ui.visuals().text_color().gamma_multiply(GRID_ALPHA))
         .height(200.0)
         .allow_drag(false)
         .allow_zoom(false)
         .allow_scroll(false)
+        // Primary-button drags select months (see `month_brush`); the
+        // secondary-button box zoom would compete with that.
+        .allow_boxed_zoom(false)
         .include_y(0.0)
         // Room for three-digit values (hours, seconds) on the y axis.
         .y_axis_min_width(32.0)
@@ -800,6 +997,19 @@ fn category_plot(id: &str, steps: [f64; 3]) -> Plot<'static> {
         .y_grid_spacer(log_grid_spacer(5))
         .x_grid_spacer(uniform_grid_spacer(move |_| steps))
 }
+
+/// A trend chart: one category per month of the trend. The x axis always
+/// spans every month, not just the months with data, so the four trend
+/// charts line up and a month without data shows as a gap.
+fn trend_plot(ui: &egui::Ui, id: &str, monthly: &MonthlyReport) -> Plot<'static> {
+    let last = monthly.months.len().saturating_sub(1) as f64;
+    category_plot(ui, id, SPARSE)
+        .include_x(-0.5)
+        .include_x(last + 0.5)
+}
+
+/// Opacity of the strongest grid lines relative to the text colour.
+const GRID_ALPHA: f32 = 0.3;
 
 /// Label every category: few, short labels (the size buckets).
 const EVERY: [f64; 3] = [1.0, 1.0, 1.0];

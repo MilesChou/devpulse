@@ -23,9 +23,10 @@ const monthLayout = "2006-01"
 
 // MaxMonths bounds the width of a monthly trend (ComputeMonthly) so one
 // API call cannot fan out into an unbounded number of per-month
-// queries. A single-window Compute runs one fixed set of queries at any
+// queries. Ten years covers a long-lived repo's whole history in one
+// chart. A single-window Compute runs one fixed set of queries at any
 // width, so it has no limit.
-const MaxMonths = 36
+const MaxMonths = 120
 
 // unknownBucket labels PRs whose size_bucket column is NULL.
 const unknownBucket = "unknown"

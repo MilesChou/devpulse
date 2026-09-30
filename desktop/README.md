@@ -24,9 +24,10 @@ It shows, per repo and month window:
   is better instead of an ideal value. When the server does not know
   the repo's default branch yet, the panel says to run
   `devpulse repo refresh`.
-- **12-month trends** of CI failure rate, PR lead time (avg / p50 /
-  p90), deployments per week, and change failure rate, ending at the
-  selected window.
+- **Trends** of CI failure rate, PR lead time (avg / p50 / p90),
+  deployments per week, and change failure rate: the 12 months ending at
+  the selected window, or the whole window when it is longer (at most
+  the last 120 months, the server's limit for one monthly trend).
 
 ## Build
 
@@ -72,6 +73,9 @@ nor libdbus. CI builds on `ubuntu-latest` with exactly these packages.
 On other distributions, install the equivalent xcb and xkbcommon
 development packages.
 
+To show Chinese text, the machine that *runs* the dashboard also needs a
+Traditional Chinese font; see [Language](#language).
+
 ### 3. Build
 
 From the repository root:
@@ -110,7 +114,7 @@ the DevPulse database (see [`serve`](../docs/commands.md#serve)):
 DEVPULSE_API_TOKEN=change-me devpulse serve
 ```
 
-Then start the dashboard, open **Settings**, enter the server URL
+Then start the dashboard, open **Settings** (**設定** in the Chinese UI), enter the server URL
 (default `http://127.0.0.1:8080`) and the API token, and press **Save &
 connect**. **Test** checks both that the server is up and that the
 token is accepted.
@@ -162,13 +166,39 @@ Then, in a second terminal, run `make desktop-run` and connect to
 | "Cannot read the keychain" or "Could not save the token" | No OS keychain is available, typically Linux without GNOME Keyring or KWallet running. The token then lasts only for the session; set `DEVPULSE_API_TOKEN` when launching to skip the keychain |
 | "cannot reach server" | Check the URL, that `devpulse serve` is running, and the server's `HTTP_ADDR` and firewall |
 | "API token was rejected (401)" | The token differs from the server's `DEVPULSE_API_TOKEN` |
+| Chinese text shows as boxes, and Settings says no Chinese font was found | Install one of the fonts listed under [Language](#language), then restart the dashboard |
+
+## Language
+
+The dashboard is available in English and Traditional Chinese (Taiwan).
+On first launch it follows the OS language: `zh-TW`, `zh-HK`, `zh-MO`
+and other Traditional Chinese (`zh-Hant`) locales get Chinese,
+everything else, including Simplified Chinese, gets English. Change it
+under **Settings → Language**; the switch is immediate and remembered.
+
+Repo names, months, numbers, the abbreviations CI, PR, DORA, p50 and
+p90, CLI commands in hints, and error details returned by the server
+are never translated.
+
+egui's built-in fonts have no Chinese glyphs, so at startup the
+dashboard loads the first of these system fonts it finds and uses it
+for any character the built-in fonts lack, in either language:
+
+| Platform | Fonts searched, in order |
+|---|---|
+| macOS | PingFang TC, Heiti TC, Hiragino Sans CNS (all ship with macOS) |
+| Windows | Microsoft JhengHei, Microsoft JhengHei UI (ship with Windows) |
+| Linux | Noto Sans CJK TC, Noto Sans TC, Source Han Sans TC, WenQuanYi Zen Hei (`sudo apt-get install fonts-noto-cjk` on Debian / Ubuntu) |
+
+If none is found, the dashboard still starts and **Settings** says so.
+Font lookup has been verified on macOS only so far.
 
 ## Where settings live
 
 | What | Where |
 |---|---|
 | API token | The OS keychain (macOS Keychain, Windows Credential Manager, Secret Service on Linux), one entry per server URL |
-| Server URL, last selected repo | `devpulse/desktop.json` in the OS config directory: `~/Library/Application Support/` on macOS, `$XDG_CONFIG_HOME` or `~/.config/` on Linux, `%APPDATA%` on Windows |
+| Server URL, last selected repo, UI language | `devpulse/desktop.json` in the OS config directory: `~/Library/Application Support/` on macOS, `$XDG_CONFIG_HOME` or `~/.config/` on Linux, `%APPDATA%` on Windows |
 
 GitHub and CI tokens never reach the dashboard; they stay on the
 server.
@@ -181,6 +211,7 @@ the keychain:
 |---|---|
 | `DEVPULSE_SERVER_URL` | Server URL for this run |
 | `DEVPULSE_API_TOKEN` | API token for this run (skips the keychain) |
+| `DEVPULSE_DESKTOP_LANG` | UI language for this run: `en` or `zh-TW` (other values are ignored) |
 | `DEVPULSE_DESKTOP_CONFIG` | Path of the settings file |
 
 ## Develop
@@ -203,6 +234,8 @@ types in `src/api.rs`.
 | `src/api.rs` | HTTP client and the API types |
 | `src/state.rs` | Dashboard state and how API results update it |
 | `src/kpi.rs` | KPI card text and month-over-month deltas |
+| `src/i18n.rs` | UI languages and every UI string, in English and Traditional Chinese |
+| `src/fonts.rs` | Finds and loads a system font for Chinese text |
 | `src/month.rs` | `YYYY-MM` month arithmetic |
 | `src/settings.rs` | Settings file and keychain access |
 | `src/app.rs` | egui rendering; API calls run on worker threads |

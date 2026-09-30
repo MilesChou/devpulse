@@ -52,13 +52,13 @@ func TestParseWindow(t *testing.T) {
 }
 
 func TestWindow_CheckTrend(t *testing.T) {
-	ok, _ := ParseWindow("2023-01", "2026-01", now)
+	ok, _ := ParseWindow("2016-01", "2026-01", now)
 	if err := ok.CheckTrend(); err != nil {
-		t.Fatalf("36 months must pass: %v", err)
+		t.Fatalf("120 months must pass: %v", err)
 	}
-	wide, _ := ParseWindow("2023-01", "2026-02", now)
+	wide, _ := ParseWindow("2016-01", "2026-02", now)
 	if err := wide.CheckTrend(); !errors.Is(err, ErrInvalidWindow) {
-		t.Fatalf("37 months: want ErrInvalidWindow, got %v", err)
+		t.Fatalf("121 months: want ErrInvalidWindow, got %v", err)
 	}
 	if _, err := ComputeMonthly(context.Background(), &fakeSource{}, repo.Repo{}, wide, now); !errors.Is(err, ErrInvalidWindow) {
 		t.Fatalf("ComputeMonthly must enforce the limit, got %v", err)

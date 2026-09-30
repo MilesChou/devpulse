@@ -1,12 +1,15 @@
 //! Turns API reports into the text the dashboard's KPI cards show.
 //! Kept free of egui so the formatting rules are unit-testable.
 
-use crate::api::{Dora, HoursSummary, Report};
+use crate::api::{HoursSummary, Report};
+use crate::i18n::Texts;
 
 /// One KPI card.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Kpi {
     pub title: &'static str,
+    /// What the card measures, shown on hover.
+    pub help: &'static str,
     pub value: String,
     pub detail: String,
     /// What to aim for, shown under the value: the ideal from the project
@@ -33,63 +36,64 @@ pub enum Direction {
 /// Builds the KPI cards for `report`. `previous` is the report of the
 /// month before, used for the month-over-month delta; pass `None` when
 /// the window spans several months or no trend is loaded.
-pub fn kpis(report: &Report, previous: Option<&Report>) -> Vec<Kpi> {
+pub fn kpis(report: &Report, previous: Option<&Report>, t: &'static Texts) -> Vec<Kpi> {
     let bf = &report.build_failure;
     let lt = &report.pr_lead_time;
     let rw = &report.review_wait;
 
     vec![
         Kpi {
-            title: "CI failure rate",
+            title: t.ci_failure_rate,
+            help: t.help_ci_failure_rate,
             value: if bf.total == 0 {
                 "—".into()
             } else {
                 format!("{:.1}%", bf.rate * 100.0)
             },
-            detail: format!("{} / {} PR builds failed", bf.failed, bf.total),
-            target: "ideal 0%",
+            detail: (t.builds_failed)(bf.failed, bf.total),
+            target: t.ideal_zero_pct,
             delta: previous
                 .filter(|p| p.build_failure.total > 0 && bf.total > 0)
                 .map(|p| delta(p.build_failure.rate * 100.0, bf.rate * 100.0, " pp")),
         },
         Kpi {
-            title: "Builds per PR",
+            title: t.builds_per_pr,
+            help: t.help_builds_per_pr,
             value: if report.avg_builds_per_pr == 0.0 {
                 "—".into()
             } else {
                 format!("{:.1}", report.avg_builds_per_pr)
             },
-            detail: "re-push proxy: CI runs per PR".into(),
-            target: "ideal 1",
+            detail: t.repush_proxy.into(),
+            target: t.ideal_one,
             delta: previous
                 .filter(|p| p.avg_builds_per_pr > 0.0 && report.avg_builds_per_pr > 0.0)
                 .map(|p| delta(p.avg_builds_per_pr, report.avg_builds_per_pr, "")),
         },
         Kpi {
-            title: "PR lead time",
+            title: t.pr_lead_time,
+            help: t.help_pr_lead_time,
             value: if lt.count == 0 {
                 "—".into()
             } else {
                 format!("{:.1}h", lt.avg_hours)
             },
-            detail: format!(
-                "p50 {:.1}h · p90 {:.1}h · {} merged PRs",
-                lt.p50_hours, lt.p90_hours, lt.count
-            ),
-            target: "ideal 24h",
+            detail: (t.pr_lead_detail)(lt.p50_hours, lt.p90_hours, lt.count),
+            target: t.ideal_24h,
             delta: previous
                 .filter(|p| p.pr_lead_time.count > 0 && lt.count > 0)
                 .map(|p| delta(p.pr_lead_time.avg_hours, lt.avg_hours, "h")),
         },
         Kpi {
-            title: "Review wait",
+            title: t.review_wait,
+            help: t.help_review_wait,
             value: if rw.count == 0 {
                 "—".into()
             } else {
                 format!("{:.1}h", rw.avg_hours)
             },
-            detail: format!("ready to first review · {} PRs", rw.count),
-            target: "lower is better",
+            detail: (t.review_wait_detail)(rw.count),
+            target: t.lower_is_better,
             delta: previous
                 .filter(|p| p.review_wait.count > 0 && rw.count > 0)
                 .map(|p| delta(p.review_wait.avg_hours, rw.avg_hours, "h")),
@@ -100,51 +104,62 @@ pub fn kpis(report: &Report, previous: Option<&Report>) -> Vec<Kpi> {
 /// Builds the DORA cards, or `None` when the server has no DORA section
 /// (default branch unknown). The project goals set no DORA targets, so
 /// the cards state the better direction instead of an ideal value.
-pub fn dora_kpis(report: &Report, previous: Option<&Report>) -> Option<Vec<Kpi>> {
+pub fn dora_kpis(
+    report: &Report,
+    previous: Option<&Report>,
+    t: &'static Texts,
+) -> Option<Vec<Kpi>> {
     let d = report.dora.as_ref()?;
     let prev = previous.and_then(|p| p.dora.as_ref());
 
-    let hours_card = |title, s: &HoursSummary, detail: String, prev: Option<&HoursSummary>| Kpi {
-        title,
-        value: if s.count == 0 {
-            "—".into()
-        } else {
-            format!("{:.1}h", s.avg_hours)
-        },
-        detail,
-        target: "lower is better",
-        delta: prev
-            .filter(|p| p.count > 0 && s.count > 0)
-            .map(|p| delta(p.avg_hours, s.avg_hours, "h")),
-    };
+    let hours_card =
+        |title, help, s: &HoursSummary, detail: String, prev: Option<&HoursSummary>| Kpi {
+            title,
+            help,
+            value: if s.count == 0 {
+                "—".into()
+            } else {
+                format!("{:.1}h", s.avg_hours)
+            },
+            detail,
+            target: t.lower_is_better,
+            delta: prev
+                .filter(|p| p.count > 0 && s.count > 0)
+                .map(|p| delta(p.avg_hours, s.avg_hours, "h")),
+        };
 
     Some(vec![
         Kpi {
-            title: "Deployment frequency",
-            value: format!("{:.1}/wk", d.per_week),
-            detail: format!(
-                "{} deploys into {} · {} deploy days",
-                d.deployments, d.default_branch, d.deploy_days
-            ),
-            target: "higher is better",
-            delta: prev.map(|p| delta(p.per_week, d.per_week, "/wk")),
+            title: t.deployment_frequency,
+            help: t.help_deployment_frequency,
+            value: format!("{:.1}{}", d.per_week, t.per_week),
+            detail: (t.deploy_detail)(d.deployments, &d.default_branch, d.deploy_days),
+            target: t.higher_is_better,
+            delta: prev.map(|p| delta(p.per_week, d.per_week, t.per_week)),
         },
         hours_card(
-            "Lead time for changes",
+            t.lead_time_for_changes,
+            t.help_lead_time_for_changes,
             &d.lead_time,
-            percentiles(&d.lead_time, "deploys"),
+            if d.lead_time.count == 0 {
+                t.no_deploys_with_data.into()
+            } else {
+                (t.deploy_percentiles)(
+                    d.lead_time.p50_hours,
+                    d.lead_time.p90_hours,
+                    d.lead_time.count,
+                )
+            },
             prev.map(|p| &p.lead_time),
         ),
         Kpi {
-            title: "Change failure rate",
+            title: t.change_failure_rate,
+            help: t.help_change_failure_rate,
             value: d
                 .change_failure_rate
                 .map_or_else(|| "—".into(), |r| format!("{:.1}%", r * 100.0)),
-            detail: format!(
-                "{} reverts + {} hotfixes (label \"{}\")",
-                d.reverts, d.hotfixes, d.hotfix_label
-            ),
-            target: "lower is better",
+            detail: (t.cfr_detail)(d.reverts, d.hotfixes, &d.hotfix_label),
+            target: t.lower_is_better,
             delta: match (
                 prev.and_then(|p| p.change_failure_rate),
                 d.change_failure_rate,
@@ -154,29 +169,17 @@ pub fn dora_kpis(report: &Report, previous: Option<&Report>) -> Option<Vec<Kpi>>
             },
         },
         hours_card(
-            "Recovery time",
+            t.recovery_time,
+            t.help_recovery_time,
             &d.recovery,
-            recovery_detail(d),
+            (t.recovery_detail)(
+                d.recovery_from_reverts,
+                d.recovery_from_incidents,
+                &d.incident_label,
+            ),
             prev.map(|p| &p.recovery),
         ),
     ])
-}
-
-fn percentiles(s: &HoursSummary, unit: &str) -> String {
-    if s.count == 0 {
-        return format!("no {unit} with data");
-    }
-    format!(
-        "p50 {:.1}h · p90 {:.1}h · {} {unit}",
-        s.p50_hours, s.p90_hours, s.count
-    )
-}
-
-fn recovery_detail(d: &Dora) -> String {
-    format!(
-        "{} from reverts · {} incidents (label \"{}\")",
-        d.recovery_from_reverts, d.recovery_from_incidents, d.incident_label
-    )
 }
 
 /// Formats `current - previous` as "+2.0 pp", "-1.5h" or "±0.0".
@@ -214,6 +217,7 @@ pub fn small_pr_share(report: &Report) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::i18n::{EN, ZH_TW};
 
     const GOLDEN: &str = include_str!("../../internal/http/testdata/metrics.json");
     const GOLDEN_MONTHLY: &str = include_str!("../../internal/http/testdata/metrics_monthly.json");
@@ -224,7 +228,7 @@ mod tests {
 
     #[test]
     fn formats_golden_report() {
-        let cards = kpis(&report(), None);
+        let cards = kpis(&report(), None, &EN);
         let values: Vec<_> = cards.iter().map(|k| k.value.as_str()).collect();
         assert_eq!(values, ["66.7%", "1.5", "20.0h", "2.0h"]);
         assert_eq!(cards[0].detail, "2 / 3 PR builds failed");
@@ -237,11 +241,15 @@ mod tests {
         let monthly: crate::api::MonthlyReport = serde_json::from_str(GOLDEN_MONTHLY).unwrap();
         let (april, may) = (&monthly.months[0], &monthly.months[1]);
 
-        let cards = kpis(april, None);
+        let cards = kpis(april, None, &EN);
         assert!(cards.iter().all(|k| k.value == "—"), "{cards:?}");
 
         // April had no data, so May has nothing to compare against.
-        assert!(kpis(may, Some(april)).iter().all(|k| k.delta.is_none()));
+        assert!(
+            kpis(may, Some(april), &EN)
+                .iter()
+                .all(|k| k.delta.is_none())
+        );
     }
 
     #[test]
@@ -259,13 +267,13 @@ mod tests {
         let cur = report();
         let mut prev = report();
         prev.build_failure.rate = 0.5;
-        let cards = kpis(&cur, Some(&prev));
+        let cards = kpis(&cur, Some(&prev), &EN);
         assert_eq!(cards[0].delta.as_ref().unwrap().text, "+16.7 pp");
     }
 
     #[test]
     fn formats_golden_dora() {
-        let cards = dora_kpis(&report(), None).expect("dora cards");
+        let cards = dora_kpis(&report(), None, &EN).expect("dora cards");
         let values: Vec<_> = cards.iter().map(|k| k.value.as_str()).collect();
         assert_eq!(values, ["2.1/wk", "22.0h", "33.3%", "36.0h"]);
         assert_eq!(cards[0].detail, "3 deploys into main · 3 deploy days");
@@ -282,12 +290,12 @@ mod tests {
         let monthly: crate::api::MonthlyReport = serde_json::from_str(GOLDEN_MONTHLY).unwrap();
         let (april, may) = (&monthly.months[0], &monthly.months[1]);
 
-        let cards = dora_kpis(april, None).unwrap();
+        let cards = dora_kpis(april, None, &EN).unwrap();
         assert_eq!(cards[0].value, "0.0/wk");
         assert!(cards[1..].iter().all(|k| k.value == "—"), "{cards:?}");
 
         // Only deployment frequency can be compared against an empty April.
-        let deltas: Vec<_> = dora_kpis(may, Some(april))
+        let deltas: Vec<_> = dora_kpis(may, Some(april), &EN)
             .unwrap()
             .into_iter()
             .map(|k| k.delta.is_some())
@@ -296,7 +304,7 @@ mod tests {
 
         let mut no_branch = report();
         no_branch.dora = None;
-        assert!(dora_kpis(&no_branch, None).is_none());
+        assert!(dora_kpis(&no_branch, None, &EN).is_none());
     }
 
     #[test]
@@ -307,5 +315,53 @@ mod tests {
 
         let monthly: crate::api::MonthlyReport = serde_json::from_str(GOLDEN_MONTHLY).unwrap();
         assert_eq!(small_pr_share(&monthly.months[0]), None);
+    }
+
+    #[test]
+    fn formats_golden_report_in_chinese() {
+        let cards = kpis(&report(), None, &ZH_TW);
+        let titles: Vec<_> = cards.iter().map(|k| k.title).collect();
+        assert_eq!(
+            titles,
+            [
+                "CI 失敗率",
+                "每個 PR 的建置次數",
+                "PR 前置時間",
+                "等待審查時間"
+            ]
+        );
+        // Values are numbers and stay the same in every language.
+        let values: Vec<_> = cards.iter().map(|k| k.value.as_str()).collect();
+        assert_eq!(values, ["66.7%", "1.5", "20.0h", "2.0h"]);
+        assert_eq!(cards[0].detail, "3 次 PR 建置中失敗 2 次");
+        assert_eq!(cards[2].detail, "p50 20.0h · p90 28.0h · 3 個已合併 PR");
+        assert_eq!(cards[3].target, "越低越好");
+    }
+
+    #[test]
+    fn formats_golden_dora_in_chinese() {
+        let cards = dora_kpis(&report(), None, &ZH_TW).expect("dora cards");
+        let values: Vec<_> = cards.iter().map(|k| k.value.as_str()).collect();
+        assert_eq!(values, ["2.1/週", "22.0h", "33.3%", "36.0h"]);
+        assert_eq!(cards[0].detail, "3 次部署到 main · 3 個部署日");
+        assert_eq!(cards[1].detail, "p50 22.0h · p90 30.0h · 3 次部署");
+        assert_eq!(
+            cards[2].detail,
+            "1 次 revert + 0 次 hotfix（標籤「hotfix」）"
+        );
+        assert_eq!(
+            cards[3].detail,
+            "1 次來自 revert · 1 次事故（標籤「incident」）"
+        );
+    }
+
+    #[test]
+    fn empty_month_in_chinese() {
+        let monthly: crate::api::MonthlyReport = serde_json::from_str(GOLDEN_MONTHLY).unwrap();
+        let april = &monthly.months[0];
+        assert!(kpis(april, None, &ZH_TW).iter().all(|k| k.value == "—"));
+        let dora = dora_kpis(april, None, &ZH_TW).unwrap();
+        assert_eq!(dora[0].value, "0.0/週");
+        assert_eq!(dora[1].detail, "沒有可計算的部署");
     }
 }

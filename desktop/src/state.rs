@@ -5,8 +5,13 @@
 use crate::api::{ApiError, MonthlyReport, Repo, Report};
 use crate::month::Month;
 
-/// How many months the trend charts cover, ending at the window's end.
+/// The shortest span the trend charts cover, ending at the window's end.
 pub const TREND_MONTHS: i32 = 12;
+
+/// The longest span the trend charts cover. Matches the server's limit
+/// for `metrics/monthly` (`MaxMonths` in `internal/metrics`), which
+/// rejects wider requests.
+pub const MAX_TREND_MONTHS: i32 = 120;
 
 /// A value fetched in the background.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -15,7 +20,7 @@ pub enum Loadable<T> {
     Idle,
     Loading,
     Ready(T),
-    Failed(String),
+    Failed(ApiError),
 }
 
 impl<T> Loadable<T> {
@@ -35,7 +40,7 @@ impl<T> From<Result<T, ApiError>> for Loadable<T> {
     fn from(r: Result<T, ApiError>) -> Self {
         match r {
             Ok(v) => Self::Ready(v),
-            Err(e) => Self::Failed(e.to_string()),
+            Err(e) => Self::Failed(e),
         }
     }
 }
@@ -68,10 +73,15 @@ impl Window {
     }
 
     /// The window the trend charts request: the `TREND_MONTHS` months
-    /// that end where this window ends.
+    /// that end where this window ends, or the whole window when it is
+    /// longer, so a multi-year selection is charted in full, up to the
+    /// last `MAX_TREND_MONTHS` months.
     pub fn trend(self) -> Self {
         Self {
-            from: self.to.add(-TREND_MONTHS),
+            from: self
+                .from
+                .min(self.to.add(-TREND_MONTHS))
+                .max(self.to.add(-MAX_TREND_MONTHS)),
             to: self.to,
         }
     }
@@ -218,6 +228,41 @@ mod tests {
         assert!(!wide.is_single_month());
         assert_eq!(wide.label(), "2026-01 ~ 2026-03");
         assert_eq!(wide.shift(2).label(), "2026-03 ~ 2026-05");
+        // Shorter than a year: the trend still covers twelve months.
+        assert_eq!(
+            wide.trend(),
+            Window {
+                from: m("2025-04"),
+                to: m("2026-04")
+            }
+        );
+
+        // Exactly twelve months: the trend is the window itself.
+        let year = Window {
+            from: m("2025-04"),
+            to: m("2026-04"),
+        };
+        assert_eq!(year.trend(), year);
+
+        // Longer than a year: the whole window is charted.
+        let years = Window {
+            from: m("2020-09"),
+            to: m("2026-10"),
+        };
+        assert_eq!(years.trend(), years);
+
+        // Beyond the server's limit: the last MAX_TREND_MONTHS months.
+        let decades = Window {
+            from: m("2000-01"),
+            to: m("2026-10"),
+        };
+        assert_eq!(
+            decades.trend(),
+            Window {
+                from: m("2016-10"),
+                to: m("2026-10")
+            }
+        );
     }
 
     #[test]
@@ -234,10 +279,7 @@ mod tests {
         assert!(s.report.ready().is_some());
 
         s.apply(Msg::Trend(second, Err(ApiError::Unauthorized)));
-        assert_eq!(
-            s.trend,
-            Loadable::Failed("API token was rejected (401)".into())
-        );
+        assert_eq!(s.trend, Loadable::Failed(ApiError::Unauthorized));
     }
 
     #[test]

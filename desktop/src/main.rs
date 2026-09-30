@@ -4,9 +4,12 @@
 //! lists tracked repos and charts their CI and PR metrics. All data
 //! collection (GitHub, CI providers, the database) stays in the Go
 //! service; this app only needs the server URL and its API token.
+//! The UI is in English or Traditional Chinese (see `i18n`).
 
 mod api;
 mod app;
+mod fonts;
+mod i18n;
 mod kpi;
 mod month;
 mod settings;
@@ -30,6 +33,13 @@ fn main() -> eframe::Result {
         "DevPulse",
         options,
         Box::new(|cc| {
+            let missing_cjk_font = match fonts::find_cjk() {
+                Some(font) => {
+                    fonts::install(&cc.egui_ctx, font);
+                    None
+                }
+                None => Some(fonts::candidates()),
+            };
             let make_store = Box::new(|url: &str| -> Box<dyn SecretStore> {
                 Box::new(KeyringStore::for_server(url))
             });
@@ -40,6 +50,8 @@ fn main() -> eframe::Result {
                     .or_else(settings::default_path),
                 make_store,
                 Overrides::from_env(),
+                sys_locale::get_locale(),
+                missing_cjk_font,
             )))
         }),
     )

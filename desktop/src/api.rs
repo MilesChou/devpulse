@@ -11,6 +11,7 @@ use std::time::Duration;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
+use crate::i18n::Texts;
 use crate::month::Month;
 
 /// A tracked repository, as listed by `GET /api/v1/repos`.
@@ -152,6 +153,22 @@ impl fmt::Display for ApiError {
 }
 
 impl std::error::Error for ApiError {}
+
+impl ApiError {
+    /// The message the dashboard shows, in the UI language. `Display`
+    /// stays English for logs. The server's own detail text is passed
+    /// through untranslated.
+    pub fn describe(&self, t: &Texts) -> String {
+        match self {
+            Self::Unauthorized => t.err_unauthorized.to_string(),
+            Self::NotFound(msg) => (t.err_not_found)(msg),
+            Self::BadRequest(msg) => (t.err_bad_request)(msg),
+            Self::Status(code, msg) => (t.err_status)(*code, msg),
+            Self::Transport(msg) => (t.err_transport)(msg),
+            Self::Decode(msg) => (t.err_decode)(msg),
+        }
+    }
+}
 
 /// Blocking API client. Calls run on worker threads, never on the UI
 /// thread, so a blocking client keeps the dashboard free of an async
@@ -407,5 +424,21 @@ mod tests {
             .health()
             .unwrap_err();
         assert!(matches!(err, ApiError::Transport(_)), "{err:?}");
+    }
+
+    #[test]
+    fn describes_errors_per_language_keeping_server_detail() {
+        use crate::i18n::{EN, ZH_TW};
+        let e = ApiError::Status(503, "db down".into());
+        assert_eq!(e.describe(&EN), e.to_string());
+        assert_eq!(e.describe(&ZH_TW), "伺服器錯誤 503：db down");
+        assert_eq!(
+            ApiError::Unauthorized.describe(&ZH_TW),
+            "API token 被拒絕（401）"
+        );
+        assert_eq!(
+            ApiError::Transport("refused".into()).describe(&ZH_TW),
+            "無法連上伺服器：refused"
+        );
     }
 }
