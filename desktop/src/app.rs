@@ -82,6 +82,7 @@ impl DashboardApp {
             .as_deref()
             .map(settings::load)
             .unwrap_or_default();
+        apply_text_sizes(&ctx);
         let state = State::new(Month::current());
         let (tx, rx) = channel();
 
@@ -569,6 +570,37 @@ fn dora_section(ui: &mut egui::Ui, report: &Report, previous: Option<&Report>) {
     }
 }
 
+/// Font sizes, in points. egui's defaults (small 9, body 13, heading 18)
+/// are too small to read card details and chart captions comfortably on
+/// a dashboard. Cmd/Ctrl + and - still zoom the whole UI on top of this.
+fn apply_text_sizes(ctx: &egui::Context) {
+    use egui::{FontFamily, FontId, TextStyle};
+    // Both the light and the dark style, so switching the OS theme keeps
+    // the sizes.
+    ctx.all_styles_mut(|style| {
+        style.text_styles = [
+            (
+                TextStyle::Small,
+                FontId::new(12.0, FontFamily::Proportional),
+            ),
+            (TextStyle::Body, FontId::new(15.0, FontFamily::Proportional)),
+            (
+                TextStyle::Button,
+                FontId::new(15.0, FontFamily::Proportional),
+            ),
+            (
+                TextStyle::Heading,
+                FontId::new(22.0, FontFamily::Proportional),
+            ),
+            (
+                TextStyle::Monospace,
+                FontId::new(14.0, FontFamily::Monospace),
+            ),
+        ]
+        .into();
+    });
+}
+
 /// Green for confirmations. egui's visuals have error and warning
 /// colours but no success colour, so pick one readable on the current
 /// light or dark background.
@@ -586,7 +618,7 @@ fn kpi_cards(ui: &mut egui::Ui, cards: &[Kpi]) {
             egui::Frame::group(ui.style()).show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.label(RichText::new(card.title).strong());
-                ui.label(RichText::new(&card.value).size(28.0));
+                ui.label(RichText::new(&card.value).size(32.0));
                 ui.small(&card.detail);
                 ui.horizontal(|ui| {
                     ui.small(card.target);
