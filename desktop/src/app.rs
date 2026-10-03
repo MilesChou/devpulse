@@ -181,10 +181,16 @@ impl DashboardApp {
                 app.token = Some(token);
                 app.load_repos();
             }
-            Ok(None) => app.show_settings = true,
+            // No stored token: still connect, since a loopback server may
+            // run without one. Settings opens so a first run can set the URL.
+            Ok(None) => {
+                app.show_settings = true;
+                app.load_repos();
+            }
             Err(e) => {
                 app.show_settings = true;
                 app.notice = Some(Notice::KeychainReadFailed(e));
+                app.load_repos();
             }
         }
         app
@@ -196,10 +202,10 @@ impl DashboardApp {
             .unwrap_or(&self.settings.base_url)
     }
 
-    fn client(&self) -> Option<Client> {
-        self.token
-            .as_deref()
-            .map(|t| Client::new(self.base_url(), t))
+    /// The token is optional: without one the client sends no
+    /// `Authorization` header and the server decides whether to answer.
+    fn client(&self) -> Client {
+        Client::new(self.base_url(), self.token.as_deref().unwrap_or_default())
     }
 
     /// Runs `job` on a worker thread and wakes the UI when it is done.
@@ -214,7 +220,7 @@ impl DashboardApp {
     }
 
     fn load_repos(&mut self) {
-        let Some(client) = self.client() else { return };
+        let client = self.client();
         self.state.repos = Loadable::Loading;
         let c = client.clone();
         self.spawn(move || Msg::Repos(c.list_repos()));
@@ -224,7 +230,7 @@ impl DashboardApp {
     }
 
     fn register_repo(&mut self) {
-        let Some(client) = self.client() else { return };
+        let client = self.client();
         let name = self.add_input.trim().to_string();
         if name.is_empty() {
             return;
@@ -246,20 +252,20 @@ impl DashboardApp {
         if patch == Default::default() {
             return;
         }
-        let Some(client) = self.client() else { return };
+        let client = self.client();
         let repo = original.clone();
         self.spawn(move || Msg::RepoUpdated(client.update_repo(&repo, &patch)));
     }
 
     fn remove_repo(&mut self, repo: &Repo) {
-        let Some(client) = self.client() else { return };
+        let client = self.client();
         self.confirm_remove = None;
         let repo = repo.clone();
         self.spawn(move || Msg::RepoRemoved(repo.full_name.clone(), client.remove_repo(&repo)));
     }
 
     fn start_sync(&mut self, repo: &Repo) {
-        let Some(client) = self.client() else { return };
+        let client = self.client();
         let repo = repo.clone();
         self.last_sync_poll = Some(Instant::now());
         self.spawn(move || Msg::Sync(client.start_sync(&repo)));
@@ -272,7 +278,8 @@ impl DashboardApp {
             return;
         }
         let due = self.last_sync_poll.is_none_or(|t| t.elapsed() >= SYNC_POLL);
-        if due && let Some(client) = self.client() {
+        if due {
+            let client = self.client();
             self.last_sync_poll = Some(Instant::now());
             self.spawn(move || Msg::Sync(client.sync_status()));
         }
@@ -280,9 +287,10 @@ impl DashboardApp {
     }
 
     fn load_metrics(&mut self) {
-        let (Some(client), Some(target)) = (self.client(), self.state.selected.clone()) else {
+        let Some(target) = self.state.selected.clone() else {
             return;
         };
+        let client = self.client();
         let generation = self.state.begin_metrics_load();
         let window = self.state.window;
 
@@ -309,7 +317,7 @@ impl DashboardApp {
 
     /// Loads the Overview's comparison tables for the current window.
     fn load_overview(&mut self) {
-        let Some(client) = self.client() else { return };
+        let client = self.client();
         let generation = self.state.begin_overview_load();
         let window = self.state.window;
         let c = client.clone();
@@ -331,7 +339,7 @@ impl DashboardApp {
 
     /// Loads members, teams and excluded accounts.
     fn load_people(&mut self) {
-        let Some(client) = self.client() else { return };
+        let client = self.client();
         let (a, b) = (client.clone(), client.clone());
         self.spawn(move || Msg::Members(a.list_members()));
         self.spawn(move || Msg::Teams(b.list_teams()));
@@ -346,7 +354,7 @@ impl DashboardApp {
                 return;
             }
         };
-        let Some(client) = self.client() else { return };
+        let client = self.client();
         let id = self.member_form.id.clone();
         self.spawn(move || {
             let done = Notice::MemberSaved(name.clone());
@@ -367,7 +375,7 @@ impl DashboardApp {
                 return;
             }
         };
-        let Some(client) = self.client() else { return };
+        let client = self.client();
         let id = self.team_form.id.clone();
         self.spawn(move || {
             let done = Notice::TeamSaved(name.clone());
@@ -381,7 +389,7 @@ impl DashboardApp {
     }
 
     fn delete_member(&mut self, id: String, name: String) {
-        let Some(client) = self.client() else { return };
+        let client = self.client();
         self.confirm_delete = None;
         self.spawn(move || {
             Msg::PeopleChanged(Notice::MemberDeleted(name), client.delete_member(&id))
@@ -389,13 +397,13 @@ impl DashboardApp {
     }
 
     fn delete_team(&mut self, id: String, name: String) {
-        let Some(client) = self.client() else { return };
+        let client = self.client();
         self.confirm_delete = None;
         self.spawn(move || Msg::PeopleChanged(Notice::TeamDeleted(name), client.delete_team(&id)));
     }
 
     fn save_excluded(&mut self) {
-        let Some(client) = self.client() else { return };
+        let client = self.client();
         let accounts = crate::state::parse_accounts(&self.excluded_input);
         self.spawn(move || Msg::ExcludedSaved(client.replace_excluded_accounts(&accounts)));
     }
@@ -440,10 +448,6 @@ impl DashboardApp {
             store.get().ok().flatten()
         });
 
-        if self.token.is_none() {
-            self.notice = Some(Notice::NoToken);
-            return;
-        }
         self.state.selected = None;
         self.state.report = Loadable::Idle;
         self.state.trend = Loadable::Idle;
@@ -457,8 +461,9 @@ impl DashboardApp {
             Err(e) => Notice::TokenRemoveFailed(e),
         });
         self.token = None;
-        self.state.repos = Loadable::Idle;
         self.state.selected = None;
+        // Reconnect without a token; the server decides whether that is enough.
+        self.load_repos();
     }
 
     fn test_connection(&mut self) {
@@ -724,7 +729,7 @@ impl DashboardApp {
         let hint = if self.token.is_some() {
             t.token_in_use_hint
         } else {
-            "DEVPULSE_API_TOKEN"
+            t.token_optional_hint
         };
         ui.label(t.api_token);
         ui.add(

@@ -376,7 +376,7 @@ struct ErrorBody {
 /// Why an API call failed, classified so the UI can say what to fix.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ApiError {
-    /// The server rejected the token (401).
+    /// The server rejected the token, or requires one and got none (401).
     Unauthorized,
     /// The repo is not tracked, or the path does not exist (404).
     NotFound(String),
@@ -397,7 +397,10 @@ pub enum ApiError {
 impl fmt::Display for ApiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unauthorized => write!(f, "API token was rejected (401)"),
+            Self::Unauthorized => write!(
+                f,
+                "The server rejected the API token, or requires one (401)"
+            ),
             Self::NotFound(msg) => write!(f, "not found: {msg}"),
             Self::BadRequest(msg) => write!(f, "bad request: {msg}"),
             Self::Conflict(msg) | Self::Unavailable(msg) => write!(f, "{msg}"),
@@ -651,7 +654,13 @@ impl Client {
         ))
     }
 
+    /// Adds the bearer token, if there is one. A server without
+    /// `DEVPULSE_API_TOKEN` accepts requests that carry no header; one
+    /// that requires a token answers 401.
     fn authed<B>(&self, req: ureq::RequestBuilder<B>) -> ureq::RequestBuilder<B> {
+        if self.token.is_empty() {
+            return req;
+        }
         req.header("Authorization", format!("Bearer {}", self.token))
     }
 
@@ -869,6 +878,18 @@ mod tests {
     }
 
     #[test]
+    fn omits_authorization_without_a_token() {
+        let (url, head) = serve_once(200, r#"{"repos":[]}"#);
+        assert_eq!(Client::new(&url, "  ").list_repos(), Ok(vec![]));
+
+        let head = head.recv().unwrap();
+        assert!(
+            !head.to_ascii_lowercase().contains("authorization:"),
+            "headers: {head}"
+        );
+    }
+
+    #[test]
     fn maps_error_statuses() {
         let (url, _) = serve_once(401, r#"{"error":"missing or invalid bearer token"}"#);
         assert_eq!(
@@ -1053,7 +1074,7 @@ mod tests {
         assert_eq!(e.describe(&ZH_TW), "伺服器錯誤 503：db down");
         assert_eq!(
             ApiError::Unauthorized.describe(&ZH_TW),
-            "API token 被拒絕（401）"
+            "伺服器拒絕了 API token，或要求提供 token（401）"
         );
         assert_eq!(
             ApiError::Transport("refused".into()).describe(&ZH_TW),

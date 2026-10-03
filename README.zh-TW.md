@@ -59,7 +59,7 @@ Dashboard 是 `desktop/` 底下獨立的 Rust crate，不需要 Go toolchain。�
    cargo build --release --locked   # 或在 repo 根目錄執行 `make desktop`
    ```
 
-4. 執行 `desktop/target/release/devpulse-desktop`（Windows 為 `devpulse-desktop.exe`），開啟 **Settings**，輸入正在運作的 `devpulse serve` 的 URL 和 token。
+4. 執行 `desktop/target/release/devpulse-desktop`（Windows 為 `devpulse-desktop.exe`），開啟 **Settings**，輸入正在運作的 `devpulse serve` 的 URL，server 有要求時再輸入 token。
 
 細節請見 [desktop/README.zh-TW.md](desktop/README.zh-TW.md#編譯)：連到另一台機器上的 server、在本機完整試跑，以及疑難排解。
 
@@ -179,7 +179,7 @@ Hotfix PR 與事故 issue 以 label 辨識，可用
 
 ```bash
 DEVPULSE_API_TOKEN=change-me devpulse serve   # 在有資料庫的主機上執行
-make desktop-run                              # 再到 Settings 輸入 URL 和 token
+make desktop-run                              # 再到 Settings 輸入 URL（server 有要求時加上 token）
 ```
 
 Dashboard 只保存 DevPulse API token（存在作業系統的 keychain）；GitHub 和

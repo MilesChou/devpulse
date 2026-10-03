@@ -4,7 +4,7 @@ A native dashboard for the metrics DevPulse collects, written in Rust
 with [egui](https://github.com/emilk/egui). It is a client of the JSON
 API that `devpulse serve` exposes: the Go service does all the data
 collection (GitHub, CI providers, the database), and this app only
-needs the server URL and its API token.
+needs the server URL and, when the server requires one, its API token.
 
 > 正體中文：[README.zh-TW.md](README.zh-TW.md)
 
@@ -162,8 +162,13 @@ DEVPULSE_API_TOKEN=change-me devpulse serve
 
 Then start the dashboard, open **Settings** (**設定** in the Chinese UI), enter the server URL
 (default `http://127.0.0.1:8080`) and the API token, and press **Save &
-connect**. **Test** checks both that the server is up and that the
-token is accepted.
+connect**. **Test** checks both that the server is up and that it
+accepts the connection.
+
+The token is optional. A server started without `DEVPULSE_API_TOKEN`
+(only allowed on a loopback address) accepts every request, so leave
+the field empty; the dashboard then sends no `Authorization` header.
+A server that requires a token answers 401, which the dashboard shows.
 
 ### Server on another machine
 
@@ -211,7 +216,7 @@ Then, in a second terminal, run `make desktop-run` and connect to
 | `link.exe` not found (Windows) | Install the Visual Studio Build Tools in step 2 |
 | "Cannot read the keychain" or "Could not save the token" | No OS keychain is available, typically Linux without GNOME Keyring or KWallet running. The token then lasts only for the session; set `DEVPULSE_API_TOKEN` when launching to skip the keychain |
 | "cannot reach server" | Check the URL, that `devpulse serve` is running, and the server's `HTTP_ADDR` and firewall |
-| "API token was rejected (401)" | The token differs from the server's `DEVPULSE_API_TOKEN` |
+| "The server rejected the API token, or requires one (401)" | The token differs from the server's `DEVPULSE_API_TOKEN`, or the server requires a token and none was entered |
 | Chinese text shows as boxes, and Settings says no Chinese font was found | Install one of the fonts listed under [Language](#language), then restart the dashboard |
 
 ## Language
