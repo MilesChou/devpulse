@@ -70,7 +70,7 @@ toolchain. On the machine where you want the dashboard:
 
 4. Run `desktop/target/release/devpulse-desktop`
    (`devpulse-desktop.exe` on Windows), open **Settings**, and enter the
-   URL and token of a running `devpulse serve`.
+   URL of a running `devpulse serve`, plus its token if it requires one.
 
 [desktop/README.md](desktop/README.md#build) has the details: connecting
 to a server on another machine, an end-to-end local trial, and
@@ -203,7 +203,7 @@ accounts left out of the metrics.
 
 ```bash
 DEVPULSE_API_TOKEN=change-me devpulse serve   # on the host with the DB
-make desktop-run                              # then enter URL + token in Settings
+make desktop-run                              # then enter the URL (and token, if required) in Settings
 ```
 
 The dashboard only holds the DevPulse API token (in the OS keychain);

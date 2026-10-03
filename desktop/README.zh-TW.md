@@ -1,6 +1,6 @@
 # DevPulse 桌面 dashboard
 
-以 Rust 和 [egui](https://github.com/emilk/egui) 寫成的原生 dashboard，用來檢視 DevPulse 蒐集的指標。它是 `devpulse serve` 所提供 JSON API 的 client：資料蒐集（GitHub、CI provider、資料庫）全部由 Go 服務負責，這個 app 只需要 server URL 和 API token。
+以 Rust 和 [egui](https://github.com/emilk/egui) 寫成的原生 dashboard，用來檢視 DevPulse 蒐集的指標。它是 `devpulse serve` 所提供 JSON API 的 client：資料蒐集（GitHub、CI provider、資料庫）全部由 Go 服務負責，這個 app 只需要 server URL，以及 server 有要求時的 API token。
 
 > English: [README.md](README.md)
 
@@ -91,7 +91,9 @@ Dashboard 需要一個正在運作的 DevPulse API。在存放 DevPulse 資料�
 DEVPULSE_API_TOKEN=change-me devpulse serve
 ```
 
-接著啟動 dashboard，開啟 **設定**（英文介面為 **Settings**），輸入 server URL（預設 `http://127.0.0.1:8080`）和 API token，再按 **儲存並連線**（**Save & connect**）。**測試**（**Test**）會同時確認 server 有在運作、token 也被接受。
+接著啟動 dashboard，開啟 **設定**（英文介面為 **Settings**），輸入 server URL（預設 `http://127.0.0.1:8080`）和 API token，再按 **儲存並連線**（**Save & connect**）。**測試**（**Test**）會同時確認 server 有在運作，而且接受這個連線。
+
+Token 是選填的。Server 啟動時沒有設定 `DEVPULSE_API_TOKEN`（只有監聽 loopback 位址時才允許）就會接受所有請求，這時 token 欄位留空即可，dashboard 不會送出 `Authorization` header。Server 有要求 token 時會回 401，dashboard 會顯示出來。
 
 ### Server 在另一台機器上
 
@@ -131,7 +133,7 @@ DEVPULSE_API_TOKEN=change-me ./bin/devpulse serve
 | Windows 上找不到 `link.exe` | 安裝步驟 2 的 Visual Studio Build Tools |
 | 出現「無法讀取鑰匙圈」或「無法將 token 存入鑰匙圈」（英文介面為「Cannot read the keychain」或「Could not save the token」） | 沒有可用的系統 keychain，通常是 Linux 沒有執行 GNOME Keyring 或 KWallet。這時 token 只在當次執行有效；啟動時設定 `DEVPULSE_API_TOKEN` 就能略過 keychain |
 | 出現「無法連上伺服器」（cannot reach server） | 檢查 URL、`devpulse serve` 是否正在執行，以及 server 的 `HTTP_ADDR` 和防火牆 |
-| 出現「API token 被拒絕（401）」（API token was rejected (401)） | token 和 server 的 `DEVPULSE_API_TOKEN` 不一致 |
+| 出現「伺服器拒絕了 API token，或要求提供 token（401）」（The server rejected the API token, or requires one (401)） | token 和 server 的 `DEVPULSE_API_TOKEN` 不一致，或 server 要求 token 但沒有輸入 |
 | 中文顯示成方塊，**設定**裡提示找不到中文字型 | 安裝[介面語言](#介面語言)列出的任一套字型，再重新啟動 dashboard |
 
 ## 介面語言
