@@ -3,7 +3,6 @@
 ## Purpose
 
 `devpulse serve` exposes the tracked repos, their metrics, and repo management as a JSON API, so clients other than the CLI (the desktop dashboard first) can show and manage them without direct database access or any GitHub / CI credential.
-
 ## Requirements
 ### Requirement: Metrics over HTTP match the CLI
 
@@ -173,4 +172,60 @@ The user MUST be able to request any metrics report for one member's or one team
 
 - **WHEN** the client requests `/api/v1/repos/{owner}/{name}/metrics/by-member`
 - **THEN** the answer has one row per member active in the window and one per active account no member claims, each with its own report
+
+### Requirement: Metrics across all repos
+
+The user MUST be able to fetch the metrics report and the monthly trend across all tracked, enabled repos, for everyone or scoped to a member or team, in the same shape as the per-repo endpoints.
+
+#### Scenario: Cross-repo report
+
+- **WHEN** the client requests `GET /api/v1/metrics?from=2026-09&member=<id>`
+- **THEN** the answer is a report with `repo` set to `*`, covering that member's work in every tracked, enabled repo, and `dora` null
+
+#### Scenario: One account
+
+- **WHEN** the client adds `account=<login>` instead of `member` or `team`
+- **THEN** the report covers that account's work alone (normalized like member accounts), names it as an `account` scope, and more than one of `member`, `team` and `account` is rejected with 400
+
+#### Scenario: Cross-repo trend
+
+- **WHEN** the client requests `GET /api/v1/metrics/monthly?from=2025-10&to=2026-10`
+- **THEN** the answer has one cross-repo report per month, and a range over 120 months is rejected with 400 as for a single repo
+
+### Requirement: Comparison rows for repos and members
+
+The user MUST be able to fetch comparison rows for all repos or all members in one request each: the current period, the previous period of the same length, and 12 monthly summaries.
+
+#### Scenario: Repo overview
+
+- **WHEN** the client requests `GET /api/v1/overview/repos?from=2026-07&to=2026-10`
+- **THEN** the answer names the previous period (2026-04 to 2026-07) and has one row per tracked, enabled repo with `current`, `previous` and 12 `monthly` summaries ending at 2026-10
+
+#### Scenario: Member overview
+
+- **WHEN** the client requests `GET /api/v1/overview/members?from=2026-09`
+- **THEN** each row is a member active in the current or previous period across all repos, or an active account no member claims (`member_id` null), and excluded accounts are absent
+
+#### Scenario: Missing data is null
+
+- **WHEN** a row has no data for a metric in a period
+- **THEN** that summary field is `null`, not 0
+
+### Requirement: Comparison rows use the median lead time
+
+The lead time in an overview summary MUST be the median, named `lead_time_p50_hours`, so rows compare what a typical PR takes rather than a mean dominated by a few long ones.
+
+#### Scenario: Summary field
+
+- **WHEN** a repo's merged PRs in the period take 1 h, 3 h and 100 h
+- **THEN** its summary has `lead_time_p50_hours` 3
+
+### Requirement: Reports carry a build duration summary
+
+Every metrics report MUST carry `build_duration` (count, mean, median and p90 in seconds) and each day of `daily_build_duration` its median (`p50_seconds`), and overview summaries MUST report the median build duration as `build_p50_seconds`.
+
+#### Scenario: Report
+
+- **WHEN** a window has builds of 30 s, 60 s, 90 s and 120 s
+- **THEN** `build_duration` is count 4 with `p50_seconds` 75
 
